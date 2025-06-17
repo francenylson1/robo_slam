@@ -1,9 +1,16 @@
+# Arquivos de token e senhas
+git_token.txt
+*.token
+*.key
+*.pem
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -15,22 +22,23 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
-# Ambiente virtual
+# Virtual Environment
 venv/
-env/
 ENV/
 
-# IDEs e editores
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# Sistema
 .DS_Store
+Thumbs.db
 
 # Logs e dados
 *.log
