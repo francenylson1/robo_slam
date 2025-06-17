@@ -28,8 +28,8 @@ class RobotNavigator:
         self.base_position = ROBOT_INITIAL_POSITION
         self.is_adjusting_final_angle = False  # Nova flag para controlar ajuste do ângulo final
         
-        # Inicializa o PathFinder com as dimensões do mapa (6m x 12m)
-        self.path_finder = PathFinder(width=60, height=120, grid_size=0.1)
+        # Inicializa o PathFinder com as dimensões do mapa (6m x 12m) e grid de 0.5m
+        self.path_finder = PathFinder(width=12, height=24, grid_size=0.5)
         
         self.forbidden_areas = []
         self.is_autonomous = False
@@ -126,8 +126,11 @@ class RobotNavigator:
         # Atualiza a posição e ângulo do robô
         self._update_position(forward_value, turn_value)
         
-    def _calculate_movement(self, target: Tuple[float, float], angle_error_rad: float) -> Tuple[float, float]:
+    def _calculate_movement(self, target: Optional[Tuple[float, float]], angle_error_rad: float) -> Tuple[float, float]:
         """Calcula os valores de movimento baseado no erro angular e distância"""
+        if target is None:
+            return 0.0, 0.0
+            
         distance = self._calculate_distance(self.current_position, target)
         
         # Se a distância for muito pequena, o robô já está no ponto

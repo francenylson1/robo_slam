@@ -1,33 +1,40 @@
 from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import Qt, QPointF
-from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QFont
+from PyQt5.QtCore import Qt, QPointF, QPoint
+from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QFont, QCursor, QPolygon
 from src.core.config import MAP_WIDTH, MAP_HEIGHT, MAP_SCALE, ROBOT_INITIAL_POSITION, ROBOT_INITIAL_ANGLE, DATABASE_PATH
 import math
 import sys
 import os
 import sqlite3
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Callable, Optional
 
 # Adiciona o diretório raiz ao PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 class MapWidget(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.robot_position = ROBOT_INITIAL_POSITION
-        self.robot_angle = ROBOT_INITIAL_ANGLE
-        self.points_of_interest = {}  # nome -> (x, y)
-        self.forbidden_areas = []     # lista de polígonos [(x1,y1), (x2,y2), ...]
+    def __init__(self, parent=None):
+        """Inicializa o widget do mapa."""
+        super().__init__(parent)
+        self.setMinimumSize(600, 1200)  # Ajustado para melhor visualização dos grids maiores
+        self.points_of_interest = {}  # {nome: (x, y, tipo)}
+        self.forbidden_areas = []  # Lista de polígonos
+        self.robot_position = ROBOT_INITIAL_POSITION  # Usa a posição inicial definida em config.py
+        self.robot_angle = ROBOT_INITIAL_ANGLE  # Usa o ângulo inicial definido em config.py
+        self.scale = 56.66  # pixels por metro (ajustado para mostrar grids de 0.5m com 70% de aumento)
+        self.add_point_mode = False
+        self.point_clicked_callback: Optional[Callable[[float, float], None]] = None
         self.drawing_forbidden = False
         self.current_forbidden_area = []
         self.map_name = ""
         self.map_width = MAP_WIDTH
         self.map_height = MAP_HEIGHT
-        self.setMinimumSize(800, 600)
+        self.add_point_mode = False
+        self.edit_point_mode = False
+        self.area_finished_callback: Optional[Callable[[], None]] = None
         
-    def update_robot_position(self, position, angle):
-        """Atualiza a posição do robô no mapa"""
-        self.robot_position = position
+    def update_robot_position(self, x: float, y: float, angle: float):
+        """Atualiza a posição do robô no mapa."""
+        self.robot_position = (x, y)
         self.robot_angle = angle
         self.update()
         
@@ -38,6 +45,7 @@ class MapWidget(QWidget):
         
     def paintEvent(self, event):
         """Desenha o mapa, pontos de interesse e áreas proibidas"""
+        super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
@@ -45,85 +53,61 @@ class MapWidget(QWidget):
         self._draw_grid(painter)
         
         # Desenha as áreas proibidas
-        for area in self.forbidden_areas:
-            painter.setPen(QPen(QColor(255, 0, 0), 2))
-            painter.setBrush(QBrush(QColor(255, 0, 0, 50)))  # Vermelho semi-transparente
-            points = [QPointF(self._world_to_screen_x(x), self._world_to_screen_y(y))
-                     for x, y in area]
-            painter.drawPolygon(points)
-            
+        self._draw_forbidden_areas(painter)
+        
         # Desenha os pontos de interesse
-        for name, (x, y) in self.points_of_interest.items():
-            # Desenha o ponto
-            painter.setPen(QPen(QColor(0, 0, 255), 2))
-            painter.setBrush(QBrush(QColor(0, 0, 255)))
-            screen_x = self._world_to_screen_x(x)
-            screen_y = self._world_to_screen_y(y)
-            painter.drawEllipse(QPointF(screen_x, screen_y), 5, 5)
+        for name, point_data in self.points_of_interest.items():
+            x, y, point_type = point_data
+            screen_x = int(x * self.scale)
+            screen_y = int(y * self.scale)
             
-            # Desenha o nome do ponto
+            print(f"DEBUG: Desenhando ponto {name} em ({x}, {y}) -> ({screen_x}, {screen_y})")
+            
+            # Desenha o ponto
+            painter.setPen(QPen(QColor(0, 0, 0), 2))
+            painter.setBrush(QBrush(QColor(255, 0, 0)))
+            painter.drawEllipse(screen_x - 5, screen_y - 5, 10, 10)
+            
+            # Desenha o nome e tipo
             painter.setPen(QPen(QColor(0, 0, 0)))
             painter.setFont(QFont('Arial', 8))
-            painter.drawText(QPointF(screen_x + 10, screen_y), name)
+            painter.drawText(screen_x + 10, screen_y + 5, f"{name} ({point_type})")
             
         # Desenha o robô
-        painter.setPen(QPen(QColor(0, 255, 0), 2))
-        painter.setBrush(QBrush(QColor(0, 255, 0)))
-        robot_x = self._world_to_screen_x(self.robot_position[0])
-        robot_y = self._world_to_screen_y(self.robot_position[1])
-        painter.drawEllipse(QPointF(robot_x, robot_y), 8, 8)
+        self._draw_robot(painter)
         
-        # Desenha a direção do robô
-        angle_rad = math.radians(self.robot_angle)
-        end_x = robot_x + 20 * math.cos(angle_rad)
-        end_y = robot_y - 20 * math.sin(angle_rad)
-        painter.drawLine(int(robot_x), int(robot_y), int(end_x), int(end_y))
+    def _draw_grid(self, painter: QPainter):
+        """Desenha a grade do mapa."""
+        painter.setPen(QPen(QColor(128, 128, 128), 1, Qt.PenStyle.DotLine))
         
-        # Área sendo desenhada
-        if self.drawing_forbidden and len(self.current_forbidden_area) > 1:
-            painter.setPen(QPen(QColor(255, 0, 0), 2, Qt.DashLine))
-            points = [QPointF(self._world_to_screen_x(x), self._world_to_screen_y(y))
-                     for x, y in self.current_forbidden_area]
-            painter.drawPolyline(points)
-        
-    def _draw_grid(self, painter):
-        """Desenha o grid do mapa com divisões de 0.5 metro."""
-        painter.setPen(QPen(QColor(200, 200, 200), 1))
-        
-        step = 0.5  # metros
-        num_cols = int(MAP_WIDTH / step)
-        num_rows = int(MAP_HEIGHT / step)
-        
-        # Linhas horizontais
-        for i in range(num_rows + 1):
-            y = i * step
-            screen_y = self._world_to_screen_y(y)
+        # Desenha linhas horizontais (12m de altura, grids de 0.5m)
+        for y in range(0, 25):  # 12m / 0.5m = 24 linhas + 1
+            screen_y = int(y * self.scale * 0.5)  # 0.5m por grid
             painter.drawLine(0, screen_y, self.width(), screen_y)
-        
-        # Linhas verticais
-        for i in range(num_cols + 1):
-            x = i * step
-            screen_x = self._world_to_screen_x(x)
+            
+        # Desenha linhas verticais (6m de largura, grids de 0.5m)
+        for x in range(0, 13):  # 6m / 0.5m = 12 linhas + 1
+            screen_x = int(x * self.scale * 0.5)  # 0.5m por grid
             painter.drawLine(screen_x, 0, screen_x, self.height())
         
         # Desenha números nas linhas do grid
-        painter.setPen(QPen(QColor(100, 100, 100)))
-        font = painter.font()
-        font.setPointSize(8)
-        painter.setFont(font)
-        
-        # Números horizontais (metros)
-        for i in range(num_cols + 1):
-            x = i * step
-            screen_x = self._world_to_screen_x(x)
-            painter.drawText(screen_x + 5, 15, f"{x:.1f}")
-        
-        # Números verticais (metros)
-        for i in range(num_rows + 1):
-            y = i * step
-            screen_y = self._world_to_screen_y(y)
-            painter.drawText(5, screen_y - 5, f"{y:.1f}")
+        self._draw_grid_numbers(painter)
             
+    def _draw_grid_numbers(self, painter: QPainter):
+        """Desenha os números da grade do mapa."""
+        painter.setPen(QPen(QColor(0, 0, 0)))
+        painter.setFont(QFont('Arial', 8))
+        
+        # Desenha números horizontais (0 a 6m)
+        for x in range(0, 13):  # 6m / 0.5m = 12 linhas + 1
+            screen_x = int(x * self.scale * 0.5)
+            painter.drawText(screen_x + 5, 15, f"{x * 0.5:.1f}")
+            
+        # Desenha números verticais (0 a 12m)
+        for y in range(0, 25):  # 12m / 0.5m = 24 linhas + 1
+            screen_y = int(y * self.scale * 0.5)
+            painter.drawText(5, screen_y - 5, f"{y * 0.5:.1f}")
+        
     def _world_to_screen_x(self, x):
         """Converte coordenada X do mundo para tela."""
         return int(x * MAP_SCALE)
@@ -164,58 +148,93 @@ class MapWidget(QWidget):
             self.area_finished_callback()
         
     def mousePressEvent(self, event):
-        """Manipula eventos de clique do mouse."""
-        if hasattr(self, 'add_point_mode') and self.add_point_mode:
-            # Captura o clique para ponto de interesse
-            world_x = self._screen_to_world_x(event.x())
-            world_y = self._screen_to_world_y(event.y())
-            if hasattr(self, 'point_clicked_callback') and self.point_clicked_callback:
-                self.point_clicked_callback(world_x, world_y)
-            self.add_point_mode = False
-            self.point_clicked_callback = None
-            return
-        if self.drawing_forbidden:
-            self.add_point_to_forbidden_area(event.x(), event.y())
+        """Processa eventos de clique do mouse."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Converte as coordenadas do clique para coordenadas do mundo
+            world_x = event.x() / self.scale
+            world_y = event.y() / self.scale
+            
+            print(f"DEBUG: Clique em ({world_x}, {world_y})")
+            
+            if self.add_point_mode:
+                if self.point_clicked_callback:
+                    self.point_clicked_callback(world_x, world_y)
+            elif self.drawing_forbidden:
+                self.current_forbidden_area.append((world_x, world_y))
+                self.update()
             
     def mouseDoubleClickEvent(self, event):
-        """Manipula eventos de duplo clique do mouse."""
-        if self.drawing_forbidden:
-            self.finish_forbidden_area()
+        """Processa eventos de duplo clique do mouse."""
+        if event.button() == Qt.MouseButton.LeftButton and self.drawing_forbidden:
+            if len(self.current_forbidden_area) >= 3:
+                self.forbidden_areas.append(self.current_forbidden_area)
+                self.current_forbidden_area = []
+                self.drawing_forbidden = False
+                if self.area_finished_callback:
+                    self.area_finished_callback()
+                self.update()
 
     def load_map(self, map_data: Dict):
-        """Carrega um mapa no widget"""
-        self.map_name = map_data['nome']
-        self.map_width = map_data['largura']
-        self.map_height = map_data['comprimento']
-        
-        # Carrega pontos de interesse
+        """Carrega os dados do mapa."""
+        print(f"DEBUG: Carregando mapa: {map_data}")
         self.points_of_interest = {}
-        try:
-            with sqlite3.connect(DATABASE_PATH) as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT nome, x, y FROM pontos_interesse 
-                    WHERE mapa_id = ?
-                """, (map_data['id'],))
-                for row in cursor.fetchall():
-                    self.points_of_interest[row[0]] = (row[1], row[2])
-        except Exception as e:
-            print(f"Erro ao carregar pontos de interesse: {e}")
+        for name, data in map_data.get('points_of_interest', {}).items():
+            if isinstance(data, tuple):
+                if len(data) == 2:
+                    # Formato antigo: (x, y)
+                    x, y = data
+                    point_type = "Mesa"  # Tipo padrão
+                else:
+                    # Novo formato: (x, y, tipo)
+                    x, y, point_type = data
+                self.points_of_interest[name] = (float(x), float(y), point_type)
+                print(f"DEBUG: Ponto carregado: {name} em ({x}, {y}) do tipo {point_type}")
+                
+        self.forbidden_areas = map_data.get('forbidden_areas', [])
+        self.update()
+
+    def save_map(self) -> Dict:
+        """Salva os dados do mapa."""
+        return {
+            'points_of_interest': self.points_of_interest,
+            'forbidden_areas': self.forbidden_areas
+        }
+
+    def _draw_robot(self, painter: QPainter):
+        """Desenha o robô no mapa."""
+        x, y = self.robot_position
+        screen_x = int(x * self.scale)
+        screen_y = int(y * self.scale)
+        
+        print(f"DEBUG: Desenhando robô em ({x}, {y}) -> ({screen_x}, {screen_y}) com ângulo {self.robot_angle}")
+        
+        # Desenha o corpo do robô (círculo azul)
+        painter.setPen(QPen(QColor(0, 0, 0), 2))
+        painter.setBrush(QBrush(QColor(0, 0, 255)))
+        robot_size = 20  # Tamanho do robô em pixels
+        painter.drawEllipse(screen_x - robot_size//2, screen_y - robot_size//2, robot_size, robot_size)
+        
+        # Desenha a direção do robô (linha vermelha)
+        painter.setPen(QPen(QColor(255, 0, 0), 3))
+        angle_rad = math.radians(self.robot_angle)
+        direction_length = robot_size * 0.8  # 80% do tamanho do robô
+        end_x = screen_x + direction_length * math.cos(angle_rad)
+        end_y = screen_y + direction_length * math.sin(angle_rad)
+        painter.drawLine(screen_x, screen_y, int(end_x), int(end_y))
+
+    def _draw_forbidden_areas(self, painter: QPainter):
+        """Desenha as áreas proibidas no mapa."""
+        # Desenha as áreas proibidas existentes
+        painter.setPen(QPen(QColor(255, 0, 0), 2, Qt.PenStyle.DashLine))
+        painter.setBrush(QBrush(QColor(255, 0, 0, 50)))  # Vermelho semi-transparente
+        
+        for area in self.forbidden_areas:
+            points = [QPoint(int(x * self.scale), int(y * self.scale)) for x, y in area]
+            polygon = QPolygon(points)
+            painter.drawPolygon(polygon)
             
-        # Carrega áreas proibidas
-        self.forbidden_areas = []
-        try:
-            with sqlite3.connect(DATABASE_PATH) as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT coordenadas FROM areas_proibidas 
-                    WHERE mapa_id = ? AND ativo = 1
-                """, (map_data['id'],))
-                for row in cursor.fetchall():
-                    coords_str = row[0]
-                    coords_list = eval(coords_str)
-                    self.forbidden_areas.append([(float(x), float(y)) for x, y in coords_list])
-        except Exception as e:
-            print(f"Erro ao carregar áreas proibidas: {e}")
-            
-        self.update() 
+        # Desenha a área sendo criada
+        if self.drawing_forbidden and len(self.current_forbidden_area) > 0:
+            points = [QPoint(int(x * self.scale), int(y * self.scale)) for x, y in self.current_forbidden_area]
+            polygon = QPolygon(points)
+            painter.drawPolygon(polygon) 

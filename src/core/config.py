@@ -27,15 +27,15 @@ ENVIRONMENT_WIDTH = 6.0  # metros
 ENVIRONMENT_HEIGHT = 12.0  # metros
 MAP_WIDTH = int(ENVIRONMENT_WIDTH)  # metros
 MAP_HEIGHT = int(ENVIRONMENT_HEIGHT)  # metros
-MAP_SCALE = 50  # pixels por metro
+MAP_SCALE = 56.66  # pixels por metro (ajustado para mostrar grids de 0.5m com 70% de aumento)
 
 # Configurações do robô
-ROBOT_INITIAL_POSITION = (5.5, 0.5)  # (x, y) em metros
-ROBOT_INITIAL_ANGLE = 90  # graus
-ROBOT_SPEED = 2.0  # metros por segundo (aumentado)
-ROBOT_TURN_SPEED = 300  # graus por segundo (aumentado)
-ROBOT_FORWARD_SPEED = 2.0  # metros por segundo (aumentado)
-ROBOT_MAX_SPEED = 3.0  # metros por segundo (aumentado)
+ROBOT_INITIAL_POSITION = (5.7, 11.5)  # (x, y) em metros - posição central na parte inferior
+ROBOT_INITIAL_ANGLE = 270  # graus - apontando para cima
+ROBOT_SPEED = 2.0  # metros por segundo
+ROBOT_TURN_SPEED = 300  # graus por segundo
+ROBOT_FORWARD_SPEED = 2.0  # metros por segundo
+ROBOT_MAX_SPEED = 3.0  # metros por segundo
 
 # Configurações de simulação
 SIMULATION_TIMESTEP = 0.1  # segundos

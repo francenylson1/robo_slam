@@ -80,9 +80,10 @@ class MapManager:
         Salva o mapa atual no banco de dados.
         Atualiza um mapa existente ou cria um novo.
         """
-        if not self.conn:
+        if not self.conn or not self.cursor:
             print("Erro: Conexão com o banco de dados não estabelecida.")
             return
+            
         try:
             self.cursor.execute("SELECT id FROM mapas WHERE nome = ?", (map_name,))
             map_id = self.cursor.fetchone()
@@ -106,9 +107,17 @@ class MapManager:
                 print(f"Novo mapa '{map_name}' criado.")
 
             # Insere pontos de interesse
-            for name, position in points_of_interest.items():
-                self.cursor.execute("INSERT INTO pontos_interesse (mapa_id, nome, x, y, tipo) VALUES (?, ?, ?, ?, ?)",
-                                    (map_id, name, position[0], position[1], "Mesa")) # Tipo fixo por enquanto
+            for name, data in points_of_interest.items():
+                if isinstance(data, tuple):
+                    if len(data) == 2:
+                        # Formato antigo: (x, y)
+                        x, y = data
+                        point_type = "Mesa"  # Tipo padrão
+                    else:
+                        # Novo formato: (x, y, tipo)
+                        x, y, point_type = data
+                    self.cursor.execute("INSERT INTO pontos_interesse (mapa_id, nome, x, y, tipo) VALUES (?, ?, ?, ?, ?)",
+                                        (map_id, name, x, y, point_type))
 
             # Insere áreas proibidas
             for area in forbidden_areas:
@@ -121,7 +130,8 @@ class MapManager:
             print("Dados do mapa salvos com sucesso.")
         except sqlite3.Error as e:
             print(f"Erro ao salvar mapa: {e}")
-            self.conn.rollback()
+            if self.conn:
+                self.conn.rollback()
 
     def load_active_map(self) -> tuple[dict, list, str]:
         """
@@ -144,9 +154,10 @@ class MapManager:
                 print(f"Carregando mapa ativo: '{map_name}'")
 
                 # Carrega pontos de interesse
-                self.cursor.execute("SELECT nome, x, y FROM pontos_interesse WHERE mapa_id = ?", (map_id,))
+                self.cursor.execute("SELECT nome, x, y, tipo FROM pontos_interesse WHERE mapa_id = ?", (map_id,))
                 for row in self.cursor.fetchall():
-                    points_of_interest[row[0]] = (row[1], row[2])
+                    name, x, y, point_type = row
+                    points_of_interest[name] = (x, y, point_type)
 
                 # Carrega áreas proibidas
                 self.cursor.execute("SELECT coordenadas FROM areas_proibidas WHERE mapa_id = ?", (map_id,))

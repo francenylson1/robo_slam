@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QComboBox, QMessageBox,
                              QGroupBox, QGridLayout, QInputDialog)
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QPainter, QColor, QPen, QBrush
+from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QCursor
 import sys
 import os
 
@@ -15,6 +15,7 @@ from src.interfaces.add_point_dialog import AddPointDialog
 from src.interfaces.map_widget import MapWidget
 from src.core.map_manager import MapManager
 import math
+from src.interfaces.edit_point_dialog import EditPointDialog
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -66,14 +67,11 @@ class MainWindow(QMainWindow):
         poi_buttons = QGridLayout()
         add_poi_btn = QPushButton("Adicionar Ponto")
         add_poi_btn.clicked.connect(self._add_point_of_interest)
-        edit_poi_btn = QPushButton("Editar Ponto")
-        edit_poi_btn.clicked.connect(self._edit_point_of_interest)
         delete_poi_btn = QPushButton("Excluir Ponto")
         delete_poi_btn.clicked.connect(self._delete_point_of_interest)
         
         poi_buttons.addWidget(add_poi_btn, 0, 0)
-        poi_buttons.addWidget(edit_poi_btn, 0, 1)
-        poi_buttons.addWidget(delete_poi_btn, 1, 0, 1, 2)
+        poi_buttons.addWidget(delete_poi_btn, 0, 1)
         poi_layout.addLayout(poi_buttons)
         poi_group.setLayout(poi_layout)
         
@@ -168,7 +166,14 @@ class MainWindow(QMainWindow):
                 active_map = self.map_manager.get_active_map()
                 if active_map:
                     self.current_map = active_map
-                    self.map_widget.load_map(active_map)
+                    # Carrega os pontos de interesse e áreas proibidas
+                    points_of_interest, forbidden_areas, _ = self.map_manager.load_active_map()
+                    map_data = {
+                        'points_of_interest': points_of_interest,
+                        'forbidden_areas': forbidden_areas
+                    }
+                    print(f"DEBUG: Carregando dados do mapa: {map_data}")
+                    self.map_widget.load_map(map_data)
                     self._update_points_list()
                     self._update_destination_combo()
                     self.status_label.setText(f"Mapa carregado: {active_map['nome']}")
@@ -179,7 +184,14 @@ class MainWindow(QMainWindow):
                 active_map = self.map_manager.get_active_map()
                 if active_map:
                     self.current_map = active_map
-                    self.map_widget.load_map(active_map)
+                    # Carrega os pontos de interesse e áreas proibidas
+                    points_of_interest, forbidden_areas, _ = self.map_manager.load_active_map()
+                    map_data = {
+                        'points_of_interest': points_of_interest,
+                        'forbidden_areas': forbidden_areas
+                    }
+                    print(f"DEBUG: Carregando dados do mapa: {map_data}")
+                    self.map_widget.load_map(map_data)
                     self._update_points_list()
                     self._update_destination_combo()
                     self.status_label.setText(f"Mapa carregado: {active_map['nome']}")
@@ -189,16 +201,18 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Nenhum mapa encontrado. Crie um novo mapa.")
             
     def _update_points_list(self):
-        """Atualiza a lista de pontos de interesse"""
+        """Atualiza a lista de pontos de interesse."""
         self.poi_combo.clear()
-        for name, pos in self.map_widget.points_of_interest.items():
-            self.poi_combo.addItem(f"{name} ({pos[0]:.2f}, {pos[1]:.2f})")
+        for name, point_data in self.map_widget.points_of_interest.items():
+            x, y, point_type = point_data
+            self.poi_combo.addItem(f"{name} ({x:.2f}, {y:.2f}) - {point_type}")
             
     def _update_destination_combo(self):
-        """Atualiza o combobox de destino"""
+        """Atualiza o combo box de destino."""
         self.destination_combo.clear()
-        for name in self.map_widget.points_of_interest.keys():
-            self.destination_combo.addItem(name)
+        for name, point_data in self.map_widget.points_of_interest.items():
+            x, y, point_type = point_data
+            self.destination_combo.addItem(f"{name} ({x:.2f}, {y:.2f}) - {point_type}")
             
     def _update(self):
         """Atualiza o estado do robô e a interface"""
@@ -232,55 +246,66 @@ class MainWindow(QMainWindow):
     def _add_point_of_interest(self):
         """Ativa modo de adição de ponto de interesse pelo clique no mapa."""
         self.status_label.setText("Clique no mapa para definir o ponto de interesse.")
-        self.map_widget.setCursor(Qt.CrossCursor)
+        self.map_widget.setCursor(Qt.CursorShape.CrossCursor)
         self.map_widget.add_point_mode = True
         self.map_widget.point_clicked_callback = self._on_map_point_clicked
 
     def _on_map_point_clicked(self, x, y):
         """Abre o diálogo de ponto de interesse já com as coordenadas preenchidas."""
-        self.map_widget.setCursor(Qt.ArrowCursor)
+        self.map_widget.setCursor(Qt.CursorShape.ArrowCursor)
         self.status_label.setText("Modo: Manual" if not self.navigator.is_autonomous else "Modo: Autônomo")
         self.map_widget.add_point_mode = False
         self.map_widget.point_clicked_callback = None
         
         dialog = AddPointDialog(self)
-        # Preenche os campos de coordenadas
+        # Preenche os campos de coordenadas (convertendo para centímetros)
         dialog.x_spin.setValue(int(x * 100))
         dialog.y_spin.setValue(int(y * 100))
         if dialog.exec_():
-            name, position = dialog.get_point_data()
-            self.map_widget.add_point_of_interest(name, position)
-            self._update_points_list()
-            self._update_destination_combo()
-            
-    def _edit_point_of_interest(self):
-        """Edita um ponto de interesse existente."""
-        current = self.poi_combo.currentText()
-        if not current:
-            QMessageBox.warning(self, "Aviso", "Selecione um ponto para editar!")
-            return
-            
-        # TODO: Implementar edição de ponto
+            name, position, point_type = dialog.get_point_data()
+            if name:  # Verifica se o nome não está vazio
+                print(f"DEBUG: Adicionando ponto {name} em ({x}, {y}) do tipo {point_type}")
+                self.map_widget.points_of_interest[name] = (x, y, point_type)
+                self.map_widget.update()  # Força a atualização do mapa
+                self._update_points_list()
+                self._update_destination_combo()
+            else:
+                QMessageBox.warning(self, "Aviso", "O nome do ponto não pode ser vazio!")
             
     def _delete_point_of_interest(self):
-        """Remove um ponto de interesse."""
-        current = self.poi_combo.currentText()
-        if not current:
+        """Exclui o ponto de interesse selecionado."""
+        selected = self.poi_combo.currentText()
+        if not selected:
             QMessageBox.warning(self, "Aviso", "Selecione um ponto para excluir!")
             return
             
-        # TODO: Implementar exclusão de ponto
+        point_name = selected.split(" (")[0]
+        reply = QMessageBox.question(
+            self, 'Confirmar Exclusão',
+            f'Tem certeza que deseja excluir o ponto "{point_name}"?',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            try:
+                del self.map_widget.points_of_interest[point_name]
+                self.map_widget.update()  # Força a atualização imediata do mapa
+                self._update_points_list()
+                self._update_destination_combo()
+                QMessageBox.information(self, "Sucesso", f"Ponto '{point_name}' excluído com sucesso!")
+            except KeyError:
+                QMessageBox.warning(self, "Erro", f"Erro ao excluir o ponto '{point_name}'!")
             
     def _add_forbidden_area(self):
         """Ativa modo de adição de área proibida pelo clique no mapa."""
         self.status_label.setText("Clique para marcar os vértices da área proibida. Dê duplo clique para finalizar.")
-        self.map_widget.setCursor(Qt.CrossCursor)
+        self.map_widget.setCursor(Qt.CursorShape.CrossCursor)
         self.map_widget.start_drawing_forbidden_area()
         self.map_widget.area_finished_callback = self._on_area_finished
 
     def _on_area_finished(self):
         """Finaliza o modo de adição de área proibida."""
-        self.map_widget.setCursor(Qt.ArrowCursor)
+        self.map_widget.setCursor(Qt.CursorShape.ArrowCursor)
         self.status_label.setText("Modo: Manual" if not self.navigator.is_autonomous else "Modo: Autônomo")
         self.map_widget.area_finished_callback = None
 
@@ -351,4 +376,17 @@ class MainWindow(QMainWindow):
         """Limpa recursos ao fechar a janela."""
         self.navigator.motors.cleanup()
         self.map_manager.close()
-        event.accept() 
+        event.accept()
+
+    def _navigate_to_destination(self):
+        """Navega para o destino selecionado."""
+        destination = self.destination_combo.currentText()
+        if not destination:
+            return
+            
+        point_name = destination.split(" (")[0]
+        point_data = self.map_widget.points_of_interest[point_name]
+        x, y, point_type = point_data
+        
+        self.navigator.set_destination((x, y))
+        self.navigator.start_navigation() 
