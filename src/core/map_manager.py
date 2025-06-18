@@ -159,11 +159,9 @@ class MapManager:
                     name, x, y, point_type = row
                     points_of_interest[name] = (x, y, point_type)
 
-                # Carrega áreas proibidas
-                self.cursor.execute("SELECT coordenadas FROM areas_proibidas WHERE mapa_id = ?", (map_id,))
-                for row in self.cursor.fetchall():
-                    coords_json = row[0]
-                    forbidden_areas.append(json.loads(coords_json))
+                # Carrega áreas proibidas com IDs
+                areas_with_ids = self.get_forbidden_areas_with_ids(map_id)
+                forbidden_areas = areas_with_ids
 
             else:
                 print("Nenhum mapa ativo encontrado. Iniciando com mapa vazio.")
@@ -260,4 +258,142 @@ class MapManager:
                 return None
         except Exception as e:
             print(f"Erro ao obter mapa ativo: {e}")
-            return None 
+            return None
+
+    def save_forbidden_area(self, area_coordinates: List[Tuple[float, float]], area_name: Optional[str] = None) -> bool:
+        """
+        Salva uma área proibida individual no mapa ativo.
+        
+        Args:
+            area_coordinates: Lista de coordenadas (x, y) da área
+            area_name: Nome opcional para a área
+            
+        Returns:
+            bool: True se salvou com sucesso, False caso contrário
+        """
+        if not self.conn or not self.cursor:
+            print("Erro: Conexão com o banco de dados não estabelecida.")
+            return False
+            
+        try:
+            # Obtém o mapa ativo
+            self.cursor.execute("SELECT id FROM mapas WHERE ativo = 1")
+            active_map = self.cursor.fetchone()
+            
+            if not active_map:
+                print("Erro: Nenhum mapa ativo encontrado.")
+                return False
+                
+            map_id = active_map[0]
+            
+            # Converte lista de tuplas para string JSON
+            coords_json = json.dumps(area_coordinates)
+            
+            # Insere a área proibida
+            self.cursor.execute(
+                "INSERT INTO areas_proibidas (mapa_id, nome, coordenadas) VALUES (?, ?, ?)",
+                (map_id, area_name, coords_json)
+            )
+            
+            self.conn.commit()
+            print(f"Área proibida salva com sucesso. ID: {self.cursor.lastrowid}")
+            return True
+            
+        except sqlite3.Error as e:
+            print(f"Erro ao salvar área proibida: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+
+    def delete_forbidden_area(self, area_id: int) -> bool:
+        """
+        Remove uma área proibida específica.
+        
+        Args:
+            area_id: ID da área proibida a ser removida
+            
+        Returns:
+            bool: True se removeu com sucesso, False caso contrário
+        """
+        if not self.conn or not self.cursor:
+            print("Erro: Conexão com o banco de dados não estabelecida.")
+            return False
+            
+        try:
+            self.cursor.execute("DELETE FROM areas_proibidas WHERE id = ?", (area_id,))
+            self.conn.commit()
+            
+            if self.cursor.rowcount > 0:
+                print(f"Área proibida {area_id} removida com sucesso.")
+                return True
+            else:
+                print(f"Área proibida {area_id} não encontrada.")
+                return False
+                
+        except sqlite3.Error as e:
+            print(f"Erro ao remover área proibida: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+
+    def get_forbidden_areas_with_ids(self, map_id: Optional[int] = None) -> List[Dict]:
+        """
+        Obtém todas as áreas proibidas de um mapa com seus IDs.
+        
+        Args:
+            map_id: ID do mapa (se None, usa o mapa ativo)
+            
+        Returns:
+            Lista de dicionários com id, nome, coordenadas e ativo
+        """
+        if not self.conn:
+            print("Erro: Conexão com o banco de dados não estabelecida.")
+            return []
+            
+        try:
+            if map_id is None:
+                # Obtém o mapa ativo
+                self.cursor.execute("SELECT id FROM mapas WHERE ativo = 1")
+                active_map = self.cursor.fetchone()
+                if not active_map:
+                    return []
+                map_id = active_map[0]
+            
+            self.cursor.execute("""
+                SELECT id, nome, coordenadas, ativo 
+                FROM areas_proibidas 
+                WHERE mapa_id = ? AND ativo = 1
+                ORDER BY id
+            """, (map_id,))
+            
+            areas = []
+            for row in self.cursor.fetchall():
+                area_id, name, coords_json, active = row
+                try:
+                    # Tenta carregar como JSON primeiro
+                    coords_list = json.loads(coords_json)
+                except (json.JSONDecodeError, TypeError):
+                    try:
+                        # Se falhar, tenta usar eval (formato antigo)
+                        coords_list = eval(coords_json)
+                    except:
+                        print(f"DEBUG: Erro ao carregar coordenadas da área {area_id}: {coords_json}")
+                        continue
+                
+                # Verifica se as coordenadas são válidas
+                if not isinstance(coords_list, list):
+                    print(f"DEBUG: Coordenadas inválidas para área {area_id}: {coords_list}")
+                    continue
+                    
+                areas.append({
+                    'id': area_id,
+                    'nome': name,
+                    'coordenadas': coords_list,
+                    'ativo': bool(active)
+                })
+            
+            return areas
+            
+        except sqlite3.Error as e:
+            print(f"Erro ao obter áreas proibidas: {e}")
+            return [] 

@@ -79,6 +79,11 @@ class MainWindow(QMainWindow):
         forbidden_group = QGroupBox("Áreas Proibidas")
         forbidden_layout = QVBoxLayout()
         
+        # Lista de áreas proibidas
+        self.forbidden_areas_combo = QComboBox()
+        forbidden_layout.addWidget(QLabel("Áreas proibidas:"))
+        forbidden_layout.addWidget(self.forbidden_areas_combo)
+        
         forbidden_buttons = QGridLayout()
         add_forbidden_btn = QPushButton("Adicionar Área")
         add_forbidden_btn.clicked.connect(self._add_forbidden_area)
@@ -145,6 +150,9 @@ class MainWindow(QMainWindow):
         # Inicializa o navegador
         self.navigator = RobotNavigator()
         
+        # Configura callbacks do mapa
+        self.map_widget.area_clicked_callback = self._on_area_clicked
+        
         # Tenta carregar o último mapa ativo ao iniciar
         self._load_active_map()
         
@@ -176,6 +184,7 @@ class MainWindow(QMainWindow):
                     self.map_widget.load_map(map_data)
                     self._update_points_list()
                     self._update_destination_combo()
+                    self._reload_forbidden_areas()  # Recarrega áreas proibidas com IDs
                     self.status_label.setText(f"Mapa carregado: {active_map['nome']}")
                 else:
                     self.status_label.setText("Erro ao carregar mapa")
@@ -194,6 +203,7 @@ class MainWindow(QMainWindow):
                     self.map_widget.load_map(map_data)
                     self._update_points_list()
                     self._update_destination_combo()
+                    self._reload_forbidden_areas()  # Recarrega áreas proibidas com IDs
                     self.status_label.setText(f"Mapa carregado: {active_map['nome']}")
                 else:
                     self.status_label.setText("Nenhum mapa ativo encontrado")
@@ -308,6 +318,64 @@ class MainWindow(QMainWindow):
         self.map_widget.setCursor(Qt.CursorShape.ArrowCursor)
         self.status_label.setText("Modo: Manual" if not self.navigator.is_autonomous else "Modo: Autônomo")
         self.map_widget.area_finished_callback = None
+        
+        # Salva a área proibida automaticamente no banco de dados
+        if len(self.map_widget.current_forbidden_area) >= 3:
+            # Gera um nome para a área
+            area_count = len(self.map_widget.forbidden_areas) + 1
+            area_name = f"Área Proibida {area_count}"
+            
+            print(f"DEBUG: Salvando área proibida com {len(self.map_widget.current_forbidden_area)} pontos")
+            
+            # Salva no banco de dados
+            success = self.map_manager.save_forbidden_area(
+                self.map_widget.current_forbidden_area, 
+                area_name
+            )
+            
+            if success:
+                # Limpa a área temporária
+                self.map_widget.current_forbidden_area = []
+                # Recarrega as áreas proibidas do banco para obter o ID
+                self._reload_forbidden_areas()
+                QMessageBox.information(self, "Sucesso", f"Área proibida '{area_name}' salva automaticamente!")
+            else:
+                QMessageBox.warning(self, "Erro", "Erro ao salvar área proibida no banco de dados!")
+        else:
+            QMessageBox.warning(self, "Aviso", "Área proibida deve ter pelo menos 3 pontos!")
+
+    def _reload_forbidden_areas(self):
+        """Recarrega as áreas proibidas do banco de dados."""
+        # Obtém o mapa ativo do banco se não tiver um carregado
+        if not self.current_map:
+            self.current_map = self.map_manager.get_active_map()
+            if not self.current_map:
+                print("DEBUG: Nenhum mapa ativo encontrado para recarregar áreas proibidas")
+                return
+            
+        # Obtém as áreas proibidas com IDs do banco
+        areas_with_ids = self.map_manager.get_forbidden_areas_with_ids(self.current_map['id'])
+        print(f"DEBUG: Recarregando {len(areas_with_ids)} áreas proibidas")
+        
+        # Atualiza o MapWidget
+        self.map_widget.forbidden_areas = areas_with_ids
+        self.map_widget.update()
+        
+        # Atualiza a lista de áreas proibidas
+        self._update_forbidden_areas_list()
+        
+    def _update_forbidden_areas_list(self):
+        """Atualiza a lista de áreas proibidas no combo box."""
+        print(f"DEBUG: Atualizando lista de áreas proibidas - {len(self.map_widget.forbidden_areas)} áreas")
+        self.forbidden_areas_combo.clear()
+        for area_data in self.map_widget.forbidden_areas:
+            if isinstance(area_data, dict):
+                area_id = area_data.get('id', 0)
+                area_name = area_data.get('nome', f'Área {area_id}')
+                item_text = f"{area_name} (ID: {area_id})"
+                self.forbidden_areas_combo.addItem(item_text)
+                print(f"DEBUG: Adicionando área à lista: {item_text}")
+        print(f"DEBUG: Lista atualizada com {self.forbidden_areas_combo.count()} itens")
 
     def _delete_forbidden_area(self):
         """Remove uma área proibida."""
@@ -315,10 +383,42 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Aviso", "Não há áreas proibidas para excluir!")
             return
             
-        # TODO: Implementar seleção visual da área a ser excluída
-        # Por enquanto, remove a última área adicionada
-        self.map_widget.forbidden_areas.pop()
-        self.map_widget.update()
+        # Verifica se há uma área selecionada
+        selected_area = self.map_widget.get_selected_area()
+        if selected_area:
+            area_id = selected_area.get('id', 0)
+            area_name = selected_area.get('nome', f'Área {area_id}')
+        else:
+            # Se não há área selecionada, usa a primeira da lista
+            if self.forbidden_areas_combo.currentText():
+                # Extrai o ID da string do combo box
+                combo_text = self.forbidden_areas_combo.currentText()
+                try:
+                    area_id = int(combo_text.split("ID: ")[1].rstrip(")"))
+                    area_name = combo_text.split(" (ID:")[0]
+                except:
+                    QMessageBox.warning(self, "Erro", "Erro ao identificar área selecionada!")
+                    return
+            else:
+                QMessageBox.warning(self, "Aviso", "Selecione uma área para excluir!")
+                return
+        
+        # Confirma a exclusão
+        reply = QMessageBox.question(
+            self, 'Confirmar Exclusão',
+            f'Tem certeza que deseja excluir a área "{area_name}"?',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # Remove do banco de dados
+            success = self.map_manager.delete_forbidden_area(area_id)
+            if success:
+                # Recarrega as áreas proibidas
+                self._reload_forbidden_areas()
+                QMessageBox.information(self, "Sucesso", f"Área '{area_name}' excluída com sucesso!")
+            else:
+                QMessageBox.warning(self, "Erro", f"Erro ao excluir a área '{area_name}'!")
 
     def _save_map(self):
         """Salva o mapa atual no banco de dados."""
@@ -378,15 +478,7 @@ class MainWindow(QMainWindow):
         self.map_manager.close()
         event.accept()
 
-    def _navigate_to_destination(self):
-        """Navega para o destino selecionado."""
-        destination = self.destination_combo.currentText()
-        if not destination:
-            return
-            
-        point_name = destination.split(" (")[0]
-        point_data = self.map_widget.points_of_interest[point_name]
-        x, y, point_type = point_data
-        
-        self.navigator.set_destination((x, y))
-        self.navigator.start_navigation() 
+    def _on_area_clicked(self, area_id: int):
+        """Callback para quando uma área proibida é clicada."""
+        print(f"DEBUG: Área proibida {area_id} clicada")
+        # Aqui você pode adicionar lógica adicional, como mostrar detalhes da área
