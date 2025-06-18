@@ -5,6 +5,7 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QCursor
 import sys
 import os
+import time
 
 # Adiciona o diretório raiz ao PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -25,6 +26,11 @@ class MainWindow(QMainWindow):
         self.current_map = None
         self.selected_destination = None
         self.navigation_active = False
+        
+        # Atributos para autosave
+        self.has_unsaved_changes = False
+        self.autosave_enabled = True
+        self.last_autosave_time = None
         
         # Inicializa o MapManager
         self.map_manager = MapManager()
@@ -103,9 +109,13 @@ class MainWindow(QMainWindow):
         save_map_btn.clicked.connect(self._save_map)
         load_map_btn = QPushButton("Carregar Último Mapa")
         load_map_btn.clicked.connect(self._load_active_map)
+        autosave_btn = QPushButton("Autosave: ON")
+        autosave_btn.clicked.connect(self._toggle_autosave)
+        self.autosave_button = autosave_btn  # Referência para atualizar o texto
 
         map_management_layout.addWidget(save_map_btn, 0, 0)
         map_management_layout.addWidget(load_map_btn, 0, 1)
+        map_management_layout.addWidget(autosave_btn, 1, 0, 1, 2)  # Ocupa duas colunas
         map_management_group.setLayout(map_management_layout)
         
         # Grupo de Navegação
@@ -152,6 +162,11 @@ class MainWindow(QMainWindow):
         
         # Configura callbacks do mapa
         self.map_widget.area_clicked_callback = self._on_area_clicked
+        
+        # Configura timer para autosave periódico (a cada 30 segundos)
+        self.autosave_timer = QTimer()
+        self.autosave_timer.timeout.connect(self._check_periodic_autosave)
+        self.autosave_timer.start(30000)  # 30 segundos
         
         # Tenta carregar o último mapa ativo ao iniciar
         self._load_active_map()
@@ -279,6 +294,7 @@ class MainWindow(QMainWindow):
                 self.map_widget.update()  # Força a atualização do mapa
                 self._update_points_list()
                 self._update_destination_combo()
+                self._mark_unsaved_changes()  # Marca alterações não salvas
             else:
                 QMessageBox.warning(self, "Aviso", "O nome do ponto não pode ser vazio!")
             
@@ -302,6 +318,7 @@ class MainWindow(QMainWindow):
                 self.map_widget.update()  # Força a atualização imediata do mapa
                 self._update_points_list()
                 self._update_destination_combo()
+                self._mark_unsaved_changes()  # Marca alterações não salvas
                 QMessageBox.information(self, "Sucesso", f"Ponto '{point_name}' excluído com sucesso!")
             except KeyError:
                 QMessageBox.warning(self, "Erro", f"Erro ao excluir o ponto '{point_name}'!")
@@ -338,6 +355,7 @@ class MainWindow(QMainWindow):
                 self.map_widget.current_forbidden_area = []
                 # Recarrega as áreas proibidas do banco para obter o ID
                 self._reload_forbidden_areas()
+                self._mark_unsaved_changes()  # Marca alterações não salvas
                 QMessageBox.information(self, "Sucesso", f"Área proibida '{area_name}' salva automaticamente!")
             else:
                 QMessageBox.warning(self, "Erro", "Erro ao salvar área proibida no banco de dados!")
@@ -416,6 +434,7 @@ class MainWindow(QMainWindow):
             if success:
                 # Recarrega as áreas proibidas
                 self._reload_forbidden_areas()
+                self._mark_unsaved_changes()  # Marca alterações não salvas
                 QMessageBox.information(self, "Sucesso", f"Área '{area_name}' excluída com sucesso!")
             else:
                 QMessageBox.warning(self, "Erro", f"Erro ao excluir a área '{area_name}'!")
@@ -429,6 +448,7 @@ class MainWindow(QMainWindow):
                 self.map_widget.points_of_interest,
                 self.map_widget.forbidden_areas
             )
+            self.has_unsaved_changes = False  # Limpa alterações não salvas
             QMessageBox.information(self, "Salvar Mapa", f"Mapa '{map_name}' salvo com sucesso!")
         elif not map_name and ok:
             QMessageBox.warning(self, "Aviso", "O nome do mapa não pode ser vazio!")
@@ -471,12 +491,112 @@ class MainWindow(QMainWindow):
     def _stop_robot(self):
         """Para o robô."""
         self.navigator.motors.stop()
+        
+    def _mark_unsaved_changes(self):
+        """Marca que há alterações não salvas."""
+        self.has_unsaved_changes = True
+        # Atualiza o status para mostrar que há alterações não salvas
+        current_status = self.status_label.text()
+        if "(*)" not in current_status:
+            self.status_label.setText(f"{current_status} (*)")
+        print("DEBUG: Alterações não salvas detectadas")
+        
+    def _perform_autosave(self, show_message=False):
+        """Executa o autosave automático."""
+        if not self.autosave_enabled or not self.has_unsaved_changes:
+            return
+            
+        try:
+            # Obtém o nome do mapa atual ou cria um nome padrão
+            if self.current_map:
+                map_name = self.current_map['nome']
+            else:
+                map_name = f"Mapa_Auto_{int(time.time())}"
+                
+            # Salva o mapa
+            self.map_manager.save_map(
+                map_name,
+                self.map_widget.points_of_interest,
+                self.map_widget.forbidden_areas
+            )
+            
+            self.has_unsaved_changes = False
+            self.last_autosave_time = time.time()
+            
+            # Remove o indicador de alterações não salvas do status
+            current_status = self.status_label.text()
+            if "(*)" in current_status:
+                self.status_label.setText(current_status.replace(" (*)", ""))
+            
+            if show_message:
+                QMessageBox.information(self, "Autosave", f"Mapa '{map_name}' salvo automaticamente!")
+            else:
+                print(f"DEBUG: Autosave executado - Mapa '{map_name}'")
+                
+        except Exception as e:
+            print(f"DEBUG: Erro no autosave: {e}")
+            if show_message:
+                QMessageBox.warning(self, "Erro no Autosave", f"Erro ao salvar automaticamente: {str(e)}")
+                
+    def _check_unsaved_changes(self) -> bool:
+        """Verifica se há alterações não salvas e pergunta ao usuário."""
+        if not self.has_unsaved_changes:
+            return True
+            
+        # Se autosave está habilitado, salva automaticamente sem perguntar
+        if self.autosave_enabled:
+            print("DEBUG: Autosave habilitado - salvando automaticamente")
+            self._perform_autosave(show_message=False)
+            return True
+            
+        # Se autosave está desabilitado, pergunta ao usuário
+        reply = QMessageBox.question(
+            self, 'Alterações Não Salvas',
+            'Existem alterações não salvas. Deseja salvar antes de sair?',
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save
+        )
+        
+        if reply == QMessageBox.Save:
+            self._perform_autosave(show_message=True)
+            return True
+        elif reply == QMessageBox.Discard:
+            return True
+        else:  # Cancel
+            return False
+            
+    def _toggle_autosave(self):
+        """Alterna o estado do autosave."""
+        self.autosave_enabled = not self.autosave_enabled
+        status = "ON" if self.autosave_enabled else "OFF"
+        self.autosave_button.setText(f"Autosave: {status}")
+        QMessageBox.information(self, "Autosave", f"Autosave {status.lower()}!")
+        print(f"DEBUG: Autosave {status.lower()}")
             
     def closeEvent(self, event):
         """Limpa recursos ao fechar a janela."""
+        # Verifica alterações não salvas
+        if not self._check_unsaved_changes():
+            event.ignore()
+            return
+            
+        # Executa autosave final se habilitado
+        if self.autosave_enabled and self.has_unsaved_changes:
+            self._perform_autosave(show_message=False)
+            
         self.navigator.motors.cleanup()
         self.map_manager.close()
         event.accept()
+
+    def _check_periodic_autosave(self):
+        """Executa o autosave periódico."""
+        if self.autosave_enabled and self.has_unsaved_changes:
+            # Só executa autosave se passou pelo menos 30 segundos desde o último
+            current_time = time.time()
+            if (self.last_autosave_time is None or 
+                current_time - self.last_autosave_time >= 30):
+                print("DEBUG: Executando autosave periódico...")
+                self._perform_autosave(show_message=False)
 
     def _on_area_clicked(self, area_id: int):
         """Callback para quando uma área proibida é clicada."""

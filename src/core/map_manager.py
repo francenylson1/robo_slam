@@ -121,10 +121,19 @@ class MapManager:
 
             # Insere áreas proibidas
             for area in forbidden_areas:
-                # Converte lista de tuplas para string JSON
-                coords_json = json.dumps(area)
-                self.cursor.execute("INSERT INTO areas_proibidas (mapa_id, coordenadas) VALUES (?, ?)",
-                                    (map_id, coords_json))
+                if isinstance(area, dict):
+                    # Novo formato: dicionário com id, nome, coordenadas
+                    coordinates = area.get('coordenadas', [])
+                    area_name = area.get('nome')
+                else:
+                    # Formato antigo: lista de coordenadas
+                    coordinates = area
+                    area_name = None
+                
+                # Converte lista de coordenadas para string JSON
+                coords_json = json.dumps(coordinates)
+                self.cursor.execute("INSERT INTO areas_proibidas (mapa_id, nome, coordenadas) VALUES (?, ?, ?)",
+                                    (map_id, area_name, coords_json))
 
             self.conn.commit()
             print("Dados do mapa salvos com sucesso.")
@@ -376,8 +385,9 @@ class MapManager:
                     try:
                         # Se falhar, tenta usar eval (formato antigo)
                         coords_list = eval(coords_json)
-                    except:
-                        print(f"DEBUG: Erro ao carregar coordenadas da área {area_id}: {coords_json}")
+                    except Exception as e:
+                        print(f"DEBUG: Erro ao carregar coordenadas da área {area_id}: {e}")
+                        print(f"DEBUG: Dados: {coords_json[:100]}...")
                         continue
                 
                 # Verifica se as coordenadas são válidas
@@ -385,12 +395,30 @@ class MapManager:
                     print(f"DEBUG: Coordenadas inválidas para área {area_id}: {coords_list}")
                     continue
                     
-                areas.append({
-                    'id': area_id,
-                    'nome': name,
-                    'coordenadas': coords_list,
-                    'ativo': bool(active)
-                })
+                # Verifica se cada coordenada é válida
+                valid_coords = []
+                for coord in coords_list:
+                    if isinstance(coord, list) and len(coord) == 2:
+                        try:
+                            x, y = float(coord[0]), float(coord[1])
+                            valid_coords.append([x, y])
+                        except (ValueError, TypeError):
+                            print(f"DEBUG: Coordenada inválida na área {area_id}: {coord}")
+                            continue
+                    else:
+                        print(f"DEBUG: Formato de coordenada inválido na área {area_id}: {coord}")
+                        continue
+                
+                if valid_coords:
+                    areas.append({
+                        'id': area_id,
+                        'nome': name,
+                        'coordenadas': valid_coords,
+                        'ativo': bool(active)
+                    })
+                    print(f"DEBUG: Área {area_id} carregada com {len(valid_coords)} coordenadas válidas")
+                else:
+                    print(f"DEBUG: Área {area_id} sem coordenadas válidas")
             
             return areas
             
