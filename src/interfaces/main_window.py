@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QComboBox, QMessageBox,
-                             QGroupBox, QGridLayout, QInputDialog)
+                             QGroupBox, QGridLayout, QInputDialog, QProgressBar)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QCursor
 import sys
@@ -118,7 +118,7 @@ class MainWindow(QMainWindow):
         map_management_layout.addWidget(autosave_btn, 1, 0, 1, 2)  # Ocupa duas colunas
         map_management_group.setLayout(map_management_layout)
         
-        # Grupo de Navegação
+        # Grupo de Navegação Melhorado
         nav_group = QGroupBox("Navegação")
         nav_layout = QVBoxLayout()
         
@@ -128,6 +128,20 @@ class MainWindow(QMainWindow):
         self.destination_combo = QComboBox()
         destination_layout.addWidget(self.destination_combo)
         nav_layout.addLayout(destination_layout)
+
+        # Status da navegação
+        self.nav_status_label = QLabel("Status: Parado")
+        nav_layout.addWidget(self.nav_status_label)
+        
+        # Barra de progresso da navegação
+        self.nav_progress_bar = QProgressBar()
+        self.nav_progress_bar.setVisible(False)
+        nav_layout.addWidget(self.nav_progress_bar)
+        
+        # Informações da navegação
+        self.nav_info_label = QLabel("")
+        self.nav_info_label.setVisible(False)
+        nav_layout.addWidget(self.nav_info_label)
 
         nav_buttons = QGridLayout()
         start_nav_btn = QPushButton("Iniciar Navegação")
@@ -159,6 +173,7 @@ class MainWindow(QMainWindow):
         
         # Inicializa o navegador
         self.navigator = RobotNavigator()
+        print(f"DEBUG: Navegador inicializado - Posição: {self.navigator.current_position}, Ângulo: {self.navigator.current_angle}°")
         
         # Configura callbacks do mapa
         self.map_widget.area_clicked_callback = self._on_area_clicked
@@ -196,13 +211,18 @@ class MainWindow(QMainWindow):
                         'forbidden_areas': forbidden_areas
                     }
                     print(f"DEBUG: Carregando dados do mapa: {map_data}")
+                    print(f"DEBUG: Pontos de interesse carregados: {len(points_of_interest)}")
+                    print(f"DEBUG: Chaves dos pontos: {list(points_of_interest.keys())}")
                     self.map_widget.load_map(map_data)
                     self._update_points_list()
                     self._update_destination_combo()
                     self._reload_forbidden_areas()  # Recarrega áreas proibidas com IDs
                     self.status_label.setText(f"Mapa carregado: {active_map['nome']}")
+                    
+                    # Reseta o robô para a posição base
+                    self._reset_robot_to_base()
                 else:
-                    self.status_label.setText("Erro ao carregar mapa")
+                    self.status_label.setText("Nenhum mapa ativo encontrado")
             else:
                 # Se o usuário cancelar, carrega o mapa ativo
                 active_map = self.map_manager.get_active_map()
@@ -220,14 +240,26 @@ class MainWindow(QMainWindow):
                     self._update_destination_combo()
                     self._reload_forbidden_areas()  # Recarrega áreas proibidas com IDs
                     self.status_label.setText(f"Mapa carregado: {active_map['nome']}")
+                    
+                    # Reseta o robô para a posição base
+                    self._reset_robot_to_base()
                 else:
                     self.status_label.setText("Nenhum mapa ativo encontrado")
         else:
             self.status_label.setText("Nenhum mapa encontrado. Crie um novo mapa.")
             
+    def _reset_robot_to_base(self):
+        """Reseta o robô para a posição base (5.7, 11.5) com ângulo 270°"""
+        print("DEBUG: Resetando robô para posição base após carregamento do mapa")
+        self.navigator.reset_to_initial_state()
+        # Atualiza a interface imediatamente
+        self.map_widget.update_robot_position(ROBOT_INITIAL_POSITION[0], ROBOT_INITIAL_POSITION[1], ROBOT_INITIAL_ANGLE)
+        print(f"DEBUG: Robô resetado para posição base: {ROBOT_INITIAL_POSITION}, ângulo: {ROBOT_INITIAL_ANGLE}°")
+        
     def _update_points_list(self):
         """Atualiza a lista de pontos de interesse."""
         self.poi_combo.clear()
+        print(f"DEBUG: Atualizando lista de pontos - {len(self.map_widget.points_of_interest)} pontos")
         for name, point_data in self.map_widget.points_of_interest.items():
             x, y, point_type = point_data
             self.poi_combo.addItem(f"{name} ({x:.2f}, {y:.2f}) - {point_type}")
@@ -235,30 +267,65 @@ class MainWindow(QMainWindow):
     def _update_destination_combo(self):
         """Atualiza o combo box de destino."""
         self.destination_combo.clear()
+        print(f"DEBUG: Atualizando combo de destino - {len(self.map_widget.points_of_interest)} pontos")
         for name, point_data in self.map_widget.points_of_interest.items():
             x, y, point_type = point_data
             self.destination_combo.addItem(f"{name} ({x:.2f}, {y:.2f}) - {point_type}")
+            print(f"DEBUG: Adicionando ao combo: '{name} ({x:.2f}, {y:.2f}) - {point_type}'")
             
     def _update(self):
-        """Atualiza o estado do robô e a interface"""
+        """Atualiza o estado da interface e do robô"""
+        # Atualiza o navegador se a navegação estiver ativa
         if self.navigation_active:
-            print("DEBUG: Atualizando navegação...")
-            # Atualiza o navegador
+            print(f"DEBUG: update() - Navegação ativa, chamando navigator.update()")
             self.navigator.update()
             
-            # Atualiza a posição do robô no mapa
-            self.map_widget.robot_position = self.navigator.current_position
-            self.map_widget.robot_angle = self.navigator.current_angle
-            self.map_widget.update()
+            # Atualiza o status da navegação
+            nav_status = self.navigator.get_navigation_status()
+            print(f"DEBUG: update() - Status da navegação: {nav_status}")
             
-            # Atualiza o status
-            if not self.navigator.navigation_active:
-                self.navigation_active = False
-                self.status_label.setText("Navegação concluída")
-                print("DEBUG: Navegação finalizada")
+            # Atualiza a barra de progresso
+            progress = int(nav_status["progress"] * 100)
+            self.nav_progress_bar.setValue(progress)
+            
+            # Atualiza as informações da navegação
+            state_text = nav_status["state"]
+            time_remaining = nav_status["estimated_time_remaining"]
+            
+            if nav_status.get("is_paused_at_destination", False):
+                info_text = f"Estado: {state_text} | Pausado no destino para entrega"
+            elif time_remaining > 0:
+                info_text = f"Estado: {state_text} | Tempo restante: {time_remaining:.1f}s"
+            else:
+                info_text = f"Estado: {state_text}"
                 
-        # Agenda a próxima atualização
-        QTimer.singleShot(100, self._update)  # 100ms = 10Hz
+            self.nav_info_label.setText(info_text)
+            
+            # Verifica se a navegação foi concluída
+            if nav_status["state"] == "COMPLETED" or nav_status["state"] == "IDLE":
+                print("DEBUG: ===== NAVEGAÇÃO CONCLUÍDA =====")
+                print("DEBUG: update() - Definindo navigation_active = False")
+                self.navigation_active = False
+                self.nav_status_label.setText("Status: Concluído")
+                self.nav_progress_bar.setVisible(False)
+                self.nav_info_label.setVisible(False)
+                self.status_label.setText("Modo: Manual")
+                QMessageBox.information(self, "Navegação", "Navegação concluída com sucesso!")
+                print("DEBUG: ===== FIM DA NAVEGAÇÃO =====")
+                # PARA COMPLETAMENTE A ATUALIZAÇÃO - NÃO AGENDA PRÓXIMA
+                return
+                
+        # Atualiza a posição do robô no mapa
+        robot_position = self.navigator.current_position
+        robot_angle = self.navigator.current_angle
+        print(f"DEBUG: Atualizando posição do robô - Posição: {robot_position}, Ângulo: {robot_angle}°")
+        self.map_widget.update_robot_position(robot_position[0], robot_position[1], robot_angle)
+        
+        # Agenda a próxima atualização APENAS se a navegação não foi concluída
+        if self.navigation_active:
+            QTimer.singleShot(100, self._update)  # Atualiza a cada 100ms
+        else:
+            print("DEBUG: Navegação concluída - parando atualizações automáticas")
         
     def _toggle_mode(self):
         """Alterna entre modo manual e autônomo."""
@@ -364,23 +431,34 @@ class MainWindow(QMainWindow):
 
     def _reload_forbidden_areas(self):
         """Recarrega as áreas proibidas do banco de dados."""
+        print("DEBUG: Iniciando recarregamento de áreas proibidas")
+        
         # Obtém o mapa ativo do banco se não tiver um carregado
         if not self.current_map:
+            print("DEBUG: Nenhum mapa atual, obtendo mapa ativo do banco")
             self.current_map = self.map_manager.get_active_map()
             if not self.current_map:
                 print("DEBUG: Nenhum mapa ativo encontrado para recarregar áreas proibidas")
                 return
+            else:
+                print(f"DEBUG: Mapa ativo obtido: {self.current_map}")
             
+        print(f"DEBUG: Usando mapa ID: {self.current_map['id']}")
+        
         # Obtém as áreas proibidas com IDs do banco
         areas_with_ids = self.map_manager.get_forbidden_areas_with_ids(self.current_map['id'])
-        print(f"DEBUG: Recarregando {len(areas_with_ids)} áreas proibidas")
+        print(f"DEBUG: Recarregando {len(areas_with_ids)} áreas proibidas do banco")
         
         # Atualiza o MapWidget
+        print(f"DEBUG: Atualizando MapWidget com {len(areas_with_ids)} áreas")
         self.map_widget.forbidden_areas = areas_with_ids
         self.map_widget.update()
         
         # Atualiza a lista de áreas proibidas
+        print("DEBUG: Atualizando lista de áreas proibidas")
         self._update_forbidden_areas_list()
+        
+        print("DEBUG: Recarregamento de áreas proibidas concluído")
         
     def _update_forbidden_areas_list(self):
         """Atualiza a lista de áreas proibidas no combo box."""
@@ -397,27 +475,37 @@ class MainWindow(QMainWindow):
 
     def _delete_forbidden_area(self):
         """Remove uma área proibida."""
+        print("DEBUG: Iniciando exclusão de área proibida")
+        print(f"DEBUG: Áreas disponíveis no MapWidget: {len(self.map_widget.forbidden_areas)}")
+        
         if not self.map_widget.forbidden_areas:
             QMessageBox.warning(self, "Aviso", "Não há áreas proibidas para excluir!")
             return
             
         # Verifica se há uma área selecionada
         selected_area = self.map_widget.get_selected_area()
+        print(f"DEBUG: Área selecionada: {selected_area}")
+        
         if selected_area:
             area_id = selected_area.get('id', 0)
             area_name = selected_area.get('nome', f'Área {area_id}')
+            print(f"DEBUG: Usando área selecionada - ID: {area_id}, Nome: {area_name}")
         else:
             # Se não há área selecionada, usa a primeira da lista
             if self.forbidden_areas_combo.currentText():
                 # Extrai o ID da string do combo box
                 combo_text = self.forbidden_areas_combo.currentText()
+                print(f"DEBUG: Texto do combo: '{combo_text}'")
                 try:
                     area_id = int(combo_text.split("ID: ")[1].rstrip(")"))
                     area_name = combo_text.split(" (ID:")[0]
-                except:
+                    print(f"DEBUG: Extraído do combo - ID: {area_id}, Nome: {area_name}")
+                except Exception as e:
+                    print(f"DEBUG: Erro ao extrair ID do combo: {e}")
                     QMessageBox.warning(self, "Erro", "Erro ao identificar área selecionada!")
                     return
             else:
+                print("DEBUG: Nenhuma área selecionada no combo")
                 QMessageBox.warning(self, "Aviso", "Selecione uma área para excluir!")
                 return
         
@@ -429,15 +517,21 @@ class MainWindow(QMainWindow):
         )
         
         if reply == QMessageBox.Yes:
+            print(f"DEBUG: Confirmada exclusão da área {area_id}")
             # Remove do banco de dados
             success = self.map_manager.delete_forbidden_area(area_id)
+            print(f"DEBUG: Resultado da exclusão no banco: {success}")
+            
             if success:
                 # Recarrega as áreas proibidas
+                print("DEBUG: Recarregando áreas proibidas...")
                 self._reload_forbidden_areas()
                 self._mark_unsaved_changes()  # Marca alterações não salvas
                 QMessageBox.information(self, "Sucesso", f"Área '{area_name}' excluída com sucesso!")
             else:
                 QMessageBox.warning(self, "Erro", f"Erro ao excluir a área '{area_name}'!")
+        else:
+            print("DEBUG: Exclusão cancelada pelo usuário")
 
     def _save_map(self):
         """Salva o mapa atual no banco de dados."""
@@ -454,23 +548,75 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Aviso", "O nome do mapa não pode ser vazio!")
 
     def _start_navigation(self):
-        """Inicia a navegação autônoma"""
-        print("DEBUG: Iniciando navegação...")
+        """Inicia a navegação autônoma com feedback melhorado"""
+        print("🚀 ===== INICIANDO NOVA NAVEGAÇÃO =====")
+        print(f"🔍 Status atual da navegação: {self.navigation_active}")
+        
+        # Verifica se já há uma navegação ativa
+        if self.navigation_active:
+            print("❌ DEBUG: Navegação já está ativa, ignorando novo comando.")
+            QMessageBox.information(self, "Navegação", "O robô já está navegando. Aguarde o término do percurso atual.")
+            return
+            
+        # Verifica se o navegador está em estado IDLE
+        nav_status = self.navigator.get_navigation_status()
+        print(f"🔍 Estado do navegador: {nav_status['state']}")
+        print(f"🔍 Posição atual: {nav_status.get('position', 'Desconhecida')}")
+        print(f"🔍 is_returning_to_base: {getattr(self.navigator, 'is_returning_to_base', 'Não definido')}")
+        
+        # **FORÇA RESET COMPLETO SEMPRE PARA GARANTIR ESTADO LIMPO**
+        print(f"🔄 FORÇANDO RESET COMPLETO INDEPENDENTE DO ESTADO ATUAL")
+        print(f"🔍 Estado antes do reset: {nav_status['state']}")
+        
+        # PARA TUDO PRIMEIRO
+        self.navigator.navigation_active = False
+        self.navigator.motors.stop()
+        self.navigation_active = False
+        
+        # RESET COMPLETO FORÇADO
+        self.navigator.reset_to_initial_state()
+        
+        # LIMPA QUALQUER ESTADO REMANESCENTE
+        self.navigator.is_adjusting_final_angle = False
+        self.navigator.is_returning_to_base = False
+        self.navigator.navigation_state = "IDLE"
+        self.navigator.current_target = None
+        self.navigator.path = []
+        self.navigator.path_index = 0
+        
+        # Verifica se o reset funcionou
+        nav_status_after = self.navigator.get_navigation_status()
+        print(f"✅ Estado após reset FORÇADO: {nav_status_after['state']}")
+        print(f"✅ is_returning_to_base após reset: {getattr(self.navigator, 'is_returning_to_base', 'Não definido')}")
+        print(f"✅ navigation_active após reset: {getattr(self.navigator, 'navigation_active', 'Não definido')}")
+            
+        print(f"DEBUG: current_map: {self.current_map}")
+        print(f"DEBUG: destination_combo.currentText(): '{self.destination_combo.currentText()}'")
+        print(f"DEBUG: points_of_interest: {list(self.map_widget.points_of_interest.keys())}")
         
         if not self.current_map:
-            print("DEBUG: Erro - Nenhum mapa carregado")
+            print("DEBUG: ERRO - Nenhum mapa carregado")
+            QMessageBox.warning(self, "Erro", "Nenhum mapa carregado. Carregue um mapa primeiro.")
             return
             
         if not self.destination_combo.currentText():
-            print("DEBUG: Erro - Nenhum destino selecionado")
+            print("DEBUG: ERRO - Nenhum destino selecionado")
+            QMessageBox.warning(self, "Erro", "Selecione um destino para navegar.")
             return
             
-        # Obtém o destino selecionado
-        destination_name = self.destination_combo.currentText()
+        # Obtém o destino selecionado - extrai apenas o nome do ponto
+        destination_text = self.destination_combo.currentText()
+        destination_name = destination_text.split(" (")[0]  # Remove coordenadas e tipo
+        print(f"DEBUG: Texto do combo: '{destination_text}'")
+        print(f"DEBUG: Nome extraído: '{destination_name}'")
+        
         destination = self.map_widget.points_of_interest.get(destination_name)
+        print(f"DEBUG: Destino encontrado: {destination}")
         
         if not destination:
-            print(f"DEBUG: Erro - Destino '{destination_name}' não encontrado")
+            print(f"DEBUG: ERRO - Destino '{destination_name}' não encontrado")
+            print(f"DEBUG: Pontos disponíveis: {list(self.map_widget.points_of_interest.keys())}")
+            QMessageBox.warning(self, "Erro", f"Destino '{destination_name}' não encontrado.")
             return
             
         print(f"DEBUG: Destino selecionado: {destination_name} em {destination}")
@@ -483,15 +629,59 @@ class MainWindow(QMainWindow):
         self.navigator.set_forbidden_areas(forbidden_areas)
         
         # Inicia a navegação
-        self.navigator.navigate_to_and_return(destination, ROBOT_INITIAL_POSITION)
+        print("🎯 ===== INICIANDO CHAMADA DE NAVEGAÇÃO =====")
+        print(f"🎯 Destino: {destination}")
+        print(f"🎯 Base: {ROBOT_INITIAL_POSITION}")
+        print(f"🎯 Estado do navegador antes da chamada: {self.navigator.get_navigation_status()['state']}")
+        print(f"🎯 Chamando navigate_to_and_return...")
+        
+        # VERIFICA SE A FUNÇÃO VAI SER EXECUTADA
+        try:
+            print("⚡ EXECUTANDO navigate_to_and_return...")
+            self.navigator.navigate_to_and_return(destination, ROBOT_INITIAL_POSITION)
+            print("✅ navigate_to_and_return EXECUTOU SEM ERRO")
+        except Exception as e:
+            print(f"❌ ERRO na execução de navigate_to_and_return: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+        
+        # VERIFICA SE O ESTADO MUDOU APÓS A CHAMADA
+        nav_status_after_call = self.navigator.get_navigation_status()
+        print(f"🔍 Estado após navigate_to_and_return: {nav_status_after_call['state']}")
+        print(f"🔍 navigation_active do navegador: {getattr(self.navigator, 'navigation_active', 'UNDEFINED')}")
+        print(f"🔍 path do navegador: {len(getattr(self.navigator, 'path', []))} pontos")
+        
+        print("✅ Função navigate_to_and_return chamada com sucesso")
         self.navigation_active = True
+        print(f"✅ navigation_active DA INTERFACE definido como: {self.navigation_active}")
+        
+        # Atualiza interface
+        self.nav_status_label.setText("Status: Navegando...")
+        self.nav_progress_bar.setVisible(True)
+        self.nav_progress_bar.setValue(0)
+        self.nav_info_label.setVisible(True)
         self.status_label.setText("Navegando...")
+        
+        # Reinicia o loop de atualização
+        self._update()
+        
         print("DEBUG: Navegação iniciada com sucesso")
+        print("DEBUG: ===== FIM DA INICIALIZAÇÃO =====")
             
     def _stop_robot(self):
-        """Para o robô."""
+        """Para o robô e atualiza a interface."""
         self.navigator.motors.stop()
+        self.navigation_active = False
         
+        # Atualiza interface
+        self.nav_status_label.setText("Status: Parado")
+        self.nav_progress_bar.setVisible(False)
+        self.nav_info_label.setVisible(False)
+        self.status_label.setText("Modo: Manual")
+        
+        print("DEBUG: Robô parado")
+
     def _mark_unsaved_changes(self):
         """Marca que há alterações não salvas."""
         self.has_unsaved_changes = True

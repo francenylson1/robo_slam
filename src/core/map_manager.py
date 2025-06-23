@@ -324,19 +324,37 @@ class MapManager:
         Returns:
             bool: True se removeu com sucesso, False caso contrário
         """
+        print(f"DEBUG: Tentando excluir área proibida ID: {area_id}")
+        
         if not self.conn or not self.cursor:
             print("Erro: Conexão com o banco de dados não estabelecida.")
             return False
             
         try:
-            self.cursor.execute("DELETE FROM areas_proibidas WHERE id = ?", (area_id,))
-            self.conn.commit()
-            
-            if self.cursor.rowcount > 0:
-                print(f"Área proibida {area_id} removida com sucesso.")
-                return True
+            # Primeiro verifica se a área existe
+            if self.cursor:
+                self.cursor.execute("SELECT id, nome FROM areas_proibidas WHERE id = ?", (area_id,))
+                area = self.cursor.fetchone()
+                if area:
+                    print(f"DEBUG: Área encontrada - ID: {area[0]}, Nome: {area[1]}")
+                else:
+                    print(f"DEBUG: Área {area_id} não encontrada no banco")
+                    return False
+                
+                # Executa a exclusão
+                self.cursor.execute("DELETE FROM areas_proibidas WHERE id = ?", (area_id,))
+                self.conn.commit()
+                
+                print(f"DEBUG: rowcount após exclusão: {self.cursor.rowcount}")
+                
+                if self.cursor.rowcount > 0:
+                    print(f"Área proibida {area_id} removida com sucesso.")
+                    return True
+                else:
+                    print(f"Área proibida {area_id} não encontrada.")
+                    return False
             else:
-                print(f"Área proibida {area_id} não encontrada.")
+                print("Erro: Cursor não disponível")
                 return False
                 
         except sqlite3.Error as e:

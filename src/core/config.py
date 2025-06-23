@@ -42,9 +42,15 @@ SIMULATION_TIMESTEP = 0.1  # segundos
 SIMULATION_UPDATE_RATE = 10  # Hz
 
 # Configurações de navegação
-NAVIGATION_GOAL_TOLERANCE = 0.1  # metros (aumentado para 10cm)
-NAVIGATION_ANGLE_TOLERANCE = 10  # graus (aumentado para 10 graus)
+NAVIGATION_GOAL_TOLERANCE = 0.15  # metros (15cm - proporcional ao tamanho dos pontos de interesse)
+NAVIGATION_ANGLE_TOLERANCE = 3  # graus (equilibrio entre precisão e estabilidade)
 NAVIGATION_OBSTACLE_DISTANCE = 0.5  # metros
+
+# Configurações de precisão avançada
+NAVIGATION_ULTRA_PRECISION_TOLERANCE = 0.03  # metros (3cm - precisão ultra-alta para destinos)
+NAVIGATION_FINE_APPROACH_DISTANCE = 0.15  # metros (15cm - distância para iniciar aproximação fina)
+NAVIGATION_PRECISION_APPROACH_DISTANCE = 0.08  # metros (8cm - distância para iniciar precisão máxima)
+NAVIGATION_ULTRA_PRECISION_ANGLE_TOLERANCE = 0.5  # graus (tolerância de ângulo ultra-precisa)
 
 # Configurações de segurança
 EMERGENCY_STOP_DISTANCE = 0.3  # metros
@@ -54,7 +60,7 @@ MAX_TURN_SPEED = 90  # graus por segundo
 # Configurações de interface
 INTERFACE_UPDATE_RATE = 10  # Hz
 INTERFACE_GRID_SIZE = 1  # metros
-INTERFACE_POINT_SIZE = 10  # pixels
+INTERFACE_POINT_SIZE = 15  # pixels (mesmo tamanho do robô para facilitar navegação)
 INTERFACE_ROBOT_SIZE = 15  # pixels
 INTERFACE_DIRECTION_LENGTH = 30  # pixels
 

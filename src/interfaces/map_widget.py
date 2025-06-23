@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtCore import Qt, QPointF, QPoint
 from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QFont, QCursor, QPolygon
-from src.core.config import MAP_WIDTH, MAP_HEIGHT, MAP_SCALE, ROBOT_INITIAL_POSITION, ROBOT_INITIAL_ANGLE, DATABASE_PATH
+from src.core.config import MAP_WIDTH, MAP_HEIGHT, MAP_SCALE, ROBOT_INITIAL_POSITION, ROBOT_INITIAL_ANGLE, DATABASE_PATH, INTERFACE_ROBOT_SIZE, INTERFACE_DIRECTION_LENGTH
 import math
 import sys
 import os
@@ -278,21 +278,49 @@ class MapWidget(QWidget):
         screen_x = int(x * self.scale)
         screen_y = int(y * self.scale)
         
-        print(f"DEBUG: Desenhando robô em ({x}, {y}) -> ({screen_x}, {screen_y}) com ângulo {self.robot_angle}")
+        print(f"DEBUG: Desenhando robô em ({x}, {y}) -> ({screen_x}, {screen_y}) com ângulo {self.robot_angle}°")
         
         # Desenha o corpo do robô (círculo azul)
         painter.setPen(QPen(QColor(0, 0, 0), 2))
         painter.setBrush(QBrush(QColor(0, 0, 255)))
-        robot_size = 20  # Tamanho do robô em pixels
+        robot_size = INTERFACE_ROBOT_SIZE
         painter.drawEllipse(screen_x - robot_size//2, screen_y - robot_size//2, robot_size, robot_size)
         
-        # Desenha a direção do robô (linha vermelha)
+        # Desenha a direção do robô como uma linha com seta no final
         painter.setPen(QPen(QColor(255, 0, 0), 3))
+        painter.setBrush(QBrush(QColor(255, 0, 0)))
+        
+        direction_length = INTERFACE_DIRECTION_LENGTH  # 30 pixels
+        arrow_head_length = 8  # tamanho da cabeça da seta
+        arrow_head_width = 6   # largura da cabeça da seta
         angle_rad = math.radians(self.robot_angle)
-        direction_length = robot_size * 0.8  # 80% do tamanho do robô
-        end_x = screen_x + direction_length * math.cos(angle_rad)
-        end_y = screen_y + direction_length * math.sin(angle_rad)
-        painter.drawLine(screen_x, screen_y, int(end_x), int(end_y))
+        
+        # Calcula o ponto final da linha (antes da seta)
+        line_end_x = screen_x + (direction_length - arrow_head_length) * math.cos(angle_rad)
+        line_end_y = screen_y + (direction_length - arrow_head_length) * math.sin(angle_rad)
+        
+        # Desenha a linha principal
+        painter.drawLine(screen_x, screen_y, int(line_end_x), int(line_end_y))
+        
+        # Calcula os pontos da seta triangular
+        tip_x = screen_x + direction_length * math.cos(angle_rad)
+        tip_y = screen_y + direction_length * math.sin(angle_rad)
+        
+        # Pontos da base da seta (perpendiculares à direção)
+        base_angle1 = angle_rad + math.radians(90)
+        base_angle2 = angle_rad - math.radians(90)
+        base1_x = line_end_x + (arrow_head_width/2) * math.cos(base_angle1)
+        base1_y = line_end_y + (arrow_head_width/2) * math.sin(base_angle1)
+        base2_x = line_end_x + (arrow_head_width/2) * math.cos(base_angle2)
+        base2_y = line_end_y + (arrow_head_width/2) * math.sin(base_angle2)
+        
+        # Desenha a seta triangular
+        arrow = QPolygon([
+            QPoint(int(tip_x), int(tip_y)),
+            QPoint(int(base1_x), int(base1_y)),
+            QPoint(int(base2_x), int(base2_y))
+        ])
+        painter.drawPolygon(arrow)
 
     def _draw_forbidden_areas(self, painter: QPainter):
         """Desenha as áreas proibidas no mapa."""

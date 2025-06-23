@@ -1,5 +1,6 @@
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Set, Optional
 import math
+import heapq
 
 class PathFinder:
     def __init__(self, width: int = 100, height: int = 100, grid_size: float = 0.1):
@@ -15,12 +16,52 @@ class PathFinder:
         self.height = height
         self.grid_size = grid_size
         self.forbidden_areas = []
+        self.obstacle_grid = set()  # Cache para células com obstáculos
         print(f"DEBUG: PathFinder inicializado - Dimensões: {width}x{height}, Grid: {grid_size}m")
         
     def set_forbidden_areas(self, areas: List[List[Tuple[float, float]]]):
-        """Define as áreas proibidas"""
+        """Define as áreas proibidas e atualiza o cache de obstáculos"""
         self.forbidden_areas = areas
+        self._update_obstacle_grid()
         print(f"DEBUG: Áreas proibidas definidas: {len(areas)} áreas")
+        
+    def _update_obstacle_grid(self):
+        """Atualiza o cache de células com obstáculos para otimização"""
+        self.obstacle_grid.clear()
+        
+        for area in self.forbidden_areas:
+            # Converte a área proibida para células da grade
+            area_cells = self._area_to_grid_cells(area)
+            self.obstacle_grid.update(area_cells)
+            
+        print(f"DEBUG: Cache de obstáculos atualizado: {len(self.obstacle_grid)} células")
+        
+    def _area_to_grid_cells(self, area: List[Tuple[float, float]]) -> Set[Tuple[int, int]]:
+        """Converte uma área proibida em células da grade"""
+        cells = set()
+        
+        # Encontra os limites da área
+        min_x = min(point[0] for point in area)
+        max_x = max(point[0] for point in area)
+        min_y = min(point[1] for point in area)
+        max_y = max(point[1] for point in area)
+        
+        # Converte para coordenadas da grade
+        min_grid_x = max(0, int(min_x / self.grid_size))
+        max_grid_x = min(self.width - 1, int(max_x / self.grid_size))
+        min_grid_y = max(0, int(min_y / self.grid_size))
+        max_grid_y = min(self.height - 1, int(max_y / self.grid_size))
+        
+        # Verifica cada célula na área
+        for grid_x in range(min_grid_x, max_grid_x + 1):
+            for grid_y in range(min_grid_y, max_grid_y + 1):
+                world_x = grid_x * self.grid_size
+                world_y = grid_y * self.grid_size
+                
+                if self._is_point_in_polygon((world_x, world_y), area):
+                    cells.add((grid_x, grid_y))
+                    
+        return cells
         
     def _is_point_in_forbidden_area(self, point: Tuple[float, float]) -> bool:
         """Verifica se um ponto está dentro de alguma área proibida"""
@@ -48,7 +89,7 @@ class PathFinder:
         return inside
         
     def find_path(self, start: Tuple[float, float], goal: Tuple[float, float]) -> List[Tuple[float, float]]:
-        """Encontra um caminho do ponto inicial ao objetivo evitando áreas proibidas"""
+        """Encontra um caminho do ponto inicial ao objetivo evitando áreas proibidas usando A* otimizado"""
         print(f"DEBUG: Calculando caminho de {start} para {goal}")
         
         # Converte coordenadas do mundo para coordenadas da grade
@@ -67,69 +108,84 @@ class PathFinder:
             print(f"DEBUG: Objetivo dentro de área proibida: {goal_grid}")
             return [start, goal]  # Retorna caminho direto se objetivo estiver em área proibida
             
-        # Inicializa as estruturas de dados
-        open_set = {start_grid}
+        # Executa o algoritmo A* otimizado
+        path = self._astar_optimized(start_grid, goal_grid)
+        
+        if path:
+            # Converte de volta para coordenadas do mundo
+            world_path = [(x * self.grid_size, y * self.grid_size) for x, y in path]
+            print(f"DEBUG: Caminho encontrado com {len(world_path)} pontos")
+            return world_path
+        else:
+            print("DEBUG: Nenhum caminho encontrado, retornando caminho direto")
+            return [start, goal]  # Retorna caminho direto se não encontrar um caminho válido
+        
+    def _astar_optimized(self, start: Tuple[int, int], goal: Tuple[int, int]) -> Optional[List[Tuple[int, int]]]:
+        """Implementação otimizada do algoritmo A*"""
+        # Estruturas de dados otimizadas
+        open_set = []  # Fila de prioridade (heap)
         closed_set = set()
         came_from = {}
-        g_score = {start_grid: 0}
-        f_score = {start_grid: self._heuristic(start_grid, goal_grid)}
+        g_score: Dict[Tuple[int, int], float] = {start: 0.0}
+        f_score: Dict[Tuple[int, int], float] = {start: self._heuristic(start, goal)}
+        
+        # Adiciona o ponto inicial à fila de prioridade
+        heapq.heappush(open_set, (f_score[start], start))
+        
+        # Direções de movimento (8 direções)
+        directions = [
+            (0, 1), (1, 0), (0, -1), (-1, 0),  # Cardinal
+            (1, 1), (-1, 1), (1, -1), (-1, -1)  # Diagonal
+        ]
         
         while open_set:
-            # Encontra o nó com menor f_score
-            current = min(open_set, key=lambda x: f_score.get(x, float('inf')))
+            # Remove o nó com menor f_score
+            current_f, current = heapq.heappop(open_set)
             
-            if current == goal_grid:
-                print("DEBUG: Caminho encontrado!")
-                path = self._reconstruct_path(came_from, current)
-                # Converte de volta para coordenadas do mundo
-                world_path = [(x * self.grid_size, y * self.grid_size) for x, y in path]
-                print(f"DEBUG: Caminho final: {world_path}")
-                return world_path
+            # Verifica se chegou ao objetivo
+            if current == goal:
+                print("DEBUG: Caminho encontrado pelo A*!")
+                return self._reconstruct_path(came_from, current)
                 
-            open_set.remove(current)
+            # Adiciona à lista de nós visitados
             closed_set.add(current)
             
             # Explora os vizinhos
-            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, 1), (1, -1), (-1, -1)]:
+            for dx, dy in directions:
                 neighbor = (current[0] + dx, current[1] + dy)
                 
                 # Verifica se o vizinho é válido
                 if not (0 <= neighbor[0] < self.width and 0 <= neighbor[1] < self.height):
                     continue
                     
-                if self._is_in_forbidden_area(neighbor[0], neighbor[1]):
+                # Verifica se está em área proibida (usando cache)
+                if neighbor in self.obstacle_grid:
                     continue
                     
+                # Verifica se já foi visitado
                 if neighbor in closed_set:
                     continue
                     
-                # Calcula o novo g_score
-                tentative_g_score = g_score[current] + (1.4 if dx != 0 and dy != 0 else 1.0)
+                # Calcula o custo do movimento
+                movement_cost = 1.4 if dx != 0 and dy != 0 else 1.0
+                tentative_g_score = g_score[current] + movement_cost
                 
-                if neighbor not in open_set:
-                    open_set.add(neighbor)
-                elif tentative_g_score >= g_score.get(neighbor, float('inf')):
-                    continue
+                # Verifica se encontrou um caminho melhor
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    # Atualiza os scores
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f_score[neighbor] = g_score[neighbor] + self._heuristic(neighbor, goal)
                     
-                # Atualiza os scores
-                came_from[neighbor] = current
-                g_score[neighbor] = tentative_g_score
-                f_score[neighbor] = g_score[neighbor] + self._heuristic(neighbor, goal_grid)
-                
-        print("DEBUG: Nenhum caminho encontrado, retornando caminho direto")
-        return [start, goal]  # Retorna caminho direto se não encontrar um caminho válido
+                    # Adiciona à fila de prioridade
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+                    
+        # Nenhum caminho encontrado
+        return None
         
-    def _astar(self, start: Tuple[int, int], goal: Tuple[int, int], grid: Dict[Tuple[int, int], int]) -> List[Tuple[int, int]]:
-        """Implementação do algoritmo A*"""
-        # ... resto do código A* existente ... 
-
     def _is_in_forbidden_area(self, x: int, y: int) -> bool:
-        """Verifica se um ponto da grade está em uma área proibida"""
-        point = (x * self.grid_size, y * self.grid_size)
-        for area in self.forbidden_areas:
-            if self._is_point_in_polygon(point, area):
-                return True
-        return False
+        """Verifica se um ponto da grade está em uma área proibida (usando cache)"""
+        return (x, y) in self.obstacle_grid
         
     def _is_point_in_polygon(self, point: Tuple[float, float], polygon: List[Tuple[float, float]]) -> bool:
         """Verifica se um ponto está dentro de um polígono usando ray casting"""
@@ -167,4 +223,81 @@ class PathFinder:
             current = came_from[current]
             path.append(current)
         path.reverse()
-        return path 
+        return path
+        
+    def optimize_path(self, path: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+        """Otimiza um caminho removendo pontos desnecessários"""
+        if len(path) < 3:
+            return path
+            
+        optimized_path = [path[0]]
+        
+        for i in range(1, len(path) - 1):
+            prev_point = path[i - 1]
+            current_point = path[i]
+            next_point = path[i + 1]
+            
+            # Verifica se o ponto atual pode ser removido
+            if not self._line_intersects_obstacles(prev_point, next_point):
+                # Ponto pode ser removido, continua
+                continue
+            else:
+                # Ponto é necessário, mantém
+                optimized_path.append(current_point)
+                
+        optimized_path.append(path[-1])
+        
+        print(f"DEBUG: Caminho otimizado: {len(path)} -> {len(optimized_path)} pontos")
+        return optimized_path
+        
+    def _line_intersects_obstacles(self, start: Tuple[float, float], end: Tuple[float, float]) -> bool:
+        """Verifica se uma linha intersecta alguma área proibida"""
+        # Converte para coordenadas da grade
+        start_grid = (int(start[0] / self.grid_size), int(start[1] / self.grid_size))
+        end_grid = (int(end[0] / self.grid_size), int(end[1] / self.grid_size))
+        
+        # Usa o algoritmo de Bresenham para verificar todos os pontos da linha
+        points = self._bresenham_line(start_grid, end_grid)
+        
+        for point in points:
+            if point in self.obstacle_grid:
+                return True
+                
+        return False
+        
+    def _bresenham_line(self, start: Tuple[int, int], end: Tuple[int, int]) -> List[Tuple[int, int]]:
+        """Implementa o algoritmo de Bresenham para traçar uma linha"""
+        x0, y0 = start
+        x1, y1 = end
+        
+        points = []
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        
+        if x0 < x1:
+            sx = 1
+        else:
+            sx = -1
+            
+        if y0 < y1:
+            sy = 1
+        else:
+            sy = -1
+            
+        err = dx - dy
+        
+        while True:
+            points.append((x0, y0))
+            
+            if x0 == x1 and y0 == y1:
+                break
+                
+            e2 = 2 * err
+            if e2 > -dy:
+                err = err - dy
+                x0 = x0 + sx
+            if e2 < dx:
+                err = err + dx
+                y0 = y0 + sy
+                
+        return points 
