@@ -1,6 +1,9 @@
 from typing import List, Tuple, Dict, Set, Optional
 import math
 import heapq
+from collections import deque
+from .config import FORBIDDEN_AREA_INFLATION_RADIUS, ROBOT_WIDTH
+from shapely.geometry import Polygon, Point
 
 class PathFinder:
     def __init__(self, width: int = 100, height: int = 100, grid_size: float = 0.1):
@@ -26,18 +29,47 @@ class PathFinder:
         print(f"DEBUG: Áreas proibidas definidas: {len(areas)} áreas")
         
     def _update_obstacle_grid(self):
-        """Atualiza o cache de células com obstáculos para otimização"""
+        """Atualiza o cache de células com obstáculos usando inflação geométrica e adicionando as bordas do mapa."""
         self.obstacle_grid.clear()
         
+        # 1. Adicionar as áreas proibidas infladas
         for area in self.forbidden_areas:
-            # Converte a área proibida para células da grade
-            area_cells = self._area_to_grid_cells(area)
-            self.obstacle_grid.update(area_cells)
+            if len(area) < 3:
+                continue # Um polígono precisa de pelo menos 3 pontos
+
+            # Cria um polígono Shapely a partir da área
+            original_polygon = Polygon(area)
             
-        print(f"DEBUG: Cache de obstáculos atualizado: {len(self.obstacle_grid)} células")
+            # Infla o polígono usando um buffer. Isso cria a margem de segurança
+            inflated_polygon = original_polygon.buffer(FORBIDDEN_AREA_INFLATION_RADIUS)
+
+            # Simplificação: assume que o resultado é um único polígono
+            # Esta parte pode precisar de revisão se as áreas proibidas forem complexas
+            if inflated_polygon.geom_type in ['Polygon', 'MultiPolygon']:
+                # Extrai as coordenadas exteriores
+                inflated_area_coords = list(inflated_polygon.exterior.coords)
+                area_cells = self._area_to_grid_cells(inflated_area_coords)
+                self.obstacle_grid.update(area_cells)
+
+        # 2. Adicionar as bordas do mapa como obstáculos
+        robot_radius_cells = math.ceil((ROBOT_WIDTH / 2) / self.grid_size)
         
-    def _area_to_grid_cells(self, area: List[Tuple[float, float]]) -> Set[Tuple[int, int]]:
-        """Converte uma área proibida em células da grade"""
+        # Bordas verticais (esquerda e direita)
+        for y in range(self.height):
+            for i in range(robot_radius_cells):
+                self.obstacle_grid.add((i, y))  # Borda esquerda
+                self.obstacle_grid.add((self.width - 1 - i, y)) # Borda direita
+
+        # Bordas horizontais (superior e inferior)
+        for x in range(self.width):
+            for i in range(robot_radius_cells):
+                self.obstacle_grid.add((x, i)) # Borda inferior
+                self.obstacle_grid.add((x, self.height - 1 - i)) # Borda superior
+
+        print(f"DEBUG: Cache de obstáculos atualizado: {len(self.obstacle_grid)} células (incluindo áreas e bordas)")
+        
+    def _area_to_grid_cells(self, area: List[Tuple[float, ...]]) -> Set[Tuple[int, int]]:
+        """Converte uma área poligonal em um conjunto de células da grade."""
         cells = set()
         
         # Encontra os limites da área
@@ -52,13 +84,14 @@ class PathFinder:
         min_grid_y = max(0, int(min_y / self.grid_size))
         max_grid_y = min(self.height - 1, int(max_y / self.grid_size))
         
-        # Verifica cada célula na área
+        # Verifica cada célula dentro do retângulo delimitador do polígono
         for grid_x in range(min_grid_x, max_grid_x + 1):
             for grid_y in range(min_grid_y, max_grid_y + 1):
-                world_x = grid_x * self.grid_size
-                world_y = grid_y * self.grid_size
+                # Usamos o centro da célula para verificar se está dentro do polígono
+                world_x = (grid_x + 0.5) * self.grid_size
+                world_y = (grid_y + 0.5) * self.grid_size
                 
-                if self._is_point_in_polygon((world_x, world_y), area):
+                if Point(world_x, world_y).within(Polygon(area)):
                     cells.add((grid_x, grid_y))
                     
         return cells
@@ -103,10 +136,17 @@ class PathFinder:
             print(f"DEBUG: Objetivo fora dos limites do mapa: {goal_grid}")
             return [start, goal]  # Retorna caminho direto se objetivo estiver fora do mapa
             
-        # Verifica se o objetivo está em uma área proibida
+        # Verifica se o objetivo está em uma área proibida. Se sim, encontra o ponto válido mais próximo.
         if self._is_in_forbidden_area(goal_grid[0], goal_grid[1]):
-            print(f"DEBUG: Objetivo dentro de área proibida: {goal_grid}")
-            return [start, goal]  # Retorna caminho direto se objetivo estiver em área proibida
+            print(f"DEBUG: ⚠️ Objetivo {goal_grid} em área proibida. Procurando ponto válido mais próximo...")
+            original_goal_grid = goal_grid
+            goal_grid = self._find_nearest_valid_point(original_goal_grid)
+            
+            if goal_grid is None:
+                print(f"DEBUG: ⛔ Não foi possível encontrar um ponto válido perto de {original_goal_grid}. Retornando caminho direto.")
+                return [start, goal] # Desiste se não houver ponto válido
+                
+            print(f"DEBUG: ✅ Novo objetivo válido encontrado: {goal_grid}")
             
         # Executa o algoritmo A* otimizado
         path = self._astar_optimized(start_grid, goal_grid)
@@ -120,6 +160,41 @@ class PathFinder:
             print("DEBUG: Nenhum caminho encontrado, retornando caminho direto")
             return [start, goal]  # Retorna caminho direto se não encontrar um caminho válido
         
+    def _find_nearest_valid_point(self, start_node: Tuple[int, int]) -> Optional[Tuple[int, int]]:
+        """Encontra o ponto válido mais próximo usando uma busca em largura (BFS)."""
+        if not self._is_in_forbidden_area(start_node[0], start_node[1]):
+            return start_node
+
+        q = deque([start_node])
+        visited = {start_node}
+        directions = [
+            (0, 1), (1, 0), (0, -1), (-1, 0),
+            (1, 1), (-1, 1), (1, -1), (-1, -1)
+        ]
+
+        while q:
+            current_node = q.popleft()
+            
+            for dx, dy in directions:
+                neighbor = (current_node[0] + dx, current_node[1] + dy)
+
+                if neighbor in visited:
+                    continue
+                
+                # Verifica se está nos limites
+                if not (0 <= neighbor[0] < self.width and 0 <= neighbor[1] < self.height):
+                    continue
+                
+                visited.add(neighbor)
+
+                # Se não for um obstáculo, encontramos o ponto válido mais próximo
+                if not self._is_in_forbidden_area(neighbor[0], neighbor[1]):
+                    return neighbor
+                
+                q.append(neighbor)
+                
+        return None # Nenhum ponto válido encontrado
+
     def _astar_optimized(self, start: Tuple[int, int], goal: Tuple[int, int]) -> Optional[List[Tuple[int, int]]]:
         """Implementação otimizada do algoritmo A*"""
         # Estruturas de dados otimizadas

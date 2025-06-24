@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QComboBox, QMessageBox,
-                             QGroupBox, QGridLayout, QInputDialog, QProgressBar)
+                             QGroupBox, QGridLayout, QInputDialog, QProgressBar, QSlider)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QCursor
 import sys
@@ -142,6 +142,19 @@ class MainWindow(QMainWindow):
         self.nav_info_label = QLabel("")
         self.nav_info_label.setVisible(False)
         nav_layout.addWidget(self.nav_info_label)
+
+        # Controle de velocidade
+        speed_control_layout = QHBoxLayout()
+        self.speed_label = QLabel("Velocidade: 100%")
+        speed_control_layout.addWidget(self.speed_label)
+        
+        self.speed_slider = QSlider(Qt.Horizontal)
+        self.speed_slider.setMinimum(100)
+        self.speed_slider.setMaximum(200)
+        self.speed_slider.setValue(100)
+        self.speed_slider.valueChanged.connect(self._on_speed_slider_changed)
+        speed_control_layout.addWidget(self.speed_slider)
+        nav_layout.addLayout(speed_control_layout)
 
         nav_buttons = QGridLayout()
         start_nav_btn = QPushButton("Iniciar Navegação")
@@ -792,3 +805,12 @@ class MainWindow(QMainWindow):
         """Callback para quando uma área proibida é clicada."""
         print(f"DEBUG: Área proibida {area_id} clicada")
         # Aqui você pode adicionar lógica adicional, como mostrar detalhes da área
+
+    def _on_speed_slider_changed(self, value):
+        """Atualiza a velocidade do robô quando o slider é movido."""
+        speed_percentage = value
+        self.speed_label.setText(f"Velocidade: {speed_percentage}%")
+        
+        # Converte o valor do slider (100-200) para um multiplicador (1.0-2.0)
+        multiplier = speed_percentage / 100.0
+        self.navigator.set_speed_multiplier(multiplier)

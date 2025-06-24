@@ -23,39 +23,42 @@ GPIO_AVAILABLE = is_raspberry_pi()
 LIDAR_AVAILABLE = False  # Mude para True quando os sensores chegarem
 
 # Configurações do ambiente
-ENVIRONMENT_WIDTH = 6.0  # metros
-ENVIRONMENT_HEIGHT = 12.0  # metros
-MAP_WIDTH = int(ENVIRONMENT_WIDTH)  # metros
-MAP_HEIGHT = int(ENVIRONMENT_HEIGHT)  # metros
+ENVIRONMENT_WIDTH = 6  # metros
+ENVIRONMENT_HEIGHT = 12  # metros
+MAP_WIDTH = int(ENVIRONMENT_WIDTH)
+MAP_HEIGHT = int(ENVIRONMENT_HEIGHT)
+MAP_GRID_SIZE = 0.1 # Tamanho da célula da grade em metros (10cm)
 MAP_SCALE = 56.66  # pixels por metro (ajustado para mostrar grids de 0.5m com 70% de aumento)
 
+# Configurações de segurança
+EMERGENCY_STOP_DISTANCE = 0.2  # 20cm
+# A margem de segurança deve ser o RAIO do robô + uma folga.
+# Raio (30cm para um robô de 60cm de diâmetro) + Folga (5cm) = 35cm
+FORBIDDEN_AREA_INFLATION_RADIUS = 0.35 # 35cm de margem de segurança
+
 # Configurações do robô
-ROBOT_INITIAL_POSITION = (5.7, 11.5)  # (x, y) em metros - posição central na parte inferior
-ROBOT_INITIAL_ANGLE = 270  # graus - apontando para cima
-ROBOT_SPEED = 2.0  # metros por segundo
+ROBOT_WIDTH = 0.6  # Largura/Diâmetro do robô em metros
+ROBOT_SPEED = 1.0  # Velocidade de avanço em m/s
 ROBOT_TURN_SPEED = 300  # graus por segundo
 ROBOT_FORWARD_SPEED = 2.0  # metros por segundo
 ROBOT_MAX_SPEED = 3.0  # metros por segundo
+ROBOT_INITIAL_POSITION = (5.7, 11.5)  # (x, y) em metros - posição central na parte inferior
+ROBOT_INITIAL_ANGLE = 270  # graus - apontando para cima
 
 # Configurações de simulação
 SIMULATION_TIMESTEP = 0.1  # segundos
 SIMULATION_UPDATE_RATE = 10  # Hz
 
 # Configurações de navegação
-NAVIGATION_GOAL_TOLERANCE = 0.15  # metros (15cm - proporcional ao tamanho dos pontos de interesse)
-NAVIGATION_ANGLE_TOLERANCE = 3  # graus (equilibrio entre precisão e estabilidade)
+NAVIGATION_GOAL_TOLERANCE = 0.15  # 15cm, tolerância para chegar ao alvo
+NAVIGATION_ANGLE_TOLERANCE = 3.0  # 3 graus, tolerância para alinhamento de ângulo
 NAVIGATION_OBSTACLE_DISTANCE = 0.5  # metros
 
 # Configurações de precisão avançada
 NAVIGATION_ULTRA_PRECISION_TOLERANCE = 0.03  # metros (3cm - precisão ultra-alta para destinos)
-NAVIGATION_FINE_APPROACH_DISTANCE = 0.15  # metros (15cm - distância para iniciar aproximação fina)
-NAVIGATION_PRECISION_APPROACH_DISTANCE = 0.08  # metros (8cm - distância para iniciar precisão máxima)
+NAVIGATION_FINE_APPROACH_DISTANCE = 0.15  # 15cm
+NAVIGATION_PRECISION_APPROACH_DISTANCE = 0.08  # 8cm
 NAVIGATION_ULTRA_PRECISION_ANGLE_TOLERANCE = 0.5  # graus (tolerância de ângulo ultra-precisa)
-
-# Configurações de segurança
-EMERGENCY_STOP_DISTANCE = 0.3  # metros
-MAX_SPEED = 1.0  # metros por segundo
-MAX_TURN_SPEED = 90  # graus por segundo
 
 # Configurações de interface
 INTERFACE_UPDATE_RATE = 10  # Hz
@@ -79,8 +82,8 @@ DEBUG = True
 SIMULATION_MODE = True
 
 # Configurações da interface
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 600
+WINDOW_WIDTH = 1200
+WINDOW_HEIGHT = 800
 WINDOW_TITLE = "Robô Garçom Autônomo"
 
 # Mensagem de ambiente (executada apenas quando o módulo é importado diretamente)
@@ -108,4 +111,7 @@ MIN_SAFE_DISTANCE = 0.5  # metros
 # Configurações da interface
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600
-WINDOW_TITLE = "Robô Garçom Autônomo" 
+WINDOW_TITLE = "Robô Garçom Autônomo"
+
+# Margem de segurança para áreas proibidas
+FORBIDDEN_AREA_INFLATION_RADIUS = 0.15 # 15cm de margem de segurança 

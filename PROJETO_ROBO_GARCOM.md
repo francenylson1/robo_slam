@@ -123,3 +123,56 @@
 - `src/interfaces/main_window.py` - Interface principal
 - `src/core/config.py` - Configurações do sistema
 - `src/core/robot_navigator.py.backup_checkpoint` - Versão mais estável para referência
+
+---
+
+## 7. Sistema de Navegação Robusto (Simulação) ✅ **CONCLUÍDO**
+
+O sistema de navegação foi completamente refatorado para ser mais robusto, preciso e seguro. A versão anterior ("Navegação Básica") está obsoleta.
+
+### Melhorias e Correções Implementadas:
+
+1.  **Respeito aos Limites do Mapa:**
+    *   **Problema:** O robô ultrapassava os limites físicos do mapa (6m x 12m), pois a lógica de contenção apenas travava o seu ponto central, fazendo com que metade do corpo saísse da área.
+    *   **Solução:**
+        *   Em `robot_navigator.py`: A lógica de atualização de posição (`_update_position`) agora considera o raio do robô, criando uma "margem de segurança" interna que impede que qualquer parte do robô saia do mapa.
+        *   Em `path_finder.py`: O planejador de rotas agora trata as bordas do mapa como uma área proibida intrínseca, garantindo que nenhum caminho seja gerado muito perto das paredes.
+
+2.  **Prevenção de Travamentos na Navegação:**
+    *   **Problema:** O robô travava em 12% da navegação ao se aproximar das bordas.
+    *   **Causa:** A nova regra de contenção no `robot_navigator` entrava em conflito com os caminhos gerados pelo `path_finder`, que não conhecia essa regra.
+    *   **Solução:** A solução acima (tratar bordas como obstáculos no `path_finder`) resolveu este conflito, pois o caminho gerado já respeita as limitações do robô.
+
+3.  **Correção do Retorno à Base:**
+    *   **Problema:** No caminho de volta, o robô ignorava todas as áreas proibidas e passava por cima delas.
+    *   **Causa:** A posição da base `(5.7, 11.5)` coincidia com a nova "borda virtual" de obstáculos. O `path_finder`, ao ver o destino como um obstáculo, desistia de calcular a rota e retornava um caminho em linha reta.
+    *   **Solução:** O `path_finder.py` foi aprimorado com a função `_find_nearest_valid_point`. Agora, se o destino (a base ou qualquer outro ponto) for inválido, ele não desiste. Em vez disso, procura o ponto seguro mais próximo e calcula a rota até ele.
+
+### Status Atual:
+O sistema de navegação em **simulação** está **estável e concluído**. Ele evita com sucesso tanto as áreas proibidas desenhadas pelo usuário quanto os limites do mapa, tanto na ida quanto na volta ao destino, sem travamentos.
+
+## Próximas Etapas (Revisado)
+
+### 1. Testes em Hardware Real 🚩 **PRIORIDADE ATUAL**
+- [ ] **Preparação do Ambiente:**
+    - [ ] Fazer o deploy do código atual no Raspberry Pi 4.
+    - [ ] Verificar e instalar todas as dependências (`requirements.txt`), incluindo `pyserial` para os motores e `shapely`.
+- [ ] **Calibração e Teste dos Motores:**
+    - [ ] Criar um script de teste simples para validar o controle dos motores (frente, ré, giro).
+    - [ ] Calibrar as constantes `ROBOT_SPEED` e `ROBOT_TURN_SPEED` em `config.py` para corresponderem ao comportamento do robô real.
+- [ ] **Testes de Navegação Real:**
+    - [ ] Executar a navegação para um ponto simples sem obstáculos.
+    - [ ] Validar a precisão de chegada e o comportamento geral.
+    - [ ] Fazer ajustes finos nas constantes de navegação se necessário.
+    - *Observação: A performance no Raspberry Pi 4 (4GB) deve ser monitorada, mas as soluções atuais são computacionalmente eficientes.*
+
+### 2. Integração do Lidar e Obstáculos Dinâmicos
+- [ ] Conectar e testar o Lidar RPLIDAR.
+- [ ] Desenvolver a lógica em `slamtec_manager.py` para ler os dados de escaneamento.
+- [ ] Criar um mecanismo em `robot_navigator.py` para, a cada ciclo de atualização, converter os pontos do Lidar em "obstáculos virtuais" de curta duração.
+- [ ] Modificar o `path_finder` para que ele possa aceitar esses obstáculos temporários e recalcular a rota dinamicamente se um obstáculo for detectado no caminho atual.
+
+### 3. Melhorias Gerais e Q.A.
+- [ ] Implementar sistema de parada de emergência (botão na interface).
+- [ ] Refinar a interface com mais dados em tempo real (ex: visualização do caminho).
+- [ ] Testes de longa duração e cenários complexos.

@@ -57,6 +57,9 @@ class MapWidget(QWidget):
         # Desenha as áreas proibidas
         self._draw_forbidden_areas(painter)
         
+        # Desenha a área proibida que está sendo criada
+        self._draw_current_forbidden_area(painter)
+        
         # Desenha os pontos de interesse
         for name, point_data in self.points_of_interest.items():
             x, y, point_type = point_data
@@ -140,14 +143,17 @@ class MapWidget(QWidget):
             self.update()
             
     def finish_forbidden_area(self):
-        """Finaliza o desenho da área proibida."""
-        if self.drawing_forbidden and len(self.current_forbidden_area) > 2:
-            self.forbidden_areas.append(self.current_forbidden_area)
+        """Finaliza o desenho da área proibida e dispara o callback."""
+        # A área não é mais adicionada diretamente aqui.
+        # A responsabilidade é transferida para o main_window,
+        # que a salvará no DB e depois atualizará o mapa.
         self.drawing_forbidden = False
-        self.current_forbidden_area = []
+        # Não limpa a current_forbidden_area aqui para que o main_window possa lê-la
         self.update()
-        if hasattr(self, 'area_finished_callback') and self.area_finished_callback:
+        if self.area_finished_callback:
             self.area_finished_callback()
+        # Limpa a área atual *depois* do callback ter sido processado
+        self.current_forbidden_area = []
         
     def mousePressEvent(self, event):
         """Processa eventos de clique do mouse."""
@@ -162,6 +168,7 @@ class MapWidget(QWidget):
                 if self.point_clicked_callback:
                     self.point_clicked_callback(world_x, world_y)
             elif self.drawing_forbidden:
+                # Apenas adiciona o ponto. A finalização é com duplo clique.
                 self.current_forbidden_area.append((world_x, world_y))
                 self.update()
             else:
@@ -213,12 +220,8 @@ class MapWidget(QWidget):
         """Processa eventos de duplo clique do mouse."""
         if event.button() == Qt.MouseButton.LeftButton and self.drawing_forbidden:
             if len(self.current_forbidden_area) >= 3:
-                # Não adiciona automaticamente ao forbidden_areas
-                # Deixa o banco de dados ser a fonte da verdade
-                self.drawing_forbidden = False
-                if self.area_finished_callback:
-                    self.area_finished_callback()
-                self.update()
+                # Dispara o processo de finalização com duplo clique.
+                self.finish_forbidden_area()
 
     def load_map(self, map_data: Dict):
         """Carrega os dados do mapa."""
@@ -324,74 +327,52 @@ class MapWidget(QWidget):
 
     def _draw_forbidden_areas(self, painter: QPainter):
         """Desenha as áreas proibidas no mapa."""
-        # Desenha as áreas proibidas existentes
         for area_data in self.forbidden_areas:
-            if isinstance(area_data, dict):
-                # Novo formato: dicionário com id, nome, coordenadas
-                area_id = area_data.get('id', 0)
-                area_name = area_data.get('nome', f'Área {area_id}')
-                coordinates = area_data.get('coordenadas', [])
-                is_selected = (area_id == self.selected_area_id)
-                print(f"DEBUG: Desenhando área {area_id} com {len(coordinates)} coordenadas")
-            else:
-                # Formato antigo: lista de coordenadas
-                area_id = 0
-                area_name = f'Área {area_id}'
-                coordinates = area_data
-                is_selected = False
-                print(f"DEBUG: Desenhando área antiga com {len(coordinates)} coordenadas")
+            area_id = area_data.get('id')
+            coordinates = area_data.get('coordenadas', [])
             
-            if not coordinates:
-                print(f"DEBUG: Área {area_id} sem coordenadas")
+            if not coordinates or len(coordinates) < 2:
                 continue
-                
-            # Define cores baseado na seleção
-            if is_selected:
-                pen_color = QColor(255, 165, 0)  # Laranja para área selecionada
-                brush_color = QColor(255, 165, 0, 100)  # Laranja semi-transparente
-                pen_width = 3
-            else:
-                pen_color = QColor(255, 0, 0)  # Vermelho para áreas normais
-                brush_color = QColor(255, 0, 0, 50)  # Vermelho semi-transparente
-                pen_width = 2
+
+            # Converte as coordenadas do mundo para a tela
+            screen_points = [QPoint(int(float(x) * self.scale), int(float(y) * self.scale)) for x, y in coordinates]
             
-            painter.setPen(QPen(pen_color, pen_width, Qt.PenStyle.DashLine))
-            painter.setBrush(QBrush(brush_color))
+            # Define a cor e o pincel
+            pen = QPen(QColor(255, 0, 0, 100), 2, Qt.PenStyle.SolidLine)
+            brush = QBrush(QColor(255, 0, 0, 50))
+
+            # Se a área estiver selecionada, muda a cor
+            if self.selected_area_id == area_id:
+                pen = QPen(QColor(0, 255, 0, 200), 3, Qt.PenStyle.SolidLine)
+                brush = QBrush(QColor(0, 255, 0, 100))
             
-            # Desenha o polígono
-            try:
-                points = [QPoint(int(float(x) * self.scale), int(float(y) * self.scale)) for x, y in coordinates]
-                polygon = QPolygon(points)
-                painter.drawPolygon(polygon)
-            except (TypeError, ValueError) as e:
-                print(f"DEBUG: Erro ao desenhar área {area_id}: {e}")
-                print(f"DEBUG: Coordenadas: {coordinates}")
-                continue
+            painter.setPen(pen)
+            painter.setBrush(brush)
             
-            # Desenha o nome da área se disponível
-            if area_name and len(coordinates) > 0:
-                # Calcula o centro da área para posicionar o texto
-                center_x = sum(x for x, y in coordinates) / len(coordinates)
-                center_y = sum(y for x, y in coordinates) / len(coordinates)
-                screen_x = int(center_x * self.scale)
-                screen_y = int(center_y * self.scale)
-                
-                painter.setPen(QPen(QColor(0, 0, 0)))
-                painter.setFont(QFont('Arial', 8))
-                painter.drawText(screen_x, screen_y, area_name)
-            
-        # Desenha a área sendo criada
+            # Cria e desenha o polígono
+            polygon = QPolygon(screen_points)
+            painter.drawPolygon(polygon)
+
+    def _draw_current_forbidden_area(self, painter: QPainter):
+        """Desenha a área proibida que está sendo criada pelo usuário."""
         if self.drawing_forbidden and len(self.current_forbidden_area) > 0:
-            painter.setPen(QPen(QColor(0, 0, 255), 2, Qt.PenStyle.DashLine))  # Azul para área sendo criada
-            painter.setBrush(QBrush(QColor(0, 0, 255, 50)))  # Azul semi-transparente
-            
+            painter.setPen(QPen(QColor(0, 0, 255, 150), 2, Qt.PenStyle.DashLine))  # Azul para área em criação
+            painter.setBrush(Qt.BrushStyle.NoBrush) # Sem preenchimento para a área em criação
+
             try:
                 points = [QPoint(int(float(x) * self.scale), int(float(y) * self.scale)) for x, y in self.current_forbidden_area]
-                polygon = QPolygon(points)
-                painter.drawPolygon(polygon)
+                
+                # Desenha as linhas que conectam os pontos
+                for i in range(len(points) - 1):
+                    painter.drawLine(points[i], points[i+1])
+
+                # Desenha os vértices da área em criação
+                painter.setPen(QPen(QColor(0, 0, 255), 4)) # Pontos azuis maiores
+                for point in points:
+                    painter.drawPoint(point)
+
             except (TypeError, ValueError) as e:
-                print(f"DEBUG: Erro ao desenhar área sendo criada: {e}")
-                print(f"DEBUG: Coordenadas: {self.current_forbidden_area}")
+                print(f"DEBUG: Erro ao desenhar a área proibida em andamento: {e}")
 
     def add_forbidden_area(self, area_data: Dict):
         """Adiciona uma área proibida com dados completos."""
