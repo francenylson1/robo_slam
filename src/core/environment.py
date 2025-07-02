@@ -1,12 +1,6 @@
 import platform
 import os
 
-# Configurações específicas do ambiente
-GPIO_AVAILABLE = False  # Sempre False em desenvolvimento
-LIDAR_AVAILABLE = False  # Sempre False em desenvolvimento
-
-print("Executando em modo de desenvolvimento (simulação)")
-
 def is_raspberry_pi():
     """Verifica se está rodando em um Raspberry Pi."""
     try:
@@ -15,6 +9,10 @@ def is_raspberry_pi():
             return 'raspberry pi' in model
     except:
         return False
+
+# Define a disponibilidade dos periféricos baseado no ambiente
+GPIO_AVAILABLE = is_raspberry_pi()
+LIDAR_AVAILABLE = is_raspberry_pi() # Assumindo que o LIDAR só está na Pi
 
 def is_development():
     """Verifica se está em ambiente de desenvolvimento."""
