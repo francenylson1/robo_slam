@@ -54,4 +54,4 @@ logs/
 
 # Arquivos de configuração local
 .env
-config.local.py 
+config.local.py prompt_*.md
