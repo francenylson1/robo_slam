@@ -40,4 +40,4 @@ if __name__ == '__main__':
     window.show()
     
     # Executa o loop principal
-    sys.exit(app.exec_()) 
+    sys.exit(app.exec_())
