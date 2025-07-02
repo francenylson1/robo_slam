@@ -37,14 +37,17 @@ EMERGENCY_STOP_DISTANCE = 0.2  # 20cm
 FORBIDDEN_AREA_INFLATION_RADIUS = 0.35 # 35cm de margem de segurança
 
 # Configurações do robô
-ROBOT_WIDTH = 0.6  # Largura/Diâmetro do robô em metros
-ROBOT_SPEED = 0.2  # Velocidade base do robô (m/s)
-ROBOT_TURN_SPEED = 0.5  # Velocidade máxima de giro (rad/s)
-ROBOT_FORWARD_SPEED = 2.0  # metros por segundo
-ROBOT_MAX_SPEED = 0.5  # Velocidade máxima de avanço (m/s)
-ROBOT_INITIAL_POSITION = (5.7, 11.5)  # (x, y) em metros - posição central na parte inferior
-ROBOT_INITIAL_ANGLE = 270  # graus - apontando para cima
-ROBOT_ADJUSTMENT_TURN_SPEED = 0.15  # Velocidade de giro para ajustes finos (mais lenta e segura)
+ROBOT_WIDTH = 0.6                # Largura/Diâmetro do robô em metros
+ROBOT_SPEED = 0.25               # Velocidade base de avanço em navegação (m/s)
+ROBOT_MAX_SPEED = 0.4            # Velocidade MÁXIMA absoluta de avanço (m/s)
+ROBOT_TURN_SPEED = 0.4           # Velocidade base de giro em navegação (rad/s)
+ROBOT_ADJUSTMENT_TURN_SPEED = 0.15 # Velocidade de giro para ajustes finos (lenta e segura)
+
+# Constante legada - Manter por compatibilidade, mas com valor seguro
+ROBOT_FORWARD_SPEED = 0.25         # (LEGADO) Usado em funções antigas, igual a ROBOT_SPEED
+
+ROBOT_INITIAL_POSITION = (5.7, 11.5) # (x, y) em metros - posição central na parte inferior
+ROBOT_INITIAL_ANGLE = 270            # graus - apontando para cima
 
 # Configurações de simulação
 SIMULATION_TIMESTEP = 0.1  # segundos

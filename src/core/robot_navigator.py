@@ -378,49 +378,15 @@ class RobotNavigator:
             self.last_position_update = time.time()
 
     def _calculate_movement(self, target: Optional[Tuple[float, float]], angle_error_rad: float) -> Tuple[float, float]:
-        """Calcula os valores de movimento baseado no erro angular e distância"""
-        if target is None:
-            return 0.0, 0.0
-            
-        distance = self._calculate_distance(self.current_position, target)
-        
-        # Se a distância for muito pequena, o robô já está no ponto
-        if distance < NAVIGATION_GOAL_TOLERANCE:
-            forward_value = 0.0
-            turn_value = 0.0
-            print("DEBUG: Chegou ao destino, forward=0, turn=0")
-        else:
-            # Normaliza o erro angular para -180 a 180 graus
-            angle_error_deg = math.degrees(angle_error_rad)
-            if angle_error_deg > 180:
-                angle_error_deg -= 360
-            elif angle_error_deg < -180:
-                angle_error_deg += 360
-                
-            # Calcula o valor de giro (mais suave)
-            turn_value = math.sin(angle_error_rad) * ROBOT_TURN_SPEED
-            
-            # Velocidade de avanço baseada na distância e erro angular
-            forward_value = min(distance * ROBOT_FORWARD_SPEED, ROBOT_MAX_SPEED)
-            
-            # Reduz a velocidade de avanço quando o erro angular é grande
-            angle_factor = math.cos(angle_error_rad)  # 1 quando alinhado, 0 quando perpendicular
-            forward_value *= max(0, angle_factor)  # Não permite velocidade negativa
-            
-            print(f"DEBUG: Distancia: {distance:.2f}m, Erro Angular: {angle_error_deg:.1f}°")
-            print(f"DEBUG: Forward: {forward_value:.2f}, Turn: {turn_value:.2f}")
-                
-        # Converte para velocidades das rodas (limitando a -100 a 100)
-        left_speed = max(-100, min(100, forward_value - turn_value))
-        right_speed = max(-100, min(100, forward_value + turn_value))
-        
-        # Aplica os comandos aos motores
-        if hasattr(self, 'motors'):
-            self.motors.set_speed(left_speed, right_speed)
-            print(f"DEBUG: Motores - esquerda: {left_speed:.2f}, direita: {right_speed:.2f}")
-            
-        return forward_value, turn_value
-        
+        """
+        (LEGADO E PERIGOSO) - Calcula os valores de movimento.
+        Esta função foi substituída por _move_towards_target para um controle mais seguro.
+        """
+        print("AVISO DE SEGURANÇA: A função legada _calculate_movement foi chamada!")
+        # Retorna valores seguros para parar o robô caso seja chamada por engano.
+        self.motors.stop()
+        return 0.0, 0.0
+
     def _check_obstacles(self, obstacles: dict) -> bool:
         """Verifica se há obstáculos perigosos próximos."""
         if not obstacles or 'obstacles' not in obstacles:
@@ -726,10 +692,13 @@ class RobotNavigator:
             left_speed = (forward_value - turn_value) * 100 
             right_speed = (forward_value + turn_value) * 100
             
-            # Limita as velocidades para segurança
-            max_abs_speed = 40.0 * self.speed_multiplier if self.navigation_state != "FINAL_APPROACH" else 20.0
-            left_speed = max(-max_abs_speed, min(max_abs_speed, left_speed))
-            right_speed = max(-max_abs_speed, min(max_abs_speed, right_speed))
+            # --- DISJUNTOR DE SEGURANÇA ---
+            # Limita a velocidade máxima absoluta enviada aos motores.
+            # Este é o último ponto de controle para evitar excesso de velocidade.
+            HARD_SPEED_LIMIT = 30.0 # NUNCA exceder 30% da potência do motor em modo autônomo
+            
+            left_speed = max(-HARD_SPEED_LIMIT, min(HARD_SPEED_LIMIT, left_speed))
+            right_speed = max(-HARD_SPEED_LIMIT, min(HARD_SPEED_LIMIT, right_speed))
             
             print(f"DEBUG: Motores - L:{left_speed:.1f} R:{right_speed:.1f} | Fwd:{forward_value:.2f} Turn:{turn_value:.2f} Mult:{self.speed_multiplier:.2f}")
             self.motors.set_speed(left_speed, right_speed)
