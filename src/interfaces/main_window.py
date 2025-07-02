@@ -148,7 +148,7 @@ class MainWindow(QMainWindow):
         self.speed_label = QLabel("Velocidade: 100%")
         speed_control_layout.addWidget(self.speed_label)
         
-        self.speed_slider = QSlider(Qt.Horizontal)
+        self.speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.speed_slider.setMinimum(100)
         self.speed_slider.setMaximum(200)
         self.speed_slider.setValue(100)
@@ -608,9 +608,13 @@ class MainWindow(QMainWindow):
         print(f"DEBUG: points_of_interest: {list(self.map_widget.points_of_interest.keys())}")
         
         if not self.current_map:
-            print("DEBUG: ERRO - Nenhum mapa carregado")
-            QMessageBox.warning(self, "Erro", "Nenhum mapa carregado. Carregue um mapa primeiro.")
-            return
+            # Se nenhum mapa estiver carregado, cria um mapa temporário
+            # com o estado atual da interface para permitir a navegação.
+            print("DEBUG: Nenhum mapa carregado. Criando mapa temporário com o estado atual.")
+            self.current_map = {
+                'id': -1,  # ID temporário, pois não vem do banco de dados
+                'nome': 'Mapa Atual (Não Salvo)'
+            }
             
         if not self.destination_combo.currentText():
             print("DEBUG: ERRO - Nenhum destino selecionado")
