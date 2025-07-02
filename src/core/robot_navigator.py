@@ -910,34 +910,21 @@ class RobotNavigator:
         print(f"DEBUG: Deve girar? {abs(angle_diff) > 1.0}")
         
         if abs(angle_diff) > 1.0:  # Tolerância menor para precisão
-            # Ajusta o ângulo para 270° com velocidade adaptativa
-            if abs(angle_diff) > 30:
-                turn_value = min(0.8, abs(angle_diff) / 25.0)  # Giro mais rápido para diferenças grandes
-            elif abs(angle_diff) > 10:
-                turn_value = min(0.6, abs(angle_diff) / 30.0)  # Giro moderado
-            else:
-                turn_value = min(0.4, abs(angle_diff) / 35.0)  # Giro suave para ajuste fino
+            # Usa a velocidade de ajuste fino definida no config.py
+            turn_value = ROBOT_ADJUSTMENT_TURN_SPEED
                 
             # Define a direção do giro baseado na diferença
-            if angle_diff > 0:
-                # Precisa girar no sentido horário (ângulo atual < 270°)
-                turn_value = abs(turn_value)
-                direction = "horário"
-            else:
-                # Precisa girar no sentido anti-horário (ângulo atual > 270°)
-                turn_value = -abs(turn_value)
-                direction = "anti-horário"
+            if angle_diff < 0:
+                # Se a diferença é negativa, o giro deve ser no sentido anti-horário
+                turn_value = -turn_value
                 
-            print(f"DEBUG: Comando de giro: {turn_value:.3f}")
-            print(f"DEBUG: Direção do giro: {direction}")
-            print(f"DEBUG: Ângulo atual: {self.current_angle:.2f}°, objetivo: {ROBOT_INITIAL_ANGLE}°")
+            print(f"DEBUG: Comando de giro suave: {turn_value:.3f}")
             
-            # Aplica o comando de giro
+            # Aplica o comando de giro (esquerda, direita)
+            # Para girar no lugar, uma roda vai para frente e outra para trás
             self.motors.set_speed(-turn_value * 100, turn_value * 100)
             self._update_position(0.0, turn_value)
             
-            print(f"DEBUG: Novo ângulo após giro: {self.current_angle:.2f}°")
-            print(f"DEBUG: Diferença restante: {(ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180:.2f}°")
         else:
             print("DEBUG: === ÂNGULO AJUSTADO COM SUCESSO ===")
             print(f"DEBUG: Ângulo final: {self.current_angle:.2f}°")

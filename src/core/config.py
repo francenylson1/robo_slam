@@ -38,19 +38,20 @@ FORBIDDEN_AREA_INFLATION_RADIUS = 0.35 # 35cm de margem de segurança
 
 # Configurações do robô
 ROBOT_WIDTH = 0.6  # Largura/Diâmetro do robô em metros
-ROBOT_SPEED = 1.0  # Velocidade de avanço em m/s
-ROBOT_TURN_SPEED = 300  # graus por segundo
+ROBOT_SPEED = 0.2  # Velocidade base do robô (m/s)
+ROBOT_TURN_SPEED = 0.5  # Velocidade máxima de giro (rad/s)
 ROBOT_FORWARD_SPEED = 2.0  # metros por segundo
-ROBOT_MAX_SPEED = 3.0  # metros por segundo
+ROBOT_MAX_SPEED = 0.5  # Velocidade máxima de avanço (m/s)
 ROBOT_INITIAL_POSITION = (5.7, 11.5)  # (x, y) em metros - posição central na parte inferior
 ROBOT_INITIAL_ANGLE = 270  # graus - apontando para cima
+ROBOT_ADJUSTMENT_TURN_SPEED = 0.15  # Velocidade de giro para ajustes finos (mais lenta e segura)
 
 # Configurações de simulação
 SIMULATION_TIMESTEP = 0.1  # segundos
 SIMULATION_UPDATE_RATE = 10  # Hz
 
 # Configurações de navegação
-NAVIGATION_GOAL_TOLERANCE = 0.15  # 15cm, tolerância para chegar ao alvo
+NAVIGATION_GOAL_TOLERANCE = 0.15  # 15cm - Distância para considerar que chegou
 NAVIGATION_ANGLE_TOLERANCE = 3.0  # 3 graus, tolerância para alinhamento de ângulo
 NAVIGATION_OBSTACLE_DISTANCE = 0.5  # metros
 
