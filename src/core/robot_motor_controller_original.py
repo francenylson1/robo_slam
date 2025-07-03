@@ -41,11 +41,11 @@ class RobotMotorController:
         GPIO.output(self.break_E, GPIO.HIGH)
 
         # Velocidades
-        self.vel = 15
-        self.vel1 = 15
-        self.vel2 = 15
-        self.vel3 = 15
-        self.vel4 = 15
+        self.vel = 11
+        self.vel1 = 11
+        self.vel2 = 11
+        self.vel3 = 11
+        self.vel4 = 11
 
     def stop(self):
         """Para os motores"""
@@ -106,7 +106,8 @@ class RobotMotorController:
 
     def set_speed(self, speed):
         """Define velocidade dos motores (0-15)"""
-        self.vel = self.vel1 = self.vel2 = self.vel3 = self.vel4 = min(15, max(0, speed))
+        self.vel = self.vel1 = self.vel2 = self.vel3 = self.vel4 = min(11, max(0, speed))
+        print(f"DEBUG_MOTOR: Velocidade solicitada: {speed}, Velocidade aplicada: {self.vel}")
 
     def move_with_joystick(self, forward_value, turn_value):
         """Controle do robô baseado em valores de joystick (-1 a 1)"""
@@ -116,7 +117,7 @@ class RobotMotorController:
             return
 
         # Escalar velocidade baseado no valor do joystick
-        speed = int(abs(forward_value) * 15)
+        speed = int(abs(forward_value) * 11)
         self.set_speed(speed)
 
         # Determinar direção

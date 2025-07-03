@@ -37,14 +37,14 @@ EMERGENCY_STOP_DISTANCE = 0.2  # 20cm
 FORBIDDEN_AREA_INFLATION_RADIUS = 0.35 # 35cm de margem de segurança
 
 # Configurações do robô
-ROBOT_WIDTH = 0.6                # Largura/Diâmetro do robô em metros
-ROBOT_SPEED = 0.25               # Velocidade base de avanço em navegação (m/s)
-ROBOT_MAX_SPEED = 0.4            # Velocidade MÁXIMA absoluta de avanço (m/s)
-ROBOT_TURN_SPEED = 0.4           # Velocidade base de giro em navegação (rad/s)
+ROBOT_WIDTH = 0.35
+ROBOT_SPEED = 0.08               # Velocidade base de avanço em navegação (m/s) - 33% do anterior
+SIMULATION_SPEED_FACTOR = 8.0    # Fator de multiplicação para a velocidade na simulação
+ROBOT_TURN_SPEED = 25.0          # Velocidade de giro em navegação (graus/s)
 ROBOT_ADJUSTMENT_TURN_SPEED = 0.15 # Velocidade de giro para ajustes finos (lenta e segura)
 
 # Constante legada - Manter por compatibilidade, mas com valor seguro
-ROBOT_FORWARD_SPEED = 0.25         # (LEGADO) Usado em funções antigas, igual a ROBOT_SPEED
+ROBOT_FORWARD_SPEED = 0.08         # (LEGADO) Usado em funções antigas, igual a ROBOT_SPEED
 
 ROBOT_INITIAL_POSITION = (5.7, 11.5) # (x, y) em metros - posição central na parte inferior
 ROBOT_INITIAL_ANGLE = 270            # graus - apontando para cima
@@ -54,7 +54,7 @@ SIMULATION_TIMESTEP = 0.1  # segundos
 SIMULATION_UPDATE_RATE = 10  # Hz
 
 # Configurações de navegação
-NAVIGATION_GOAL_TOLERANCE = 0.15  # 15cm - Distância para considerar que chegou
+NAVIGATION_GOAL_TOLERANCE = 0.05  # 5cm - Distância para considerar que chegou
 NAVIGATION_ANGLE_TOLERANCE = 3.0  # 3 graus, tolerância para alinhamento de ângulo
 NAVIGATION_OBSTACLE_DISTANCE = 0.5  # metros
 
@@ -118,4 +118,4 @@ WINDOW_HEIGHT = 600
 WINDOW_TITLE = "Robô Garçom Autônomo"
 
 # Margem de segurança para áreas proibidas
-FORBIDDEN_AREA_INFLATION_RADIUS = 0.15 # 15cm de margem de segurança 
+FORBIDDEN_AREA_INFLATION_RADIUS = 0.15 # 15cm de margem de segurança

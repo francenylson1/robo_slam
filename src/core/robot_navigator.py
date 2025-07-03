@@ -176,94 +176,66 @@ class RobotNavigator:
             # Não faz nada, aguardando comando
             return
 
-        elif self.navigation_state == "NAVIGATING_TO_DESTINATION":
-            print("DEBUG: update() - Estado: NAVIGATING_TO_DESTINATION")
-            
-            if self.current_target is None or self.current_position is None:
-                print("DEBUG: ERRO - Alvo ou posição atual nulos em NAVIGATING_TO_DESTINATION")
+        elif self.navigation_state == "NAVIGATING":
+            if self.current_target is None:
+                print("DEBUG: ERRO - Alvo de navegação nulo.")
                 self._finalize_navigation()
                 return
 
-            # Verifica se está no ponto anterior ao destino final
-            is_near_final_destination_waypoint = (self.path_index == self.destination_index - 1)
-            
-            distance_to_target = self._calculate_distance(self.current_position, self.current_target)
-
-            # Se chegou ao waypoint anterior ao destino, muda para aproximação final
-            if is_near_final_destination_waypoint and distance_to_target < 0.15: # 15cm
-                print("🔄 MUDANÇA DE FASE: NAVIGATING_TO_DESTINATION → FINAL_APPROACH")
-                self.navigation_state = "FINAL_APPROACH"
-                # O alvo da aproximação final é sempre o 'original_destination'
-                self.current_target = self.original_destination 
-                return
-
-            # Se chegou a um waypoint intermediário (que não é o pré-destino)
-            if distance_to_target < 0.12: # 12cm para pontos intermediários
-                print(f"DEBUG: Chegou ao ponto intermediário {self.path_index}: {self.current_target}")
-                self.path_index += 1
-                if self.path_index < len(self.path):
-                    self.current_target = self.path[self.path_index]
-                    print(f"DEBUG: Próximo alvo: {self.current_target}")
-                else:
-                    print("DEBUG: ERRO - Fim do caminho alcançado inesperadamente.")
-                    self._finalize_navigation()
-                return
-            
-            # Se não chegou, continua se movendo
+            # 1. SEMPRE tenta se mover em direção ao alvo atual.
             self._move_towards_target()
 
-        elif self.navigation_state == "FINAL_APPROACH":
-            print("DEBUG: update() - Estado: FINAL_APPROACH")
-            # _stable_final_approach gerencia seu próprio movimento
-            if self._stable_final_approach():
-                # Chegou ao destino com sucesso
-                print("🔄 MUDANÇA DE FASE: FINAL_APPROACH → PAUSED_AT_DESTINATION")
-                self.motors.stop()
-                self.navigation_state = "PAUSED_AT_DESTINATION"
-                self.arrival_time = time.time()
-                self.is_paused_at_destination = True
+            # 2. APÓS o movimento, verifica se o alvo foi alcançado.
+            if self._reached_target(self.current_target):
+                print(f"DEBUG: Chegou ao waypoint {self.path_index}: {self.current_target}")
+
+                # Verifica se o ponto alcançado era o destino final (onde se faz a entrega)
+                if self.path_index == self.destination_index:
+                    print("DEBUG: Chegou ao destino. Mudando para o estado de PAUSA.")
+                    self.navigation_state = "PAUSED_AT_DESTINATION"
+                    self.arrival_time = time.time()
+                    self.is_paused_at_destination = True
+                    self.motors.stop()  # Para o robô para a simulação de entrega
+                    return # Sai para o próximo ciclo de update lidar com a pausa
+
+                # Se não era o destino, apenas avança no caminho
+                self.path_index += 1
+
+                # Verifica se o caminho acabou (chegou de volta à base)
+                if self.path_index >= len(self.path):
+                    print("DEBUG: Chegou ao ponto final (base). Iniciando ajuste de ângulo.")
+                    self._start_final_angle_adjustment()
+                    return
+                
+                # Define o próximo alvo
+                self.current_target = self.path[self.path_index]
+                print(f"DEBUG: Próximo alvo: {self.current_target} (índice {self.path_index})")
         
         elif self.navigation_state == "PAUSED_AT_DESTINATION":
             print("DEBUG: update() - Estado: PAUSED_AT_DESTINATION")
-            if self.arrival_time is not None and (time.time() - self.arrival_time > self.arrival_pause_time):
+            if self.arrival_time and time.time() - self.arrival_time >= self.arrival_pause_time:
+                print("DEBUG: Pausa no destino concluída. Retomando navegação para a base.")
                 self.is_paused_at_destination = False
-                # Avança para o próximo ponto, que é o início do caminho de volta
-                self.path_index = self.destination_index + 1
-                if self.path_index < len(self.path):
-                    self.current_target = self.path[self.path_index]
-                    print("🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → RETURNING_TO_BASE")
-                    self.navigation_state = "RETURNING_TO_BASE"
-                    self.is_returning_to_base = True
-                else:
-                    # Caso estranho: não há caminho de volta, então finaliza.
-                    print("DEBUG: Não há caminho de volta, ajustando ângulo final.")
-                    self._start_final_angle_adjustment()
+                self.is_returning_to_base = True # Atualiza o status para a UI
 
-        elif self.navigation_state == "RETURNING_TO_BASE":
-            print("DEBUG: update() - Estado: RETURNING_TO_BASE")
-            if self.current_target is None or self.current_position is None:
-                print("DEBUG: ERRO - Alvo ou posição atual nulos em RETURNING_TO_BASE")
-                self._finalize_navigation()
-                return
-
-            distance_to_target = self._calculate_distance(self.current_position, self.current_target)
-            
-            if distance_to_target < NAVIGATION_GOAL_TOLERANCE: # 15cm
+                # Avança para o primeiro ponto do caminho de volta
                 self.path_index += 1
                 if self.path_index >= len(self.path):
-                    # Chegou ao fim do caminho de volta (base)
-                    print("🏁 FINALIZOU FASE: RETURNING_TO_BASE")
+                    print("DEBUG: Não há caminho de volta, finalizando.")
                     self._start_final_angle_adjustment()
                     return
-                else:
-                    self.current_target = self.path[self.path_index]
-                    print(f"DEBUG: Próximo alvo do retorno: {self.current_target}")
-            
-            self._move_towards_target()
+                
+                self.current_target = self.path[self.path_index]
+                self.navigation_state = "NAVIGATING" # Volta para o estado de navegação
 
         elif self.navigation_state == "ADJUSTING_FINAL_ANGLE":
-            # A função _adjust_final_angle gerencia o estado e a finalização
-            self._adjust_final_angle()
+            print("DEBUG: update() - Estado: ADJUSTING_FINAL_ANGLE")
+            if self._adjust_final_angle():
+                self._finalize_navigation()
+
+        elif self.navigation_state == "COMPLETED":
+            print("DEBUG: update() - Estado: COMPLETED")
+            self._finalize_navigation()
 
         # Atualiza o progresso para a UI
         if len(self.path) > 1:
@@ -421,7 +393,9 @@ class RobotNavigator:
         
         # Atualiza posição com precisão extrema
         if forward_value != 0.0:
-            distance = forward_value * ROBOT_SPEED * SIMULATION_TIMESTEP
+            # A velocidade na simulação pode ser aumentada para testes mais rápidos
+            simulation_speed = ROBOT_SPEED * SIMULATION_SPEED_FACTOR
+            distance = forward_value * simulation_speed * SIMULATION_TIMESTEP
             angle_rad = math.radians(self.current_angle)
             
             # Calcula os deslocamentos separadamente
@@ -524,11 +498,11 @@ class RobotNavigator:
         # Configura a navegação
         self.navigation_active = True
         self.start_time = time.time()
-        self.navigation_state = "NAVIGATING_TO_DESTINATION"
+        self.navigation_state = "NAVIGATING"
         self.is_returning_to_base = False
         
         # 📍 LOG INICIAL DA NAVEGAÇÃO AO DESTINO
-        print("🚀 INICIANDO FASE: NAVIGATING_TO_DESTINATION")
+        print("🚀 INICIANDO NAVEGAÇÃO UNIFICADA")
         print("=" * 80)
         print(f"📍 POSIÇÃO INICIAL (início da ida ao destino):")
         print(f"  🤖 Coordenadas X,Y: ({self.current_position[0]:.4f}, {self.current_position[1]:.4f})")
@@ -560,6 +534,11 @@ class RobotNavigator:
         # Combina os caminhos: base -> destino -> base
         self.path = path_to_destination + path_to_base[1:]  # Remove duplicação do destino
         self.path_index = 0
+        
+        # **CORREÇÃO: Pular o primeiro ponto se for a posição atual, avançando o índice**
+        if len(self.path) > 1 and self._calculate_distance(self.current_position, self.path[0]) < 0.01: # Menos de 1cm
+            print("DEBUG: Ignorando primeiro waypoint por ser a posição inicial, avançando para o próximo.")
+            self.path_index = 1
         
         # **CORREÇÃO CRÍTICA: SEMPRE USA O DESTINO EXATO SOLICITADO**
         self.original_destination = destination  # GARANTE que seja exatamente o destino solicitado
@@ -654,38 +633,32 @@ class RobotNavigator:
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
 
+        # --- LÓGICA DE MOVIMENTO POR ESTÁGIOS ---
+        angle_error_abs = abs(angle_diff)
         forward_value = 0
         turn_value = 0
 
-        # Lógica de movimento dividida por fases para maior controle
-        if self.navigation_state == "NAVIGATING_TO_DESTINATION" or self.navigation_state == "RETURNING_TO_BASE":
-            angle_tolerance = NAVIGATION_ANGLE_TOLERANCE
+        # Estágio 1: Grande desalinhamento (acima de 30 graus). Foco em girar.
+        if angle_error_abs > 30.0:
+            forward_value = 0  # Não move para frente
+            turn_value = 0.7 if angle_diff > 0 else -0.7  # Gira com velocidade alta
 
-            if abs(angle_diff) > angle_tolerance:
-                # Gira primeiro se o ângulo for muito grande
-                turn_value = min(0.5, abs(angle_diff) / 30.0)
-                if angle_diff < 0:
-                    turn_value = -turn_value
-            else:
-                # Movimento para frente com ajuste de rotação
-                # Aplica o multiplicador de velocidade
-                base_speed = ROBOT_SPEED * self.speed_multiplier
-                forward_value = min(base_speed, distance / 1.5)
-
-                if abs(angle_diff) > 1.5:  # Pequeno ajuste de curva
-                    turn_value = min(0.1, abs(angle_diff) / 40.0)
-                    if angle_diff < 0:
-                        turn_value = -turn_value
+        # Estágio 2: Desalinhamento médio (entre 5 e 30 graus). Combina giro e movimento.
+        elif angle_error_abs > 5.0:
+            # Velocidade de avanço é proporcional ao alinhamento
+            forward_value = self.speed_multiplier * (1.0 - (angle_error_abs - 5.0) / 25.0)
+            # Velocidade de giro é proporcional ao erro
+            turn_value = (angle_diff / 30.0) * 0.7
         
-        elif self.navigation_state == "FINAL_APPROACH":
-             # Lógica para aproximação final (mais lenta e cuidadosa)
-            if abs(angle_diff) > NAVIGATION_ULTRA_PRECISION_ANGLE_TOLERANCE:
-                turn_value = min(0.15, abs(angle_diff) / 60.0)
-                if angle_diff < 0:
-                    turn_value = -turn_value
-            else:
-                # Na aproximação final, não usamos o multiplicador para segurança
-                forward_value = min(0.1, distance)
+        # Estágio 3: Alinhado (abaixo de 5 graus). Foco em mover para frente.
+        else:
+            forward_value = self.speed_multiplier  # Velocidade máxima
+            # Correção de giro suave
+            turn_value = (angle_diff / 5.0) * 0.3
+
+        # Garante que ele não exceda a distância restante e limita o giro
+        forward_value = min(forward_value, distance)
+        turn_value = max(-0.7, min(0.7, turn_value))
 
         # Aplica os comandos de movimento
         if forward_value > 0 or abs(turn_value) > 0:
@@ -695,7 +668,7 @@ class RobotNavigator:
             # --- DISJUNTOR DE SEGURANÇA ---
             # Limita a velocidade máxima absoluta enviada aos motores.
             # Este é o último ponto de controle para evitar excesso de velocidade.
-            HARD_SPEED_LIMIT = 30.0 # NUNCA exceder 30% da potência do motor em modo autônomo
+            HARD_SPEED_LIMIT = 10.0 # NUNCA exceder 10% da potência do motor em modo autônomo
             
             left_speed = max(-HARD_SPEED_LIMIT, min(HARD_SPEED_LIMIT, left_speed))
             right_speed = max(-HARD_SPEED_LIMIT, min(HARD_SPEED_LIMIT, right_speed))
@@ -908,3 +881,9 @@ class RobotNavigator:
         if not self.path or self.path_index >= len(self.path):
             return None
         return self.path[self.path_index] 
+
+    def move_with_joystick(self, forward_value: float, turn_value: float):
+        """Move o robô com base nos valores do joystick (usado no modo manual/simulado)."""
+        # No modo de simulação, esta função atualiza a posição do robô na tela.
+        # No modo real, os motores são controlados diretamente pela interface do joystick.
+        self._update_position(forward_value, turn_value) 
