@@ -355,6 +355,24 @@ class MainWindow(QMainWindow):
 
     def _on_map_point_clicked(self, x, y):
         """Abre o diálogo de ponto de interesse já com as coordenadas preenchidas."""
+        # ETAPA DE VALIDAÇÃO: Verifica se o ponto está em uma área proibida ANTES de abrir o diálogo.
+        path_finder = self.navigator.path_finder
+        grid_x = int(x / path_finder.grid_size)
+        grid_y = int(y / path_finder.grid_size)
+
+        if path_finder._is_in_forbidden_area(grid_x, grid_y):
+            QMessageBox.warning(
+                self, 
+                "Ponto Inválido", 
+                "Não é possível criar um ponto de interesse dentro ou muito perto de uma área proibida."
+            )
+            # Restaura o cursor e o modo, pois a operação foi cancelada.
+            self.map_widget.setCursor(Qt.CursorShape.ArrowCursor)
+            self.status_label.setText("Modo: Manual" if not self.navigator.is_autonomous else "Modo: Autônomo")
+            self.map_widget.add_point_mode = False
+            self.map_widget.point_clicked_callback = None
+            return
+
         self.map_widget.setCursor(Qt.CursorShape.ArrowCursor)
         self.status_label.setText("Modo: Manual" if not self.navigator.is_autonomous else "Modo: Autônomo")
         self.map_widget.add_point_mode = False
@@ -469,6 +487,11 @@ class MainWindow(QMainWindow):
         print("DEBUG: Atualizando lista de áreas proibidas")
         self._update_forbidden_areas_list()
         
+        # **CORREÇÃO CRÍTICA**: Sincroniza as áreas com o navegador IMEDIATAMENTE.
+        # Isto garante que o PathFinder sempre tenha a informação mais recente.
+        areas_for_navigator = [area['coordenadas'] for area in areas_with_ids]
+        self.navigator.set_forbidden_areas(areas_for_navigator)
+        
         print("DEBUG: Recarregamento de áreas proibidas concluído")
         
     def _update_forbidden_areas_list(self):
@@ -560,23 +583,6 @@ class MainWindow(QMainWindow):
 
     def _start_navigation(self):
         """Inicia a navegação autônoma com feedback melhorado"""
-        # [CORREÇÃO DEFINITIVA] Sempre busca o mapa ativo e atualiza o PathFinder
-        active_map = self.map_manager.get_active_map()
-        if active_map and active_map.get('id'):
-            map_id = active_map['id']
-            try:
-                # Obtém as áreas do banco e desserializa o JSON
-                forbidden_areas_raw = self.map_manager.get_forbidden_areas_with_ids(map_id)
-                forbidden_areas_coords = [json.loads(area['coordenadas']) for area in forbidden_areas_raw]
-                self.navigator.path_finder.set_forbidden_areas(forbidden_areas_coords)
-                print(f"DEBUG: SUCESSO - Atualizadas {len(forbidden_areas_coords)} áreas proibidas no PathFinder (Mapa ID: {map_id}).")
-            except Exception as e:
-                print(f"ERRO CRÍTICO: Falha ao processar áreas proibidas antes da navegação: {e}")
-                self.navigator.path_finder.set_forbidden_areas([])
-        else:
-            print("AVISO: Nenhum mapa ativo encontrado. Navegando sem áreas proibidas.")
-            self.navigator.path_finder.set_forbidden_areas([])
-
         print("🚀 ===== INICIANDO NOVA NAVEGAÇÃO =====")
         print(f"🔍 Status atual da navegação: {self.navigation_active}")
         
@@ -652,13 +658,6 @@ class MainWindow(QMainWindow):
             return
             
         print(f"DEBUG: Destino selecionado: {destination_name} em {destination}")
-        
-        # Obtém as áreas proibidas do mapa atual
-        forbidden_areas = self.map_manager.get_forbidden_areas(self.current_map['id'])
-        print(f"DEBUG: Áreas proibidas carregadas: {len(forbidden_areas)}")
-        
-        # Configura as áreas proibidas no navegador
-        self.navigator.set_forbidden_areas(forbidden_areas)
         
         # Inicia a navegação
         print("🎯 ===== INICIANDO CHAMADA DE NAVEGAÇÃO =====")
