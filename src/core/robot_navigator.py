@@ -177,7 +177,7 @@ class RobotNavigator:
             self._update_pose_with_odometry()
 
         # --- Máquina de Estados de Navegação ---
-        
+
         if self.navigation_state == "IDLE":
             # Não faz nada, aguardando comando
             return
@@ -200,7 +200,7 @@ class RobotNavigator:
                 print("🔄 MUDANÇA DE FASE: NAVIGATING_TO_DESTINATION → FINAL_APPROACH")
                 self.navigation_state = "FINAL_APPROACH"
                 # O alvo da aproximação final é sempre o 'original_destination'
-                self.current_target = self.original_destination 
+                self.current_target = self.original_destination
                 return
 
             # Se chegou a um waypoint intermediário (que não é o pré-destino)
@@ -462,15 +462,15 @@ class RobotNavigator:
         # Atualiza posição com precisão extrema
         if forward_value != 0.0:
             distance = forward_value * ROBOT_SPEED * SIMULATION_TIMESTEP
-            angle_rad = math.radians(self.current_angle)
+        angle_rad = math.radians(self.current_angle)
             
             # Calcula os deslocamentos separadamente
             delta_x = distance * math.cos(angle_rad)
             delta_y = distance * math.sin(angle_rad)
             
             # Calcula a nova posição com precisão de 4 casas decimais
-            new_x = self.current_position[0] + delta_x
-            new_y = self.current_position[1] + delta_y
+        new_x = self.current_position[0] + delta_x
+        new_y = self.current_position[1] + delta_y
             
             # Debug detalhado do movimento
             print(f"DEBUG: _update_position - forward_value: {forward_value:.4f}")
@@ -481,11 +481,11 @@ class RobotNavigator:
             print(f"DEBUG: _update_position - posição nova: ({new_x:.4f}, {new_y:.4f})")
             
             # Arredonda para 4 casas decimais para precisão extrema
-            robot_radius = ROBOT_WIDTH / 2.0
-            self.current_position = (
+        robot_radius = ROBOT_WIDTH / 2.0
+        self.current_position = (
                 round(max(robot_radius, min(MAP_WIDTH - robot_radius, new_x)), 4),
                 round(max(robot_radius, min(MAP_HEIGHT - robot_radius, new_y)), 4)
-            )
+        )
             
             print(f"DEBUG: _update_position - posição final (limitada): ({self.current_position[0]:.4f}, {self.current_position[1]:.4f})")
             
@@ -493,7 +493,7 @@ class RobotNavigator:
             if new_x != self.current_position[0] or new_y != self.current_position[1]:
                 print(f"DEBUG: ⚠️ Posição limitada pelos limites do mapa!")
                 print(f"DEBUG: Limites: X(0-{MAP_WIDTH}), Y(0-{MAP_HEIGHT})")
-        
+
     def _reached_target(self, target: Tuple[float, float]) -> bool:
         """Verifica se o robô chegou ao ponto alvo."""
         dx = target[0] - self.current_position[0]
@@ -699,7 +699,7 @@ class RobotNavigator:
 
         # Lógica de movimento dividida por fases para maior controle
         if self.navigation_state == "NAVIGATING_TO_DESTINATION" or self.navigation_state == "RETURNING_TO_BASE":
-            angle_tolerance = NAVIGATION_ANGLE_TOLERANCE
+        angle_tolerance = NAVIGATION_ANGLE_TOLERANCE
 
             if abs(angle_diff) > angle_tolerance:
                 # Gira primeiro se o ângulo for muito grande
@@ -820,8 +820,8 @@ class RobotNavigator:
                 print(f"  📊 Erro X vs original: {orig_error_x*100:.1f}cm")
                 print(f"  📊 Erro Y vs original: {orig_error_y*100:.1f}cm")
             print("=" * 80)
-            self.motors.stop()
-            self.final_approach_start_time = None
+                self.motors.stop()
+                self.final_approach_start_time = None
             return True # Sinaliza sucesso para a máquina de estados
 
         # **APROXIMAÇÃO DIRETA SEM CORREÇÃO POR EIXO**
@@ -1000,4 +1000,4 @@ class RobotNavigator:
         self.current_position = (
             self.current_position[0] + distance_moved * math.cos(avg_angle_rad),
             self.current_position[1] + distance_moved * math.sin(avg_angle_rad)
-        ) 
+        )

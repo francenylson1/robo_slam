@@ -29,99 +29,51 @@ class PathFinder:
         print(f"DEBUG: Áreas proibidas definidas: {len(areas)} áreas")
         
     def _update_obstacle_grid(self):
-        """Atualiza o cache de células com obstáculos usando inflação geométrica e adicionando as bordas do mapa."""
+        """
+        (CORRIGIDO) Atualiza o cache de células de obstáculo.
+        Este método agora usa uma abordagem de força bruta mais robusta para garantir
+        que as áreas proibidas sejam completamente preenchidas, incluindo uma margem de segurança.
+        """
         self.obstacle_grid.clear()
         
-        # 1. Adicionar as áreas proibidas infladas
+        # Converte as áreas proibidas em polígonos Shapely para cálculos eficientes.
+        # Infla os polígonos para criar uma margem de segurança.
+        inflated_polygons = []
         for area in self.forbidden_areas:
-            if len(area) < 3:
-                continue # Um polígono precisa de pelo menos 3 pontos
+            if len(area) >= 3:
+                polygon = Polygon(area)
+                inflated_polygons.append(polygon.buffer(FORBIDDEN_AREA_INFLATION_RADIUS))
 
-            # Cria um polígono Shapely a partir da área
-            original_polygon = Polygon(area)
-            
-            # Infla o polígono usando um buffer. Isso cria a margem de segurança
-            inflated_polygon = original_polygon.buffer(FORBIDDEN_AREA_INFLATION_RADIUS)
-
-            # Simplificação: assume que o resultado é um único polígono
-            # Esta parte pode precisar de revisão se as áreas proibidas forem complexas
-            if inflated_polygon.geom_type in ['Polygon', 'MultiPolygon']:
-                # Extrai as coordenadas exteriores
-                inflated_area_coords = list(inflated_polygon.exterior.coords)
-                area_cells = self._area_to_grid_cells(inflated_area_coords)
-                self.obstacle_grid.update(area_cells)
-
-        # 2. Adicionar as bordas do mapa como obstáculos
-        robot_radius_cells = math.ceil((ROBOT_WIDTH / 2) / self.grid_size)
-        
-        # Bordas verticais (esquerda e direita)
-        for y in range(self.height):
-            for i in range(robot_radius_cells):
-                self.obstacle_grid.add((i, y))  # Borda esquerda
-                self.obstacle_grid.add((self.width - 1 - i, y)) # Borda direita
-
-        # Bordas horizontais (superior e inferior)
-        for x in range(self.width):
-            for i in range(robot_radius_cells):
-                self.obstacle_grid.add((x, i)) # Borda inferior
-                self.obstacle_grid.add((x, self.height - 1 - i)) # Borda superior
-
-        print(f"DEBUG: Cache de obstáculos atualizado: {len(self.obstacle_grid)} células (incluindo áreas e bordas)")
-        
-    def _area_to_grid_cells(self, area: List[Tuple[float, ...]]) -> Set[Tuple[int, int]]:
-        """Converte uma área poligonal em um conjunto de células da grade."""
-        cells = set()
-        
-        # Encontra os limites da área
-        min_x = min(point[0] for point in area)
-        max_x = max(point[0] for point in area)
-        min_y = min(point[1] for point in area)
-        max_y = max(point[1] for point in area)
-        
-        # Converte para coordenadas da grade
-        min_grid_x = max(0, int(min_x / self.grid_size))
-        max_grid_x = min(self.width - 1, int(max_x / self.grid_size))
-        min_grid_y = max(0, int(min_y / self.grid_size))
-        max_grid_y = min(self.height - 1, int(max_y / self.grid_size))
-        
-        # Verifica cada célula dentro do retângulo delimitador do polígono
-        for grid_x in range(min_grid_x, max_grid_x + 1):
-            for grid_y in range(min_grid_y, max_grid_y + 1):
-                # Usamos o centro da célula para verificar se está dentro do polígono
+        # Itera por TODAS as células do mapa.
+        for grid_x in range(self.width):
+            for grid_y in range(self.height):
+                # Converte o centro da célula de grade para coordenadas do mundo.
                 world_x = (grid_x + 0.5) * self.grid_size
                 world_y = (grid_y + 0.5) * self.grid_size
+                cell_point = Point(world_x, world_y)
                 
-                if Point(world_x, world_y).within(Polygon(area)):
-                    cells.add((grid_x, grid_y))
-                    
-        return cells
+                # Verifica se o ponto da célula está dentro de algum polígono inflado.
+                for inflated_polygon in inflated_polygons:
+                    if cell_point.within(inflated_polygon):
+                        self.obstacle_grid.add((grid_x, grid_y))
+                        break # Otimização: se já está em uma área, não precisa checar as outras.
+
+        # Adiciona as bordas do mapa como obstáculos para segurança adicional.
+        robot_radius_cells = math.ceil((ROBOT_WIDTH / 2) / self.grid_size)
+        for y in range(self.height):
+            for i in range(robot_radius_cells):
+                self.obstacle_grid.add((i, y))
+                self.obstacle_grid.add((self.width - 1 - i, y))
+        for x in range(self.width):
+            for i in range(robot_radius_cells):
+                self.obstacle_grid.add((x, i))
+                self.obstacle_grid.add((x, self.height - 1 - i))
+
+        print(f"DEBUG: Cache de obstáculos (robusto) atualizado: {len(self.obstacle_grid)} células")
         
-    def _is_point_in_forbidden_area(self, point: Tuple[float, float]) -> bool:
-        """Verifica se um ponto está dentro de alguma área proibida"""
-        for area in self.forbidden_areas:
-            if self._point_in_polygon(point, area):
-                return True
-        return False
-        
-    def _point_in_polygon(self, point: Tuple[float, float], polygon: List[Tuple[float, float]]) -> bool:
-        """Verifica se um ponto está dentro de um polígono usando ray casting"""
-        x, y = point
-        n = len(polygon)
-        inside = False
-        
-        p1x, p1y = polygon[0]
-        for i in range(n + 1):
-            p2x, p2y = polygon[i % n]
-            if y > min(p1y, p2y):
-                if y <= max(p1y, p2y):
-                    if x <= max(p1x, p2x):
-                        if p1y != p2y:
-                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                        if p1x == p2x or x <= xinters:
-                            inside = not inside
-            p1x, p1y = p2x, p2y
-            
-        return inside
+    def _is_in_forbidden_area(self, x: int, y: int) -> bool:
+        """(CORRIGIDO) Verifica se uma célula da grade está na área proibida usando o cache."""
+        return (x, y) in self.obstacle_grid
         
     def find_path(self, start: Tuple[float, float], goal: Tuple[float, float]) -> List[Tuple[float, float]]:
         """Encontra um caminho do ponto inicial ao objetivo evitando áreas proibidas usando A* otimizado"""
@@ -259,10 +211,6 @@ class PathFinder:
                     
         # Nenhum caminho encontrado
         return None
-        
-    def _is_in_forbidden_area(self, x: int, y: int) -> bool:
-        """Verifica se um ponto da grade está em uma área proibida (usando cache)"""
-        return (x, y) in self.obstacle_grid
         
     def _heuristic(self, a: Tuple[int, int], b: Tuple[int, int]) -> float:
         """

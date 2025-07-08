@@ -38,14 +38,14 @@ FORBIDDEN_AREA_INFLATION_RADIUS = 0.35 # 35cm de margem de segurança
 
 # Configurações do robô
 ROBOT_WIDTH = 0.6                # Largura/Diâmetro do robô em metros (60cm)
-ROBOT_SPEED = 0.08               # Velocidade base de avanço em navegação (m/s) - 33% do anterior
-ROBOT_MAX_SPEED = 0.20           # Velocidade máxima de avanço em m/s (igual a MAX_LINEAR_SPEED_MS)
+ROBOT_SPEED = 0.40               # AUMENTADO 5x (era 0.08). Velocidade base de avanço em navegação (m/s).
+ROBOT_MAX_SPEED = 0.40           # AUMENTADO 5x (era 0.08). Velocidade máxima de avanço em m/s.
 SIMULATION_SPEED_FACTOR = 8.0    # Fator de multiplicação para a velocidade na simulação
 ROBOT_TURN_SPEED = 90.0          # Velocidade de giro em navegação (graus/s)
 ROBOT_ADJUSTMENT_TURN_SPEED = 0.15 # Velocidade de giro para ajustes finos (lenta e segura)
 
 # Constante legada - Manter por compatibilidade, mas com valor seguro
-ROBOT_FORWARD_SPEED = 0.08         # (LEGADO) Usado em funções antigas, igual a ROBOT_SPEED
+ROBOT_FORWARD_SPEED = 0.40         # (LEGADO) AUMENTADO 5x (era 0.08). Usado em funções antigas, igual a ROBOT_SPEED
 
 ROBOT_INITIAL_POSITION = (5.7, 11.5) # (x, y) em metros - posição central na parte inferior
 ROBOT_INITIAL_ANGLE = 270            # graus - apontando para cima
