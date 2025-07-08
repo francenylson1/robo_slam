@@ -1,4 +1,3 @@
-
 import sys
 import os
 
@@ -84,10 +83,9 @@ class RobotNavigator:
         # Preserva as áreas proibidas durante o reset
         preserved_forbidden_areas = self.forbidden_areas.copy()
         
-        # ETAPA 2: Correção do "Pulo" - NÃO reseta a posição/ângulo.
-        # A nova navegação deve começar da posição final real da navegação anterior.
-        # self.current_position = ROBOT_INITIAL_POSITION
-        # self.current_angle = ROBOT_INITIAL_ANGLE
+        # Sempre usa a posição inicial definida em config.py
+        self.current_position = ROBOT_INITIAL_POSITION
+        self.current_angle = ROBOT_INITIAL_ANGLE
         
         # Reseta variáveis de navegação
         self.navigation_active = False
@@ -171,10 +169,6 @@ class RobotNavigator:
         """Atualiza o estado do robô usando uma máquina de estados clara."""
         if not self.navigation_active:
             return
-
-        # ETAPA 1.2: Transplante de Odometria - Sempre atualiza a pose com dados reais se disponível
-        if GPIO_AVAILABLE:
-            self._update_pose_with_odometry()
 
         # --- Máquina de Estados de Navegação ---
         
@@ -742,9 +736,8 @@ class RobotNavigator:
         else:
             self.motors.stop()
         
-        # ETAPA 1.3: Transplante de Odometria - Atualiza a posição simulada APENAS se não houver odometria real
-        if not GPIO_AVAILABLE:
-            self._update_position(forward_value, turn_value)
+        # Atualiza a posição (simulado)
+        self._update_position(forward_value, turn_value)
 
     def _stable_final_approach(self):
         """
@@ -959,45 +952,3 @@ class RobotNavigator:
         if not self.path or self.path_index >= len(self.path):
             return None
         return self.path[self.path_index] 
-
-    def _update_pose_with_odometry(self):
-        """
-        (TRANSPLANTADO)
-        Atualiza a pose (posição e ângulo) do robô usando dados de odometria
-        dos encoders das rodas. Este método corrige a posição simulada com
-        dados do mundo real.
-        """
-        # Só executa se estivermos em hardware real
-        if not GPIO_AVAILABLE:
-            return
-
-        left_ticks, right_ticks = self.motors.get_and_reset_ticks()
-
-        # Se não houve movimento, não há o que fazer
-        if left_ticks == 0 and right_ticks == 0:
-            return
-
-        # Calcula a distância percorrida por cada roda
-        dist_left = (left_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
-        dist_right = (right_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
-
-        # Calcula a distância média percorrida pelo centro do robô
-        distance_moved = (dist_left + dist_right) / 2.0
-
-        # Calcula a mudança no ângulo (em radianos)
-        delta_angle_rad = (dist_right - dist_left) / ROBOT_WHEEL_BASE_M
-        
-        # Atualiza a pose do robô
-        current_angle_rad = math.radians(self.current_angle)
-            
-        # O novo ângulo é o antigo mais a mudança
-        self.current_angle += math.degrees(delta_angle_rad)
-        self.current_angle %= 360 # Normaliza para 0-360
-
-        # Calcula a nova posição com base na distância e no ângulo MÉDIO durante o movimento
-        avg_angle_rad = current_angle_rad + (delta_angle_rad / 2.0)
-        
-        self.current_position = (
-            self.current_position[0] + distance_moved * math.cos(avg_angle_rad),
-            self.current_position[1] + distance_moved * math.sin(avg_angle_rad)
-        ) 

@@ -31,7 +31,7 @@ class MapManager:
 
     def _create_tables(self):
         """Cria as tabelas necessárias no banco de dados."""
-        if not self.conn:
+        if not self.conn or not self.cursor:
             print("Erro: Conexão com o banco de dados não estabelecida.")
             return
         try:
@@ -142,25 +142,26 @@ class MapManager:
             if self.conn:
                 self.conn.rollback()
 
-    def load_active_map(self) -> tuple[dict, list, str]:
+    def load_active_map(self) -> tuple[dict, list, str, Optional[int]]:
         """
         Carrega o mapa ativo do banco de dados.
-        Retorna (points_of_interest, forbidden_areas, map_name).
+        Retorna (points_of_interest, forbidden_areas, map_name, map_id).
         """
-        if not self.conn:
+        if not self.conn or not self.cursor:
             print("Erro: Conexão com o banco de dados não estabelecida.")
-            return {}, [], ""
+            return {}, [], "", None
 
         points_of_interest = {}
         forbidden_areas = []
         map_name = ""
+        map_id = None
         try:
             self.cursor.execute("SELECT id, nome FROM mapas WHERE ativo = 1")
             active_map = self.cursor.fetchone()
 
             if active_map:
                 map_id, map_name = active_map
-                print(f"Carregando mapa ativo: '{map_name}'")
+                print(f"Carregando mapa ativo: '{map_name}' (ID: {map_id})")
 
                 # Carrega pontos de interesse
                 self.cursor.execute("SELECT nome, x, y, tipo FROM pontos_interesse WHERE mapa_id = ?", (map_id,))
@@ -178,13 +179,13 @@ class MapManager:
         except sqlite3.Error as e:
             print(f"Erro ao carregar mapa: {e}")
 
-        return points_of_interest, forbidden_areas, map_name
+        return points_of_interest, forbidden_areas, map_name, map_id
 
     def get_all_map_names(self) -> list[str]:
         """
         Retorna uma lista com os nomes de todos os mapas salvos.
         """
-        if not self.conn:
+        if not self.conn or not self.cursor:
             print("Erro: Conexão com o banco de dados não estabelecida.")
             return []
         try:
@@ -194,18 +195,15 @@ class MapManager:
             print(f"Erro ao listar mapas: {e}")
             return []
 
-    def load_map_by_name(self, map_name: str) -> tuple[dict, list, str]:
+    def load_map_by_name(self, map_name: str) -> tuple[dict, list, str, Optional[int]]:
         """
         Carrega um mapa específico pelo nome e o define como ativo.
-        Retorna (points_of_interest, forbidden_areas, map_name).
+        Retorna (points_of_interest, forbidden_areas, map_name, map_id).
         """
-        if not self.conn:
+        if not self.conn or not self.cursor:
             print("Erro: Conexão com o banco de dados não estabelecida.")
-            return {}, [], ""
+            return {}, [], "", None
 
-        points_of_interest = {}
-        forbidden_areas = []
-        loaded_map_name = ""
         try:
             # Desativa todos os mapas e ativa o selecionado
             self.cursor.execute("UPDATE mapas SET ativo = 0")
@@ -217,8 +215,9 @@ class MapManager:
 
         except sqlite3.Error as e:
             print(f"Erro ao carregar mapa por nome: {e}")
-            self.conn.rollback()
-        return {}, [], ""
+            if self.conn:
+                self.conn.rollback()
+        return {}, [], "", None
 
     def close(self):
         """Fecha a conexão com o banco de dados."""
@@ -237,9 +236,9 @@ class MapManager:
                 """, (map_id,))
                 areas = []
                 for row in cursor.fetchall():
-                    # Converte a string de coordenadas em lista de tuplas
+                    # [CORREÇÃO] Troca eval por json.loads para segurança
                     coords_str = row[0]
-                    coords_list = eval(coords_str)  # Converte string para lista
+                    coords_list = json.loads(coords_str)
                     areas.append([(float(x), float(y)) for x, y in coords_list])
                 return areas
         except Exception as e:
@@ -373,7 +372,7 @@ class MapManager:
         Returns:
             Lista de dicionários com id, nome, coordenadas e ativo
         """
-        if not self.conn:
+        if not self.conn or not self.cursor:
             print("Erro: Conexão com o banco de dados não estabelecida.")
             return []
             
@@ -442,4 +441,20 @@ class MapManager:
             
         except sqlite3.Error as e:
             print(f"Erro ao obter áreas proibidas: {e}")
-            return [] 
+            return []
+
+    def get_points_of_interest(self, map_id: int) -> Dict[str, Tuple[float, float, str]]:
+        """Obtém todos os pontos de interesse de um mapa."""
+        points = {}
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT nome, x, y, tipo FROM pontos_interesse WHERE mapa_id = ?
+                """, (map_id,))
+                for row in cursor.fetchall():
+                    name, x, y, point_type = row
+                    points[name] = (x, y, point_type)
+        except Exception as e:
+            print(f"Erro ao obter pontos de interesse: {e}")
+        return points 
