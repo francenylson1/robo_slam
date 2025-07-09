@@ -244,6 +244,7 @@ class RobotNavigator:
                     self._start_final_angle_adjustment()
                     return
 
+                # --- CORREÇÃO: Lógica de retorno simplificada e robusta ---
                 # Anexa o novo caminho de volta e continua a navegação.
                 self.path = self.path + path_to_base[1:] # Adiciona o caminho de volta, pulando o ponto inicial duplicado.
                 self.path_index = self.destination_index + 1
@@ -731,7 +732,7 @@ class RobotNavigator:
         print(f"  📏 Distância: {total_distance*100:.1f}cm")
         print(f"  📐 Ângulo: {angle_diff:.1f}°")
         
-        final_tolerance = 0.05  # 5cm
+        final_tolerance = 0.15  # 15cm (Aumentado de 0.05 para maior tolerância no mundo real)
         if total_distance <= final_tolerance:
             print("🎉 DESTINO FINAL ALCANÇADO COM SUCESSO!")
             self.motors.stop() # Usa o stop() que desativa o PID
