@@ -55,3 +55,4 @@ logs/
 # Arquivos de configuração local
 .env
 config.local.py prompt_*.md
+!data/robot.db
