@@ -158,9 +158,30 @@ class RobotMotorController:
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
             
-            # 3. Aplica a potencia aos motores
-            self._set_motor_speed_real("left", left_power)
-            self._set_motor_speed_real("right", right_power)
+            # 3. Aplica a potencia aos motores COM A LÓGICA DE DIREÇÃO CORRETA
+            # Esta verificação garante que o código só rode no hardware real
+            if GPIO_AVAILABLE and GPIO:
+                # --- MOTOR ESQUERDO ---
+                if left_power >= 0: # Para frente
+                    GPIO.output(self.dir_E, GPIO.HIGH)
+                else: # Para trás
+                    GPIO.output(self.dir_E, GPIO.LOW)
+                self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
+
+                # --- MOTOR DIREITO ---
+                if right_power >= 0: # Para frente
+                    GPIO.output(self.dir_D, GPIO.LOW)
+                else: # Para trás
+                    GPIO.output(self.dir_D, GPIO.HIGH)
+                self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
+
+                # Libera os freios se houver qualquer potência
+                if abs(left_power) > 0.1 or abs(right_power) > 0.1:
+                    GPIO.output(self.break_E, GPIO.LOW)
+                    GPIO.output(self.break_D, GPIO.LOW)
+                else:
+                    GPIO.output(self.break_E, GPIO.HIGH)
+                    GPIO.output(self.break_D, GPIO.HIGH)
             
             # 4. Define a frequencia do loop de controle (ex: 20Hz)
             time.sleep(0.05)
