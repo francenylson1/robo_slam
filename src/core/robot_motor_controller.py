@@ -30,12 +30,20 @@ class RobotMotorController:
         self.right_speed_percent = 0
         self.is_moving = False
         
+        # --- NOVO: Atributos para o modo de simulação ---
+        self.simulated_left_tps = 0.0
+        self.simulated_right_tps = 0.0
+        self.last_sim_time = time.time()
+        
         # Atributos para feedback de velocidade
         self.left_hall_ticks = 0
         self.right_hall_ticks = 0
         self.last_speed_check_time = time.time()
         self.current_left_tps = 0.0
         self.current_right_tps = 0.0
+        
+        # --- NOVO: Evento para desligamento limpo das threads ---
+        self.shutdown_event = threading.Event()
         
         # --- NOVO: Interruptor para o controle PID ---
         self.pid_enabled = False
@@ -80,8 +88,11 @@ class RobotMotorController:
             # Kp: Aumentado para dar forca suficiente para o robo sair da inercia.
             # Ki: Aumentado para ajudar a vencer o atrito inicial.
             # Kd: Mantido baixo para evitar instabilidade.
-            self.pid_left = PIDController(Kp=0.2, Ki=0.15, Kd=0.02, setpoint=0, output_limits=(-15, 15))
-            self.pid_right = PIDController(Kp=0.2, Ki=0.15, Kd=0.02, setpoint=0, output_limits=(-15, 15))
+            # NOVOS GANHOS (MUITO MAIS CONSERVADORES) PARA ESTABILIZAR O ROBÔ EM BAIXA VELOCIDADE
+            # O objetivo é eliminar o movimento circular.
+            # AUMENTANDO O Ki PARA DAR MAIS "INSISTÊNCIA" AO ROBÔ NA APROXIMAÇÃO FINAL.
+            self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-15, 15))
+            self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-15, 15))
 
             # Inicia a thread de monitoramento dos sensores Hall por Polling
             monitor_thread = threading.Thread(target=self._hall_sensor_monitor_thread, daemon=True)
@@ -106,18 +117,23 @@ class RobotMotorController:
         if not GPIO_AVAILABLE or not GPIO:
             return
 
-        while True:
+        while not self.shutdown_event.is_set():
             # Leitura do sensor esquerdo
-            current_state_E = GPIO.input(self.hall_E)
-            if current_state_E == 1 and self.last_hall_E_state == 0:
-                self.left_hall_ticks += 1
-            self.last_hall_E_state = current_state_E
+            try:
+                current_state_E = GPIO.input(self.hall_E)
+                if current_state_E == 1 and self.last_hall_E_state == 0:
+                    self.left_hall_ticks += 1
+                self.last_hall_E_state = current_state_E
 
-            # Leitura do sensor direito
-            current_state_D = GPIO.input(self.hall_D)
-            if current_state_D == 1 and self.last_hall_D_state == 0:
-                self.right_hall_ticks += 1
-            self.last_hall_D_state = current_state_D
+                # Leitura do sensor direito
+                current_state_D = GPIO.input(self.hall_D)
+                if current_state_D == 1 and self.last_hall_D_state == 0:
+                    self.right_hall_ticks += 1
+                self.last_hall_D_state = current_state_D
+            
+            except RuntimeError:
+                # Se o GPIO foi limpo, a thread deve parar.
+                break
             
             # Pausa muito curta para evitar 100% de uso da CPU
             time.sleep(0.001) # Poll a ~1000Hz
@@ -129,7 +145,7 @@ class RobotMotorController:
         if not GPIO_AVAILABLE:
             return
             
-        while True:
+        while not self.shutdown_event.is_set():
             # --- NOVO: So executa o controle se o interruptor estiver ligado ---
             if not self.pid_enabled:
                 time.sleep(0.1) # Dorme se desativado para nao usar CPU
@@ -189,8 +205,11 @@ class RobotMotorController:
             self.pid_left.set_setpoint(left_tps)
             self.pid_right.set_setpoint(right_tps)
         else:
-            # Em modo simulado, apenas imprime a velocidade alvo
-            print(f"Simulando velocidade alvo - Esquerda: {left_tps} tps, Direita: {right_tps} tps")
+            # Em modo simulado, armazena a velocidade alvo para o cálculo de odometria
+            print(f"Simulando velocidade alvo - Esquerda: {left_tps:.1f} tps, Direita: {right_tps:.1f} tps")
+            self.simulated_left_tps = left_tps
+            self.simulated_right_tps = right_tps
+
 
     def set_speed(self, left_speed: float, right_speed: float):
         """
@@ -205,7 +224,9 @@ class RobotMotorController:
         self.left_speed_percent = max(-100, min(100, left_speed))
         self.right_speed_percent = max(-100, min(100, right_speed))
         
-        if GPIO_AVAILABLE and not hasattr(self, 'pid_left'): # So executa se o PID nao estiver ativo
+        # Correção: A condição anterior 'not hasattr(self, 'pid_left')' era sempre falsa.
+        # A verificação correta é se o loop de controle PID está desabilitado.
+        if GPIO_AVAILABLE and not self.pid_enabled:
             self._set_motor_speed_real("left", self.left_speed_percent)
             self._set_motor_speed_real("right", self.right_speed_percent)
         else:
@@ -238,10 +259,11 @@ class RobotMotorController:
         
         # Define a direção
         if speed_percent > 0:
-            # Para frente (Esquerdo: HIGH, Direito: LOW)
+            # Para frente - LÓGICA CORRETA restaurada com base na fiação do robô.
+            # Esquerda = HIGH, Direita = LOW
             direction = GPIO.HIGH if motor == "left" else GPIO.LOW
         else:
-            # Para trás (Esquerdo: LOW, Direito: HIGH)
+            # Para trás - Lógica invertida da de cima.
             direction = GPIO.LOW if motor == "left" else GPIO.HIGH
         
         GPIO.output(pin_dir, direction)
@@ -251,30 +273,46 @@ class RobotMotorController:
         pwm.ChangeDutyCycle(duty_cycle)
 
     def _simulate_movement(self):
-        """Simula o movimento dos motores para depuração."""
-        if self.left_speed_percent != 0 or self.right_speed_percent != 0:
-            self.is_moving = True
-            print(f"Simulando movimento - Esquerda: {self.left_speed_percent}%, Direita: {self.right_speed_percent}%")
-        else:
-            self.is_moving = False
-            print("Robô simulado parado")
+        """Simula o movimento do robô para depuração sem hardware."""
+        self.is_moving = self.left_speed_percent != 0 or self.right_speed_percent != 0
+        # print(f"SIM: Movimento {'ativo' if self.is_moving else 'parado'}. "
+        #       f"Velocidades: E={self.left_speed_percent}%, D={self.right_speed_percent}%")
 
     def get_and_reset_ticks(self) -> dict:
         """
-        Fornece a contagem de ticks desde a última chamada e a zera.
-        Esta é a "ponte" para o RobotNavigator usar a odometria.
+        Retorna a contagem atual de ticks dos encoders e os zera.
+        Esta função é crucial para o cálculo da odometria no RobotNavigator.
+        Garante que os ticks sejam retornados como inteiros.
         """
-        ticks = {
-            "left": self.left_hall_ticks,
-            "right": self.right_hall_ticks
-        }
-        self.left_hall_ticks = 0
-        self.right_hall_ticks = 0
-        return ticks
+        if GPIO_AVAILABLE:
+            # Captura os ticks atuais de forma atômica (embora Python não tenha 'atomic' real,
+            # a simplicidade da operação torna problemas de concorrência improváveis aqui)
+            left_ticks = self.left_hall_ticks
+            right_ticks = self.right_hall_ticks
+
+            # Zera os contadores
+            self.left_hall_ticks = 0
+            self.right_hall_ticks = 0
+
+            return {"left": int(left_ticks), "right": int(right_ticks)}
+        else:
+            # --- LÓGICA DE SIMULAÇÃO MELHORADA ---
+            # Calcula o tempo decorrido desde a última chamada
+            current_time = time.time()
+            delta_time = current_time - self.last_sim_time
+            self.last_sim_time = current_time
+            
+            # Calcula os ticks simulados com base na velocidade alvo e no tempo
+            sim_left_ticks = self.simulated_left_tps * delta_time
+            sim_right_ticks = self.simulated_right_tps * delta_time
+
+            # Retorna os ticks simulados como inteiros
+            return {"left": int(round(sim_left_ticks)), "right": int(round(sim_right_ticks))}
+
 
     def get_real_time_speed(self) -> dict:
         """
-        Retorna a velocidade atual calculada em ticks/segundo.
+        Retorna a velocidade atual calculada em ticks por segundo (TPS).
         """
         return {"left": self.current_left_tps, "right": self.current_right_tps}
 
@@ -294,11 +332,23 @@ class RobotMotorController:
             print("DEBUG: Controle PID DESATIVADO e motores parados.")
         else:
             self.set_speed(0, 0)
+        # --- NOVO: Zera também as velocidades simuladas ---
+        self.simulated_left_tps = 0.0
+        self.simulated_right_tps = 0.0
 
     def cleanup(self):
-        """Libera os recursos do GPIO ao encerrar."""
+        """Limpa os recursos do GPIO de forma segura."""
         if GPIO_AVAILABLE and GPIO:
-            print("Limpando recursos do GPIO.")
-            self.pwm_D.stop()
-            self.pwm_E.stop()
+            print("INFO: Iniciando limpeza dos recursos do RobotMotorController...")
+            # 1. Sinaliza para as threads pararem
+            self.shutdown_event.set()
+            
+            # 2. Pequena pausa para permitir que as threads terminem seus loops
+            time.sleep(0.1)
+            
+            # 3. Para os motores (garantia extra)
+            self.stop()
+            
+            # 4. Limpa os pinos GPIO
             GPIO.cleanup()
+            print("INFO: Limpeza do GPIO concluída.")

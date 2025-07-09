@@ -38,14 +38,14 @@ FORBIDDEN_AREA_INFLATION_RADIUS = 0.35 # 35cm de margem de segurança
 
 # Configurações do robô
 ROBOT_WIDTH = 0.6                # Largura/Diâmetro do robô em metros (60cm)
-ROBOT_SPEED = 0.40               # AUMENTADO 5x (era 0.08). Velocidade base de avanço em navegação (m/s).
-ROBOT_MAX_SPEED = 0.40           # AUMENTADO 5x (era 0.08). Velocidade máxima de avanço em m/s.
+ROBOT_SPEED = 0.12               # REDUZIDO para 30% do valor anterior (era 0.40). Velocidade segura (m/s).
+ROBOT_MAX_SPEED = 0.12           # REDUZIDO para 30% do valor anterior (era 0.40). Velocidade máxima (m/s).
 SIMULATION_SPEED_FACTOR = 8.0    # Fator de multiplicação para a velocidade na simulação
-ROBOT_TURN_SPEED = 90.0          # Velocidade de giro em navegação (graus/s)
+ROBOT_TURN_SPEED = 27.0          # REDUZIDO para 30% do valor anterior (era 90.0). Velocidade de giro (graus/s).
 ROBOT_ADJUSTMENT_TURN_SPEED = 0.15 # Velocidade de giro para ajustes finos (lenta e segura)
 
 # Constante legada - Manter por compatibilidade, mas com valor seguro
-ROBOT_FORWARD_SPEED = 0.40         # (LEGADO) AUMENTADO 5x (era 0.08). Usado em funções antigas, igual a ROBOT_SPEED
+ROBOT_FORWARD_SPEED = 0.12         # (LEGADO) REDUZIDO para consistência.
 
 ROBOT_INITIAL_POSITION = (5.7, 11.5) # (x, y) em metros - posição central na parte inferior
 ROBOT_INITIAL_ANGLE = 270            # graus - apontando para cima
@@ -56,7 +56,7 @@ SIMULATION_UPDATE_RATE = 10  # Hz
 
 # Configurações de navegação
 NAVIGATION_GOAL_TOLERANCE = 0.20  # 5cm - Distância para considerar que chegou (REDUZIDO DE 0.15)
-NAVIGATION_ANGLE_TOLERANCE = 10.0  # 3 graus, tolerância para alinhamento de ângulo (REDUZIDO DE 5.0)
+NAVIGATION_ANGLE_TOLERANCE = 5.0   # REDUZIDO para 5 graus. Força um alinhamento melhor antes de avançar.
 NAVIGATION_OBSTACLE_DISTANCE = 0.5  # metros
 
 # Configurações de precisão avançada
@@ -125,5 +125,7 @@ ROBOT_WHEEL_RADIUS_M = ROBOT_WHEEL_CIRCUMFERENCE_M / (2 * 3.1415926535) # Raio c
 TICKS_PER_REVOLUTION = 90 # CORREÇÃO FUNDAMENTAL: Ajustado com base na documentação dos sensores Hall (90 pulsos por revolução).
 
 # Limites de velocidade para o PID
-MAX_LINEAR_SPEED_MS = 0.20  # Velocidade maxima para frente em metros/segundo (ex: 20 cm/s)
-MAX_ANGULAR_SPEED_RADS = 0.5  # REDUZIDO: Torna o giro menos agressivo para priorizar o avanco
+# A linha abaixo foi MODIFICADA para usar ROBOT_SPEED como fonte única de verdade.
+# Isso garante que a velocidade máxima seja a mesma que a velocidade de navegação.
+MAX_LINEAR_SPEED_MS = ROBOT_SPEED  # Velocidade maxima para frente em metros/segundo.
+MAX_ANGULAR_SPEED_RADS = 0.5

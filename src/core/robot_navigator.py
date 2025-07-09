@@ -1,4 +1,3 @@
-
 import sys
 import os
 
@@ -63,7 +62,7 @@ class RobotNavigator:
         
         # Sistema de timeout para evitar travamento na aproximação final
         self.final_approach_start_time = None
-        self.final_approach_timeout = 15.0  # Aumentado para 15s para dar mais margem
+        self.final_approach_timeout = 25.0  # Aumentado de 15s para 25s para dar mais tempo ao PID
         
         print(f"DEBUG: Posição inicial definida: {self.current_position}")
         print(f"DEBUG: Ângulo inicial definido: {self.current_angle}°")
@@ -172,9 +171,11 @@ class RobotNavigator:
         if not self.navigation_active:
             return
 
-        # ETAPA 1.2: Transplante de Odometria - Sempre atualiza a pose com dados reais se disponível
-        if GPIO_AVAILABLE:
-            self._update_pose_with_odometry()
+        # --- CORREÇÃO DEFINITIVA ---
+        # A odometria baseada em ticks agora funciona para hardware real E para simulação.
+        # Removemos a condição `if GPIO_AVAILABLE` para que a posição seja sempre
+        # atualizada com base nos ticks (reais ou simulados).
+        self._update_pose_with_odometry()
 
         # --- Máquina de Estados de Navegação ---
 
@@ -233,17 +234,23 @@ class RobotNavigator:
             print("DEBUG: update() - Estado: PAUSED_AT_DESTINATION")
             if self.arrival_time is not None and (time.time() - self.arrival_time > self.arrival_pause_time):
                 self.is_paused_at_destination = False
-                # Avança para o próximo ponto, que é o início do caminho de volta
-                self.path_index = self.destination_index + 1
-                if self.path_index < len(self.path):
-                    self.current_target = self.path[self.path_index]
-                    print("🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → RETURNING_TO_BASE")
-                    self.navigation_state = "RETURNING_TO_BASE"
-                    self.is_returning_to_base = True
-                else:
-                    # Caso estranho: não há caminho de volta, então finaliza.
-                    print("DEBUG: Não há caminho de volta, ajustando ângulo final.")
+                
+                # ETAPA FINAL DA CORREÇÃO: Calcular o caminho de volta AGORA.
+                print("DEBUG: Calculando caminho de volta a partir da posição real...")
+                path_to_base = self.path_finder.find_path(self.current_position, self.base_position)
+
+                if not path_to_base or len(path_to_base) < 2:
+                    print("DEBUG: ERRO - Não foi possível encontrar caminho de volta. Finalizando.")
                     self._start_final_angle_adjustment()
+                    return
+
+                # Anexa o novo caminho de volta e continua a navegação.
+                self.path = self.path + path_to_base[1:] # Adiciona o caminho de volta, pulando o ponto inicial duplicado.
+                self.path_index = self.destination_index + 1
+                self.current_target = self.path[self.path_index]
+                print("🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → RETURNING_TO_BASE")
+                self.navigation_state = "RETURNING_TO_BASE"
+                self.is_returning_to_base = True
 
         elif self.navigation_state == "RETURNING_TO_BASE":
             print("DEBUG: update() - Estado: RETURNING_TO_BASE")
@@ -462,15 +469,15 @@ class RobotNavigator:
         # Atualiza posição com precisão extrema
         if forward_value != 0.0:
             distance = forward_value * ROBOT_SPEED * SIMULATION_TIMESTEP
-        angle_rad = math.radians(self.current_angle)
+            angle_rad = math.radians(self.current_angle)
             
             # Calcula os deslocamentos separadamente
             delta_x = distance * math.cos(angle_rad)
             delta_y = distance * math.sin(angle_rad)
             
             # Calcula a nova posição com precisão de 4 casas decimais
-        new_x = self.current_position[0] + delta_x
-        new_y = self.current_position[1] + delta_y
+            new_x = self.current_position[0] + delta_x
+            new_y = self.current_position[1] + delta_y
             
             # Debug detalhado do movimento
             print(f"DEBUG: _update_position - forward_value: {forward_value:.4f}")
@@ -481,11 +488,11 @@ class RobotNavigator:
             print(f"DEBUG: _update_position - posição nova: ({new_x:.4f}, {new_y:.4f})")
             
             # Arredonda para 4 casas decimais para precisão extrema
-        robot_radius = ROBOT_WIDTH / 2.0
-        self.current_position = (
-                round(max(robot_radius, min(MAP_WIDTH - robot_radius, new_x)), 4),
-                round(max(robot_radius, min(MAP_HEIGHT - robot_radius, new_y)), 4)
-        )
+            robot_radius = ROBOT_WIDTH / 2.0
+            self.current_position = (
+                    round(max(robot_radius, min(MAP_WIDTH - robot_radius, new_x)), 4),
+                    round(max(robot_radius, min(MAP_HEIGHT - robot_radius, new_y)), 4)
+            )
             
             print(f"DEBUG: _update_position - posição final (limitada): ({self.current_position[0]:.4f}, {self.current_position[1]:.4f})")
             
@@ -545,18 +552,11 @@ class RobotNavigator:
     def navigate_to_and_return(self, destination: Tuple[float, float], base_position: Tuple[float, float]) -> None:
         """Navega até o destino e retorna à base com planejamento otimizado"""
         # SEMPRE usa a posição inicial definida em config.py como base
-        actual_base_position = ROBOT_INITIAL_POSITION
+        self.base_position = ROBOT_INITIAL_POSITION # Garante que a base seja a correta
         print(f"DEBUG: ===== INICIANDO NAVEGAÇÃO =====")
         print(f"DEBUG: Destino: {destination}")
-        print(f"DEBUG: Base (config.py): {actual_base_position}")
+        print(f"DEBUG: Base (config.py): {self.base_position}")
         print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
-        print(f"DEBUG: Áreas proibidas configuradas: {len(self.forbidden_areas)}")
-        
-        # Debug das áreas proibidas
-        for i, area in enumerate(self.forbidden_areas):
-            print(f"DEBUG: Área proibida {i}: {len(area)} pontos")
-            for j, point in enumerate(area):
-                print(f"DEBUG:   Ponto {j}: {point}")
         
         # Reset completo para nova navegação (MANTÉM as áreas proibidas)
         self.reset_to_initial_state()
@@ -567,74 +567,27 @@ class RobotNavigator:
         self.navigation_state = "NAVIGATING_TO_DESTINATION"
         self.is_returning_to_base = False
         
-        # 📍 LOG INICIAL DA NAVEGAÇÃO AO DESTINO
-        print("🚀 INICIANDO FASE: NAVIGATING_TO_DESTINATION")
-        print("=" * 80)
-        print(f"📍 POSIÇÃO INICIAL (início da ida ao destino):")
-        print(f"  🤖 Coordenadas X,Y: ({self.current_position[0]:.4f}, {self.current_position[1]:.4f})")
-        print(f"  🧭 Ângulo inicial: {self.current_angle:.2f}°")
-        print(f"  🎯 Destino alvo: {destination}")
-        print(f"  📊 Distância até destino: {self._calculate_distance(self.current_position, destination):.4f}m")
-        print("=" * 80)
-        
         # Reset do timeout da aproximação final
         self.final_approach_start_time = None
         
-        # Calcula o caminho completo: base -> destino -> base
-        print(f"DEBUG: Calculando caminho completo: base -> destino -> base")
-        
-        # Caminho da base até o destino
+        # Calcula o caminho APENAS para o destino
         path_to_destination = self.path_finder.find_path(self.current_position, destination)
-        if not path_to_destination:
+        if not path_to_destination or len(path_to_destination) < 2:
             print("DEBUG: ERRO - Não foi possível encontrar caminho para o destino")
             self.navigation_active = False
             return
-            
-        # Caminho do destino até a base
-        path_to_base = self.path_finder.find_path(destination, actual_base_position)
-        if not path_to_base:
-            print("DEBUG: ERRO - Não foi possível encontrar caminho de retorno à base")
-            self.navigation_active = False
-            return
-            
-        # Combina os caminhos: base -> destino -> base
-        self.path = path_to_destination + path_to_base[1:]  # Remove duplicação do destino
+
+        # O caminho agora é APENAS para o destino. O retorno será calculado depois.
+        self.path = path_to_destination
         self.path_index = 0
         
-        # **CORREÇÃO CRÍTICA: SEMPRE USA O DESTINO EXATO SOLICITADO**
-        self.original_destination = destination  # GARANTE que seja exatamente o destino solicitado
-        self.destination_index = len(path_to_destination) - 1  # Índice do destino no path combinado
-        
-        print("=" * 80)
-        print("🎯 MAPEAMENTO DO DESTINO IDENTIFICADO:")
-        print(f"📍 Destino original identificado: {self.original_destination}")
-        print(f"📊 Caminho total: {len(self.path)} pontos")
-        print(f"🎯 Índice do destino: {self.destination_index}")
-        print(f"📊 Caminho de ida: {len(path_to_destination)} pontos")
-        print(f"📊 Caminho de volta: {len(path_to_base)} pontos")
-        print("📋 Caminho completo:")
-        for i, point in enumerate(self.path):
-            if i == self.destination_index:
-                print(f"  {i}: {point} ⭐ <- DESTINO FINAL")
-            elif i < len(path_to_destination):
-                print(f"  {i}: {point} (ida)")
-            else:
-                print(f"  {i}: {point} (volta)")
-        print("=" * 80)
+        self.original_destination = destination
+        self.destination_index = len(path_to_destination) - 1
         
         # Define o primeiro alvo
-        if len(self.path) > 0:
-            self.current_target = self.path[0]
-        else:
-            print("DEBUG: ERRO - Caminho vazio")
-            self.navigation_active = False
-            return
+        self.current_target = self.path[0]
         
-        print(f"DEBUG: Caminho completo calculado com {len(self.path)} pontos")
-        for i, point in enumerate(self.path):
-            print(f"DEBUG:   Ponto {i}: {point}")
-        print(f"DEBUG: Primeiro alvo: {self.current_target}")
-        print(f"DEBUG: Navegação ativa: {self.navigation_active}")
+        print(f"DEBUG: Caminho de ida calculado com {len(self.path)} pontos.")
         print(f"DEBUG: ===== NAVEGAÇÃO INICIADA =====")
         
     def get_navigation_status(self) -> dict:
@@ -683,68 +636,58 @@ class RobotNavigator:
         return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2) 
 
     def _move_towards_target(self):
-        """Move o robô em direção ao alvo atual, gerenciando velocidade e rotação."""
+        """
+        Move o robô em direção ao alvo usando o CONTROLE PID.
+        Esta função calcula as velocidades linear e angular e as converte
+        para a velocidade alvo de cada roda (em ticks por segundo).
+        """
         if self.current_target is None:
+            self.motors.set_target_speed(0, 0)
             return
 
-        # Calcula a distância e o ângulo para o alvo
+        # --- 1. Calcular Erros ---
         dx = self.current_target[0] - self.current_position[0]
         dy = self.current_target[1] - self.current_position[1]
-        distance = math.sqrt(dx**2 + dy**2)
+        distance_to_target = math.sqrt(dx**2 + dy**2)
         target_angle = math.degrees(math.atan2(dy, dx))
-        angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
+        angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
-        forward_value = 0
-        turn_value = 0
-
-        # Lógica de movimento dividida por fases para maior controle
-        if self.navigation_state == "NAVIGATING_TO_DESTINATION" or self.navigation_state == "RETURNING_TO_BASE":
-        angle_tolerance = NAVIGATION_ANGLE_TOLERANCE
-
-            if abs(angle_diff) > angle_tolerance:
-                # Gira primeiro se o ângulo for muito grande
-                turn_value = min(0.5, abs(angle_diff) / 30.0)
-                if angle_diff < 0:
-                    turn_value = -turn_value
-            else:
-                # Movimento para frente com ajuste de rotação
-                # Aplica o multiplicador de velocidade
-                base_speed = ROBOT_SPEED * self.speed_multiplier
-                forward_value = min(base_speed, distance / 1.5)
-
-                if abs(angle_diff) > 1.5:  # Pequeno ajuste de curva
-                    turn_value = min(0.1, abs(angle_diff) / 40.0)
-                    if angle_diff < 0:
-                        turn_value = -turn_value
+        # --- 2. Calcular Velocidades Desejadas ---
         
-        elif self.navigation_state == "FINAL_APPROACH":
-             # Lógica para aproximação final (mais lenta e cuidadosa)
-            if abs(angle_diff) > NAVIGATION_ULTRA_PRECISION_ANGLE_TOLERANCE:
-                turn_value = min(0.15, abs(angle_diff) / 60.0)
-                if angle_diff < 0:
-                    turn_value = -turn_value
-            else:
-                # Na aproximação final, não usamos o multiplicador para segurança
-                forward_value = min(0.1, distance)
-
-        # Aplica os comandos de movimento
-        if forward_value > 0 or abs(turn_value) > 0:
-            left_speed = (forward_value - turn_value) * 100 
-            right_speed = (forward_value + turn_value) * 100
-            
-            # Limita as velocidades para segurança
-            max_abs_speed = 40.0 * self.speed_multiplier if self.navigation_state != "FINAL_APPROACH" else 20.0
-            left_speed = max(-max_abs_speed, min(max_abs_speed, left_speed))
-            right_speed = max(-max_abs_speed, min(max_abs_speed, right_speed))
-            
-            print(f"DEBUG: Motores - L:{left_speed:.1f} R:{right_speed:.1f} | Fwd:{forward_value:.2f} Turn:{turn_value:.2f} Mult:{self.speed_multiplier:.2f}")
-            self.motors.set_speed(left_speed, right_speed)
-        else:
-            self.motors.stop()
+        # A velocidade linear (para frente) é proporcional à distância, mas limitada pela velocidade máxima.
+        # Também é reduzida se o robô não estiver alinhado, para priorizar o giro.
+        angle_factor = max(0, 1 - (abs(angle_error) / 90.0)) # Fator de 1 (alinhado) a 0 (90 graus de erro)
+        linear_speed_ms = MAX_LINEAR_SPEED_MS * angle_factor
         
-        # ETAPA 1.3: Transplante de Odometria - Atualiza a posição simulada APENAS se não houver odometria real
-        if not GPIO_AVAILABLE:
-            self._update_position(forward_value, turn_value)
+        # A velocidade angular (giro) é proporcional ao erro de ângulo.
+        # Usamos um fator P-controller simples aqui para o giro.
+        angular_speed_rads = math.radians(angle_error) * 2.0 # O fator 2.0 é um ganho proporcional (P)
+        angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
+
+        # --- 3. Converter para Velocidade das Rodas ---
+        # Fórmulas de cinemática diferencial:
+        # v_r = (2 * v + w * L) / (2 * R)
+        # v_l = (2 * v - w * L) / (2 * R)
+        # Simplificando, calculamos a velocidade linear de cada roda
+        v = linear_speed_ms
+        w = angular_speed_rads
+        L = ROBOT_WHEEL_BASE_M
+        
+        right_wheel_speed_ms = v + (w * L) / 2.0
+        left_wheel_speed_ms = v - (w * L) / 2.0
+
+        # --- 4. Converter m/s para Ticks por Segundo (TPS) ---
+        # TPS = (metros / segundo) / (metros / revolução) * (ticks / revolução)
+        left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+        right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+
+        # --- 5. Enviar Comando para o Controlador PID ---
+        # O log agora mostrará a velocidade alvo em TPS
+        print(f"DEBUG PID: Target L:{left_tps:.1f}tps R:{right_tps:.1f}tps | Lin:{v:.2f}m/s Ang:{w:.2f}rad/s")
+        self.motors.set_target_speed(left_tps, right_tps)
+        
+        # A odometria é sempre atualizada no loop principal 'update', não precisamos chamar aqui.
+        # if not GPIO_AVAILABLE: self._update_position(...)
 
     def _stable_final_approach(self):
         """
@@ -760,9 +703,11 @@ class RobotNavigator:
         if self.final_approach_start_time is None:
             self.final_approach_start_time = current_time
             print("DEBUG: Iniciando timeout da aproximação final")
-        elif current_time - self.final_approach_start_time > self.final_approach_timeout:
+
+        elapsed_time = current_time - self.final_approach_start_time
+        print(f"DEBUG: Tempo decorrido na aproximação: {elapsed_time:.1f}s / {self.final_approach_timeout:.1f}s")
+        if elapsed_time > self.final_approach_timeout:
             print(f"DEBUG: ⚠️ TIMEOUT DA APROXIMAÇÃO FINAL ({self.final_approach_timeout}s)")
-            print("DEBUG: Considerando destino alcançado por timeout")
             self.motors.stop()
             self.final_approach_start_time = None
             return True # Considera como sucesso para não travar
@@ -774,132 +719,62 @@ class RobotNavigator:
             
         dx = self.original_destination[0] - self.current_position[0]
         dy = self.original_destination[1] - self.current_position[1]
-        total_distance = math.sqrt(dx*dx + dy*dy)
-        
-        elapsed_time = current_time - self.final_approach_start_time
-        print("🎯 APROXIMAÇÃO FINAL DETALHADA:")
-        print("=" * 80)
-        print(f"⏱️ Tempo de aproximação: {elapsed_time:.1f}s (timeout em {self.final_approach_timeout}s)")
-        print(f"📍 POSIÇÕES:")
-        print(f"  🤖 Robô: ({self.current_position[0]:.4f}, {self.current_position[1]:.4f})")
-        print(f"  🎯 Destino REAL: ({self.original_destination[0]:.4f}, {self.original_destination[1]:.4f})")
-        print(f"📏 DISTÂNCIAS:")
-        print(f"  📊 Erro total: {total_distance:.4f}m ({total_distance*100:.1f}cm)")
-        print(f"  📊 Erro X: {abs(dx):.4f}m ({abs(dx)*100:.1f}cm)")
-        print(f"  📊 Erro Y: {abs(dy):.4f}m ({abs(dy)*100:.1f}cm)")
-        print(f"  🎯 Tolerância final: 5.0cm")
-        print("=" * 80)
-        
-        # **TOLERÂNCIA MAIS REALISTA PARA EVITAR OSCILAÇÃO**
-        final_tolerance = 0.05  # 5cm - mais realista e estável
-        
-        # Verifica tolerâncias individuais por eixo para debug
-        tolerance_x = abs(dx) <= 0.03  # 3cm em X
-        tolerance_y = abs(dy) <= 0.03  # 3cm em Y
-        
-        print(f"DEBUG: Tolerâncias - X: {'✅' if tolerance_x else '❌'} ({abs(dx)*100:.1f}cm), Y: {'✅' if tolerance_y else '❌'} ({abs(dy)*100:.1f}cm)")
-        
-        if total_distance <= final_tolerance:
-            print("🎉 DESTINO FINAL ALCANÇADO COM SUCESSO!")
-            print("=" * 80)
-            print("🏆 MAPEAMENTO FINAL - ROBÔ CHEGOU AO DESTINO:")
-            print(f"📍 Destino esperado: {self.original_destination}")
-            print(f"🤖 Posição final do robô: ({self.current_position[0]:.4f}, {self.current_position[1]:.4f})")
-            print(f"🎯 Destino REAL usado: ({self.original_destination[0]:.4f}, {self.original_destination[1]:.4f})")
-            print("📊 PRECISÃO ALCANÇADA:")
-            print(f"  ✅ Erro total: {total_distance*100:.1f}cm (tolerância: 5.0cm)")
-            print(f"  ✅ Precisão X: {abs(dx)*100:.1f}cm")
-            print(f"  ✅ Precisão Y: {abs(dy)*100:.1f}cm")
-            print(f"  ⏱️ Tempo de aproximação: {elapsed_time:.1f}s")
-            print("📋 COMPARAÇÃO COM DESTINO ORIGINAL:")
-            if hasattr(self, 'original_destination') and self.original_destination is not None:
-                orig_error_x = abs(self.current_position[0] - self.original_destination[0])
-                orig_error_y = abs(self.current_position[1] - self.original_destination[1])
-                orig_total_error = math.sqrt(orig_error_x**2 + orig_error_y**2)
-                print(f"  📏 Erro vs destino original: {orig_total_error*100:.1f}cm")
-                print(f"  📊 Erro X vs original: {orig_error_x*100:.1f}cm")
-                print(f"  📊 Erro Y vs original: {orig_error_y*100:.1f}cm")
-            print("=" * 80)
-                self.motors.stop()
-                self.final_approach_start_time = None
-            return True # Sinaliza sucesso para a máquina de estados
-
-        # **APROXIMAÇÃO DIRETA SEM CORREÇÃO POR EIXO**
-        # Calcula ângulo direto para o destino
+        total_distance = math.sqrt(dx**2 + dy**2)
         target_angle = math.degrees(math.atan2(dy, dx))
         target_angle = (target_angle + 360) % 360
         angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
+
+        # Logs de depuração
+        print("-" * 30, "MÉTRICAS DE APROXIMAÇÃO FINAL", "-" * 30)
+        print(f"  📍 Destino: ({self.original_destination[0]:.4f}, {self.original_destination[1]:.4f})")
+        print(f"  🤖 Robô: ({self.current_position[0]:.4f}, {self.current_position[1]:.4f})")
+        print(f"  📏 Distância: {total_distance*100:.1f}cm")
+        print(f"  📐 Ângulo: {angle_diff:.1f}°")
         
-        print(f"DEBUG: Ângulo para destino: {target_angle:.2f}°")
-        print(f"DEBUG: Ângulo atual: {self.current_angle:.2f}°")
-        print(f"DEBUG: Diferença angular: {angle_diff:.2f}°")
-        
-        forward_value = 0.0
-        turn_value = 0.0
-        
-        # **ESTRATÉGIA MELHORADA PARA CORREÇÃO DO EIXO Y**
-        # Verifica se o problema é principalmente no eixo Y
-        distance_x = abs(dx)
-        distance_y = abs(dy)
-        
-        print(f"DEBUG: Erro por eixo - X: {distance_x*100:.1f}cm, Y: {distance_y*100:.1f}cm")
-        
-        # Se o erro Y é maior que o erro X, prioriza a correção Y
-        if distance_y > distance_x and distance_y > 0.02:  # Erro Y > 2cm e maior que X
-            print(f"DEBUG: 🎯 PRIORIZANDO CORREÇÃO DO EIXO Y (erro: {distance_y*100:.1f}cm)")
-            # Calcula ângulo específico para o eixo Y
-            if dy > 0:
-                target_angle_y = 90  # Subir (Y positivo)
-            else:
-                target_angle_y = 270  # Descer (Y negativo)
-            
-            angle_diff_y = (target_angle_y - self.current_angle + 180) % 360 - 180
-            
-            if abs(angle_diff_y) > 1.0:  # Precisa ajustar ângulo para Y
-                turn_value = min(0.12, abs(angle_diff_y) / 50.0)
-                if angle_diff_y < 0:
-                    turn_value = -turn_value
-                print(f"DEBUG: Ajustando para eixo Y: turn = {turn_value:.4f} (ângulo alvo: {target_angle_y}°)")
-            else:
-                # Move no eixo Y com velocidade proporcional ao erro
-                forward_value = min(0.1, distance_y / 0.6)
-                print(f"DEBUG: Movendo no eixo Y: forward = {forward_value:.4f}")
-        
-        elif abs(angle_diff) > 2.0:  # Tolerância angular relaxada
-            # Primeiro alinha com o destino
-            turn_value = min(0.1, abs(angle_diff) / 60.0)  # Giro muito suave
-            if angle_diff < 0:
-                turn_value = -turn_value
-            print(f"DEBUG: Alinhando suavemente: turn = {turn_value:.4f}")
+        final_tolerance = 0.05  # 5cm
+        if total_distance <= final_tolerance:
+            print("🎉 DESTINO FINAL ALCANÇADO COM SUCESSO!")
+            self.motors.stop() # Usa o stop() que desativa o PID
+            self.final_approach_start_time = None
+            return True
+
+        # --- LÓGICA DE MOVIMENTO REATORADA PARA USAR O CONTROLE PID ---
+        # A lógica é similar a _move_towards_target, mas com ganhos e velocidades
+        # mais conservadores para garantir uma aproximação precisa.
+
+        # 1. Calcular velocidades alvo
+        # Prioriza o giro, zerando a velocidade de avanço se o erro angular for grande.
+        angle_tolerance_approach = 5.0 # Tolerância de 5 graus para aproximação
+        if abs(angle_diff) > angle_tolerance_approach:
+            linear_speed_ms = 0.0 # Para e gira
         else:
-            # Move diretamente para o destino com velocidade proporcional
-            forward_value = min(0.08, total_distance / 0.8)  # Velocidade muito baixa e proporcional
-            print(f"DEBUG: Movimento final direto: forward = {forward_value:.4f}")
-            
-            # Correção angular mínima durante movimento
-            if abs(angle_diff) > 0.5:
-                turn_value = min(0.05, abs(angle_diff) / 80.0)
-                if angle_diff < 0:
-                    turn_value = -turn_value
-                print(f"DEBUG: Correção angular mínima: turn = {turn_value:.4f}")
+            # Avança com velocidade proporcional à distância, de forma um pouco mais agressiva.
+            # Original: min(MAX_LINEAR_SPEED_MS * 0.5, total_distance / 2.0)
+            linear_speed_ms = min(MAX_LINEAR_SPEED_MS * 0.7, total_distance / 1.5)
         
-        # **APLICAÇÃO DOS COMANDOS COM LIMITAÇÃO EXTRA**
-        if forward_value > 0 or turn_value != 0:
-            left_speed = (forward_value - turn_value) * 100
-            right_speed = (forward_value + turn_value) * 100
-            
-            # Limitação mais restritiva para evitar oscilação
-            left_speed = max(-15, min(15, left_speed))
-            right_speed = max(-15, min(15, right_speed))
-            
-            print(f"DEBUG: Comandos finais suaves - L: {left_speed:.1f}%, R: {right_speed:.1f}%")
-            self.motors.set_speed(left_speed, right_speed)
-            
-            # Atualiza posição
-            self._update_position(forward_value, turn_value)
-        else:
-            print("DEBUG: Parando motores na aproximação final")
-            self.motors.stop()
+        # Velocidade angular proporcional ao erro, com ganho aumentado para mais responsividade.
+        # Original: angular_gain = 1.5
+        angular_gain = 2.5 # Ganho (P) do controlador de giro
+        angular_speed_rads = math.radians(angle_diff) * angular_gain
+        angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
+
+        # 2. Converter para velocidade das rodas (em m/s)
+        v = linear_speed_ms
+        w = angular_speed_rads
+        L = ROBOT_WHEEL_BASE_M
+        right_wheel_speed_ms = v + (w * L) / 2.0
+        left_wheel_speed_ms = v - (w * L) / 2.0
+
+        # 3. Converter m/s para Ticks por Segundo (TPS)
+        left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+        right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+
+        # 4. Enviar comando para o controlador PID
+        print(f"DEBUG PID (Approach): Target L:{left_tps:.1f}tps R:{right_tps:.1f}tps")
+        self.motors.set_target_speed(left_tps, right_tps)
+
+        # Como a odometria real está ativa, não precisamos da simulação _update_position
+        # self._update_position(forward_value, turn_value)
             
         return False # Ainda não chegou
 
@@ -958,46 +833,40 @@ class RobotNavigator:
         """Obtém informações sobre o próximo waypoint no caminho."""
         if not self.path or self.path_index >= len(self.path):
             return None
-        return self.path[self.path_index] 
+        return self.path_index, self.current_target, len(self.path)
 
     def _update_pose_with_odometry(self):
         """
-        (TRANSPLANTADO)
-        Atualiza a pose (posição e ângulo) do robô usando dados de odometria
-        dos encoders das rodas. Este método corrige a posição simulada com
-        dados do mundo real.
+        Atualiza a posição (x, y) e o ângulo (theta) do robô com base nos ticks dos encoders.
+        Esta é a implementação da odometria.
         """
-        # Só executa se estivermos em hardware real
-        if not GPIO_AVAILABLE:
+        ticks_data = self.motors.get_and_reset_ticks()
+        if not ticks_data:
             return
 
-        left_ticks, right_ticks = self.motors.get_and_reset_ticks()
-
-        # Se não houve movimento, não há o que fazer
-        if left_ticks == 0 and right_ticks == 0:
-            return
+        # Correção Definitiva: Garante que os ticks sejam inteiros.
+        left_ticks = int(ticks_data.get('left', 0))
+        right_ticks = int(ticks_data.get('right', 0))
 
         # Calcula a distância percorrida por cada roda
         dist_left = (left_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
         dist_right = (right_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
 
         # Calcula a distância média percorrida pelo centro do robô
-        distance_moved = (dist_left + dist_right) / 2.0
+        delta_distance = (dist_left + dist_right) / 2.0
 
         # Calcula a mudança no ângulo (em radianos)
         delta_angle_rad = (dist_right - dist_left) / ROBOT_WHEEL_BASE_M
-        
-        # Atualiza a pose do robô
-        current_angle_rad = math.radians(self.current_angle)
-            
-        # O novo ângulo é o antigo mais a mudança
-        self.current_angle += math.degrees(delta_angle_rad)
-        self.current_angle %= 360 # Normaliza para 0-360
 
-        # Calcula a nova posição com base na distância e no ângulo MÉDIO durante o movimento
-        avg_angle_rad = current_angle_rad + (delta_angle_rad / 2.0)
-        
+        # Atualiza o ângulo do robô (theta)
+        self.current_angle += math.degrees(delta_angle_rad)
+        self.current_angle = self.current_angle % 360  # Normaliza o ângulo para 0-360
+
+        # Converte o ângulo para radianos para os cálculos de posição
+        current_angle_rad = math.radians(self.current_angle)
+
+        # Atualiza a posição (x, y)
         self.current_position = (
-            self.current_position[0] + distance_moved * math.cos(avg_angle_rad),
-            self.current_position[1] + distance_moved * math.sin(avg_angle_rad)
+            self.current_position[0] + delta_distance * math.cos(current_angle_rad),
+            self.current_position[1] + delta_distance * math.sin(current_angle_rad)
         )
