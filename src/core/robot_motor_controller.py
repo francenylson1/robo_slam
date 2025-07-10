@@ -100,9 +100,9 @@ class RobotMotorController(QObject):
             # NOVOS GANHOS (MUITO MAIS CONSERVADORES) PARA ESTABILIZAR O ROBÔ EM BAIXA VELOCIDADE
             # O objetivo é eliminar o movimento circular.
             # AUMENTANDO O Ki PARA DAR MAIS "INSISTÊNCIA" AO ROBÔ NA APROXIMAÇÃO FINAL.
-            # --- ATUALIZAÇÃO: Aumentando os limites de saída para dar mais força ao PID ---
-            self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-40, 40))
-            self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-40, 40))
+            # --- ATUALIZAÇÃO: Reduzindo drasticamente os limites para calibração fina ---
+            self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
+            self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
 
             # Inicia a thread de monitoramento dos sensores Hall por Polling
             monitor_thread = threading.Thread(target=self._hall_sensor_monitor_thread, daemon=True)
