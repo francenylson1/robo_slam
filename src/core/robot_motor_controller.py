@@ -169,12 +169,13 @@ class RobotMotorController:
                     GPIO.output(self.dir_E, GPIO.LOW)
                 self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
 
-                # --- MOTOR DIREITO (CORRIGIDO) ---
-                # A lógica de direção foi equalizada com o motor esquerdo (HIGH para frente).
+                # --- MOTOR DIREITO (CORRIGIDO para lógica original do hardware) ---
+                # A lógica de direção foi restaurada para a original (LOW para frente),
+                # que é a que funciona com a fiação do robô.
                 if right_power >= 0: # Para frente
-                    GPIO.output(self.dir_D, GPIO.HIGH)
-                else: # Para trás
                     GPIO.output(self.dir_D, GPIO.LOW)
+                else: # Para trás
+                    GPIO.output(self.dir_D, GPIO.HIGH)
                 self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
 
                 # Libera os freios se houver qualquer potência
