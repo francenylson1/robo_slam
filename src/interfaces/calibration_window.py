@@ -161,31 +161,38 @@ class CalibrationWindow(QDialog):
         self.motor_controller.set_pid_gains(motor_side, kp, ki, kd)
         print(f"PID Aply: Lado={motor_side}, Kp={kp:.2f}, Ki={ki:.2f}, Kd={kd:.2f}")
 
-    def _update_plots(self, side, setpoint, real_speed, output):
-        """Recebe os dados do motor e atualiza os gráficos."""
+    def _update_plots(self, data):
+        """Recebe o dicionário de dados e atualiza ambos os gráficos."""
         current_time = time.time() - self.start_time
         self.time_data.append(current_time)
+
+        # Dados do motor esquerdo
+        left_data = data['left']
+        self.left_setpoint_data.append(left_data['setpoint'])
+        self.left_real_speed_data.append(left_data['real_speed'])
+        self.left_pid_output_data.append(left_data['output'])
+
+        # Dados do motor direito
+        right_data = data['right']
+        self.right_setpoint_data.append(right_data['setpoint'])
+        self.right_real_speed_data.append(right_data['real_speed'])
+        self.right_pid_output_data.append(right_data['output'])
         
         # Limita o tamanho dos dados para não consumir muita memória
         if len(self.time_data) > 200:
             self.time_data.pop(0)
-            if side == "left": self.left_setpoint_data.pop(0); self.left_real_speed_data.pop(0); self.left_pid_output_data.pop(0)
-            if side == "right": self.right_setpoint_data.pop(0); self.right_real_speed_data.pop(0); self.right_pid_output_data.pop(0)
+            self.left_setpoint_data.pop(0); self.left_real_speed_data.pop(0); self.left_pid_output_data.pop(0)
+            self.right_setpoint_data.pop(0); self.right_real_speed_data.pop(0); self.right_pid_output_data.pop(0)
 
-        if side == "left":
-            self.left_setpoint_data.append(setpoint)
-            self.left_real_speed_data.append(real_speed)
-            self.left_pid_output_data.append(output)
-            self.left_setpoint_line.setData(self.time_data, self.left_setpoint_data)
-            self.left_real_speed_line.setData(self.time_data, self.left_real_speed_data)
-            self.left_pid_output_line.setData(self.time_data, self.left_pid_output_data)
-        elif side == "right":
-            self.right_setpoint_data.append(setpoint)
-            self.right_real_speed_data.append(real_speed)
-            self.right_pid_output_data.append(output)
-            self.right_setpoint_line.setData(self.time_data, self.right_setpoint_data)
-            self.right_real_speed_line.setData(self.time_data, self.right_real_speed_data)
-            self.right_pid_output_line.setData(self.time_data, self.right_pid_output_data)
+        # Atualiza o gráfico esquerdo
+        self.left_setpoint_line.setData(self.time_data, self.left_setpoint_data)
+        self.left_real_speed_line.setData(self.time_data, self.left_real_speed_data)
+        self.left_pid_output_line.setData(self.time_data, self.left_pid_output_data)
+        
+        # Atualiza o gráfico direito
+        self.right_setpoint_line.setData(self.time_data, self.right_setpoint_data)
+        self.right_real_speed_line.setData(self.time_data, self.right_real_speed_data)
+        self.right_pid_output_line.setData(self.time_data, self.right_pid_output_data)
 
     def _test_forward(self):
         """Envia um comando para o robô andar reto."""

@@ -26,8 +26,8 @@ class RobotMotorController(QObject):
     Controla os motores do robô, abstraindo a complexidade do hardware.
     Pode operar em modo real (com Raspberry Pi e RPi.GPIO) ou em modo simulado.
     """
-    # --- 3. DEFINIR O SINAL ---
-    pid_data_updated = pyqtSignal(str, float, float, float) # side, setpoint, real_speed, output
+    # --- SINAL UNIFICADO ---
+    pid_data_updated = pyqtSignal(dict) # Emite um dicionário com os dados de ambos os motores
 
     def __init__(self):
         super().__init__() # <-- 4. CHAMAR O __INIT__ DA CLASSE PAI
@@ -164,9 +164,12 @@ class RobotMotorController(QObject):
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
             
-            # --- 5. EMITIR OS SINAIS COM OS DADOS ---
-            self.pid_data_updated.emit("left", self.pid_left.setpoint, self.current_left_tps, left_power)
-            self.pid_data_updated.emit("right", self.pid_right.setpoint, self.current_right_tps, right_power)
+            # --- Emite um único sinal com um dicionário contendo todos os dados ---
+            combined_data = {
+                'left': {'setpoint': self.pid_left.setpoint, 'real_speed': self.current_left_tps, 'output': left_power},
+                'right': {'setpoint': self.pid_right.setpoint, 'real_speed': self.current_right_tps, 'output': right_power}
+            }
+            self.pid_data_updated.emit(combined_data)
 
             # 3. Aplica a potencia aos motores COM A LÓGICA DE DIREÇÃO CORRETA
             # Esta verificação garante que o código só rode no hardware real
