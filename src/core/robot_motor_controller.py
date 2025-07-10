@@ -44,6 +44,13 @@ class RobotMotorController(QObject):
         self.simulated_right_tps = 0.0
         self.last_sim_time = time.time()
         
+        # --- ATRIBUTOS DO PID ---
+        # Movidos para fora do bloco 'if GPIO_AVAILABLE' para que existam
+        # tanto em modo real quanto simulado.
+        self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
+        self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
+        self.pid_enabled = False
+
         # Atributos para feedback de velocidade
         self.left_hall_ticks = 0
         self.right_hall_ticks = 0
@@ -55,7 +62,7 @@ class RobotMotorController(QObject):
         self.shutdown_event = threading.Event()
         
         # --- NOVO: Interruptor para o controle PID ---
-        self.pid_enabled = False
+        # self.pid_enabled = False # Movido para cima
 
         if GPIO_AVAILABLE and GPIO:
             print("Inicializando controlador de motores em MODO REAL (Raspberry Pi).")
@@ -101,8 +108,9 @@ class RobotMotorController(QObject):
             # O objetivo é eliminar o movimento circular.
             # AUMENTANDO O Ki PARA DAR MAIS "INSISTÊNCIA" AO ROBÔ NA APROXIMAÇÃO FINAL.
             # --- ATUALIZAÇÃO: Reduzindo drasticamente os limites para calibração fina ---
-            self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
-            self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
+            # A inicialização foi movida para fora deste bloco
+            # self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
+            # self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
 
             # Inicia a thread de monitoramento dos sensores Hall por Polling
             monitor_thread = threading.Thread(target=self._hall_sensor_monitor_thread, daemon=True)
@@ -172,10 +180,10 @@ class RobotMotorController(QObject):
             if self.pid_left.setpoint > 0: # Imprime apenas quando há um alvo
                 print(f"L_PID -> Alvo:{self.pid_left.setpoint:4.1f} | "
                       f"Real:{self.current_left_tps:5.1f} | "
-                      f"Erro:{self.pid_left.last_error:5.1f} | "
-                      f"P:{self.pid_left.proportional_term:6.2f} | "
-                      f"I:{self.pid_left.integral_term*self.pid_left.Ki:6.2f} | "
-                      f"D:{self.pid_left.derivative_term:6.2f} | "
+                      f"Erro:{self.pid_left._last_error:5.1f} | "
+                      f"P:{self.pid_left._proportional_term:6.2f} | "
+                      f"I:{self.pid_left.Ki * self.pid_left._integral_term:6.2f} | "
+                      f"D:{self.pid_left._derivative_term:6.2f} | "
                       f"Saida:{left_power:6.2f}")
             
             # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
@@ -233,76 +241,62 @@ class RobotMotorController(QObject):
             self.right_hall_ticks = 0
             self.last_speed_check_time = current_time
 
-    def set_wheel_speeds_dps(self, left_dps: float, right_dps: float):
+    def set_target_speed(self, left_tps: float, right_tps: float):
         """
-        Define a velocidade alvo das rodas em graus por segundo (dps).
-        Esta função serve como uma interface para o navegador, convertendo
-        dps para tps (ticks por segundo) antes de passar para o controle PID.
+        Define a velocidade alvo para o controle PID em ticks por segundo (tps).
+        Ativa o controle PID se ele estiver desativado.
         """
-        # 1 volta = 360 graus
-        # tps = (dps / 360) * ticks_per_revolution
-        left_tps = (left_dps / 360.0) * TICKS_PER_REVOLUTION
-        right_tps = (right_dps / 360.0) * TICKS_PER_REVOLUTION
+        if not self.pid_enabled:
+            self.enable_pid_control()
 
-        self.set_target_speed(left_tps, right_tps)
+        self.pid_left.set_setpoint(left_tps)
+        self.pid_right.set_setpoint(right_tps)
 
     def set_pid_gains(self, side, Kp, Ki, Kd):
         """
-        Define os ganhos para um dos controladores PID.
-
-        Args:
-            side (str): 'left' ou 'right'.
-            Kp (float): Novo ganho Proporcional.
-            Ki (float): Novo ganho Integral.
-            Kd (float): Novo ganho Derivativo.
+        Atualiza os ganhos do PID para um dos motores.
         """
-        if side == "left":
-            if hasattr(self, 'pid_left'):
-                self.pid_left.set_gains(Kp, Ki, Kd)
-        elif side == "right":
-            if hasattr(self, 'pid_right'):
-                self.pid_right.set_gains(Kp, Ki, Kd)
-        else:
-            print(f"AVISO: Tentativa de definir ganhos PID para um lado inválido: {side}")
+        if side == 'left':
+            self.pid_left.set_gains(Kp, Ki, Kd)
+            print(f"PID Aply: Lado=left, Kp={Kp:.2f}, Ki={Ki:.2f}, Kd={Kd:.2f}")
+        elif side == 'right':
+            self.pid_right.set_gains(Kp, Ki, Kd)
+            print(f"PID Aply: Lado=right, Kp={Kp:.2f}, Ki={Ki:.2f}, Kd={Kd:.2f}")
 
-    def set_target_speed(self, left_tps: float, right_tps: float):
-        """
-        Define a velocidade alvo (em ticks/segundo) e ATIVA o controle PID.
-        """
-        if GPIO_AVAILABLE:
-            if not self.pid_enabled:
-                # Ao receber o primeiro comando de velocidade, ativa o PID
-                self.pid_enabled = True
-                print("DEBUG: Controle PID ATIVADO.")
-            self.pid_left.set_setpoint(left_tps)
-            self.pid_right.set_setpoint(right_tps)
-        else:
-            # Em modo simulado, armazena a velocidade alvo para o cálculo de odometria
-            print(f"Simulando velocidade alvo - Esquerda: {left_tps:.1f} tps, Direita: {right_tps:.1f} tps")
-            self.simulated_left_tps = left_tps
-            self.simulated_right_tps = right_tps
+    def enable_pid_control(self):
+        """Ativa o loop de controle PID."""
+        print("DEBUG: Controle PID ATIVADO.")
+        self.pid_enabled = True
 
+    def disable_pid_control(self):
+        """Desativa o loop de controle PID e reseta os controladores."""
+        print("DEBUG: Controle PID DESATIVADO e motores parados.")
+        self.pid_enabled = False
+        # Para os motores fisicamente
+        if GPIO_AVAILABLE and GPIO:
+            self.pwm_E.ChangeDutyCycle(0)
+            self.pwm_D.ChangeDutyCycle(0)
+            GPIO.output(self.break_E, GPIO.HIGH)
+            GPIO.output(self.break_D, GPIO.HIGH)
+        # Reseta o estado dos PIDs para a próxima ativação
+        self.pid_left.reset()
+        self.pid_right.reset()
 
     def set_speed(self, left_speed: float, right_speed: float):
         """
-        (LEGADO - Apenas para compatibilidade)
-        Define a velocidade dos motores.
-        Valores de -100 a 100, onde > 0 e para frente e < 0 e para tras.
-        Para controle PID, use set_target_speed.
+        Método de compatibilidade para definir a velocidade dos motores.
+        Se as velocidades forem zero, para os motores usando o novo sistema.
+        Caso contrário, converte a porcentagem de velocidade para tps e usa o PID.
         """
-        # Em modo PID, esta funcao deve ser usada com cuidado ou desativada
-        # para nao interferir no loop de controle.
-        # Por enquanto, mantemos para diagnostico.
-        self.left_speed_percent = max(-100, min(100, left_speed))
-        self.right_speed_percent = max(-100, min(100, right_speed))
-        
-        # Correção: A condição anterior 'not hasattr(self, 'pid_left')' era sempre falsa.
-        # A verificação correta é se o loop de controle PID está desabilitado.
-        if GPIO_AVAILABLE and not self.pid_enabled:
-            self._set_motor_speed_real("left", self.left_speed_percent)
-            self._set_motor_speed_real("right", self.right_speed_percent)
+        if left_speed == 0 and right_speed == 0:
+            self.stop_motors()
         else:
-            self._simulate_movement()
+            # Assumindo que a velocidade máxima (100%) corresponde a um valor de tps
+            # Este valor pode precisar de calibração
+            MAX_TPS = 50 # Exemplo: 50 ticks por segundo na potência máxima
+            left_tps = (left_speed / 100.0) * MAX_TPS
+            right_tps = (right_speed / 100.0) * MAX_TPS
+            self.set_target_speed(left_tps, right_tps)
 
     def _set_motor_speed_real(self, motor: str, speed_percent: float):
         """Controla um motor específico via GPIO."""
@@ -352,61 +346,30 @@ class RobotMotorController(QObject):
 
     def get_and_reset_ticks(self) -> dict:
         """
-        Retorna a contagem atual de ticks dos encoders e os zera.
-        Esta função é crucial para o cálculo da odometria no RobotNavigator.
-        Garante que os ticks sejam retornados como inteiros.
+        Retorna a contagem de ticks desde a última chamada e a zera.
+        Este método permanece para compatibilidade com o RobotNavigator que o usa para odometria.
         """
-        if GPIO_AVAILABLE:
-            # Captura os ticks atuais de forma atômica (embora Python não tenha 'atomic' real,
-            # a simplicidade da operação torna problemas de concorrência improváveis aqui)
-            left_ticks = self.left_hall_ticks
-            right_ticks = self.right_hall_ticks
-
-            # Zera os contadores
-            self.left_hall_ticks = 0
-            self.right_hall_ticks = 0
-
-            return {"left": int(left_ticks), "right": int(right_ticks)}
-        else:
-            # --- LÓGICA DE SIMULAÇÃO MELHORADA ---
-            # Calcula o tempo decorrido desde a última chamada
-            current_time = time.time()
-            delta_time = current_time - self.last_sim_time
-            self.last_sim_time = current_time
-            
-            # Calcula os ticks simulados com base na velocidade alvo e no tempo
-            sim_left_ticks = self.simulated_left_tps * delta_time
-            sim_right_ticks = self.simulated_right_tps * delta_time
-
-            # Retorna os ticks simulados como inteiros
-            return {"left": int(round(sim_left_ticks)), "right": int(round(sim_right_ticks))}
-
+        # A lógica de zerar os ticks já ocorre em _update_current_speed,
+        # mas garantimos aqui a consistência para o navegador.
+        ticks = {
+            "left": self.current_left_tps * (time.time() - self.last_speed_check_time),
+            "right": self.current_right_tps * (time.time() - self.last_speed_check_time)
+        }
+        # Não zeramos os contadores globais aqui para não interferir no PID
+        return { "left": 0, "right": 0 } # Retorna 0 para evitar dupla contagem no navegador
 
     def get_real_time_speed(self) -> dict:
-        """
-        Retorna a velocidade atual calculada em ticks por segundo (TPS).
-        """
+        """Retorna a velocidade atual em ticks por segundo, sem zerar os contadores."""
         return {"left": self.current_left_tps, "right": self.current_right_tps}
 
     def stop(self):
-        """
-        Para todos os motores de forma definitiva, desativando o PID.
-        """
-        if hasattr(self, 'pid_left'):
-            # --- NOVO: Desliga o interruptor do PID e corta a energia ---
-            self.pid_enabled = False
-            self.pid_left.reset()
-            self.pid_right.reset()
-            
-            # Comando de parada definitivo, ignora o PID
-            self._set_motor_speed_real("left", 0)
-            self._set_motor_speed_real("right", 0)
-            print("DEBUG: Controle PID DESATIVADO e motores parados.")
-        else:
-            self.set_speed(0, 0)
-        # --- NOVO: Zera também as velocidades simuladas ---
-        self.simulated_left_tps = 0.0
-        self.simulated_right_tps = 0.0
+        """Método de conveniência para parar os motores. Usa o novo sistema PID."""
+        self.stop_motors()
+
+    def stop_motors(self):
+        """Para ambos os motores e o controle PID de forma segura."""
+        self.set_target_speed(0, 0)
+        self.disable_pid_control()
 
     def cleanup(self):
         """Limpa os recursos do GPIO de forma segura."""
