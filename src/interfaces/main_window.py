@@ -18,6 +18,7 @@ from src.interfaces.map_widget import MapWidget
 from src.core.map_manager import MapManager
 import math
 from src.interfaces.edit_point_dialog import EditPointDialog
+from src.interfaces.calibration_window import CalibrationWindow # <-- 1. IMPORTAR
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -114,9 +115,14 @@ class MainWindow(QMainWindow):
         autosave_btn.clicked.connect(self._toggle_autosave)
         self.autosave_button = autosave_btn  # Referência para atualizar o texto
 
+        # --- 2. ADICIONAR O BOTÃO ---
+        calibrate_btn = QPushButton("Calibrar PID")
+        calibrate_btn.clicked.connect(self._open_calibration_window)
+
         map_management_layout.addWidget(save_map_btn, 0, 0)
         map_management_layout.addWidget(load_map_btn, 0, 1)
-        map_management_layout.addWidget(autosave_btn, 1, 0, 1, 2)  # Ocupa duas colunas
+        map_management_layout.addWidget(autosave_btn, 1, 0)
+        map_management_layout.addWidget(calibrate_btn, 1, 1) # <-- Adiciona o botão ao layout
         map_management_group.setLayout(map_management_layout)
         
         # Grupo de Navegação Melhorado
@@ -206,6 +212,18 @@ class MainWindow(QMainWindow):
         # Timer para diagnóstico
         self.diag_timer = QTimer()
         self.diag_timer.timeout.connect(self._update_speed_feedback)
+
+    # --- 3. CRIAR A FUNÇÃO DE ABERTURA ---
+    def _open_calibration_window(self):
+        """Abre a janela de calibração do PID."""
+        # A janela de calibração precisa da referência do controlador de motor
+        motor_controller = self.navigator.get_motor_controller()
+        if motor_controller:
+            # Passa a referência do motor_controller e o 'self' como pai
+            self.calibration_win = CalibrationWindow(motor_controller, self)
+            self.calibration_win.show()
+        else:
+            QMessageBox.warning(self, "Erro", "Controlador de motor não está disponível.")
 
     def _load_active_map(self):
         """Carrega o mapa ativo ou permite seleção de um mapa"""

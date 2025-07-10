@@ -871,3 +871,11 @@ class RobotNavigator:
             self.current_position[0] + delta_distance * math.cos(current_angle_rad),
             self.current_position[1] + delta_distance * math.sin(current_angle_rad)
         )
+
+    def get_motor_controller(self):
+        """Retorna a instância do controlador de motor."""
+        return self.motors
+
+    def stop(self):
+        """Para a navegação e o robô."""
+        print("INFO: Comando de parada recebido pelo navegador.")

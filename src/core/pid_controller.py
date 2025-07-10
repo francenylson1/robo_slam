@@ -82,6 +82,14 @@ class PIDController:
         self.setpoint = setpoint
         self.reset()
 
+    def set_gains(self, Kp, Ki, Kd):
+        """
+        Permite ajustar os ganhos do PID em tempo real.
+        """
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+
     def reset(self):
         """Reseta o estado do controlador PID."""
         self.proportional_term = 0.0

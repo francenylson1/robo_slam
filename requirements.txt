@@ -4,4 +4,5 @@ pyserial==3.5
 pygame>=2.5.0  # Para simulação do joystick
 scipy==1.13.1
 shapely==2.0.4
-RPi.GPIO>=0.7.1 # Para controle de hardware na Raspberry Pi 
+RPi.GPIO>=0.7.1 # Para controle de hardware na Raspberry Pi
+pyqtgraph==0.13.3 

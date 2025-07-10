@@ -217,6 +217,25 @@ class RobotMotorController:
 
         self.set_target_speed(left_tps, right_tps)
 
+    def set_pid_gains(self, side, Kp, Ki, Kd):
+        """
+        Define os ganhos para um dos controladores PID.
+
+        Args:
+            side (str): 'left' ou 'right'.
+            Kp (float): Novo ganho Proporcional.
+            Ki (float): Novo ganho Integral.
+            Kd (float): Novo ganho Derivativo.
+        """
+        if side == "left":
+            if hasattr(self, 'pid_left'):
+                self.pid_left.set_gains(Kp, Ki, Kd)
+        elif side == "right":
+            if hasattr(self, 'pid_right'):
+                self.pid_right.set_gains(Kp, Ki, Kd)
+        else:
+            print(f"AVISO: Tentativa de definir ganhos PID para um lado inválido: {side}")
+
     def set_target_speed(self, left_tps: float, right_tps: float):
         """
         Define a velocidade alvo (em ticks/segundo) e ATIVA o controle PID.
