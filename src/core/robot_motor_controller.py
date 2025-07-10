@@ -91,8 +91,9 @@ class RobotMotorController:
             # NOVOS GANHOS (MUITO MAIS CONSERVADORES) PARA ESTABILIZAR O ROBÔ EM BAIXA VELOCIDADE
             # O objetivo é eliminar o movimento circular.
             # AUMENTANDO O Ki PARA DAR MAIS "INSISTÊNCIA" AO ROBÔ NA APROXIMAÇÃO FINAL.
-            self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-15, 15))
-            self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-15, 15))
+            # --- ATUALIZAÇÃO: Aumentando os limites de saída para dar mais força ao PID ---
+            self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-40, 40))
+            self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-40, 40))
 
             # Inicia a thread de monitoramento dos sensores Hall por Polling
             monitor_thread = threading.Thread(target=self._hall_sensor_monitor_thread, daemon=True)
@@ -168,11 +169,12 @@ class RobotMotorController:
                     GPIO.output(self.dir_E, GPIO.LOW)
                 self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
 
-                # --- MOTOR DIREITO ---
+                # --- MOTOR DIREITO (CORRIGIDO) ---
+                # A lógica de direção foi equalizada com o motor esquerdo (HIGH para frente).
                 if right_power >= 0: # Para frente
-                    GPIO.output(self.dir_D, GPIO.LOW)
-                else: # Para trás
                     GPIO.output(self.dir_D, GPIO.HIGH)
+                else: # Para trás
+                    GPIO.output(self.dir_D, GPIO.LOW)
                 self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
 
                 # Libera os freios se houver qualquer potência
