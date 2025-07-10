@@ -35,6 +35,9 @@ class RobotMotorController(QObject):
         self.right_speed_percent = 0
         self.is_moving = False
         
+        # --- NOVO: Lock para proteger o acesso aos contadores de ticks ---
+        self.ticks_lock = threading.Lock()
+        
         # --- NOVO: Controle de frequência de emissão de sinal ---
         self.last_emit_time = 0
         self.emit_interval = 0.2  # segundos (200ms)
@@ -47,8 +50,8 @@ class RobotMotorController(QObject):
         # --- ATRIBUTOS DO PID ---
         # Movidos para fora do bloco 'if GPIO_AVAILABLE' para que existam
         # tanto em modo real quanto simulado.
-        self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
-        self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-20, 20))
+        self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-100, 100))
+        self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-100, 100))
         self.pid_enabled = False
 
         # Atributos para feedback de velocidade
@@ -140,13 +143,15 @@ class RobotMotorController(QObject):
             try:
                 current_state_E = GPIO.input(self.hall_E)
                 if current_state_E == 1 and self.last_hall_E_state == 0:
-                    self.left_hall_ticks += 1
+                    with self.ticks_lock:
+                        self.left_hall_ticks += 1
                 self.last_hall_E_state = current_state_E
 
                 # Leitura do sensor direito
                 current_state_D = GPIO.input(self.hall_D)
                 if current_state_D == 1 and self.last_hall_D_state == 0:
-                    self.right_hall_ticks += 1
+                    with self.ticks_lock:
+                        self.right_hall_ticks += 1
                 self.last_hall_D_state = current_state_D
             
             except RuntimeError:
@@ -227,11 +232,13 @@ class RobotMotorController(QObject):
         delta_time = current_time - self.last_speed_check_time
 
         if delta_time > 0.01: # Atualiza em intervalos regulares
-            self.current_left_tps = self.left_hall_ticks / delta_time
-            self.current_right_tps = self.right_hall_ticks / delta_time
+            with self.ticks_lock:
+                self.current_left_tps = self.left_hall_ticks / delta_time
+                self.current_right_tps = self.right_hall_ticks / delta_time
 
-            self.left_hall_ticks = 0
-            self.right_hall_ticks = 0
+                self.left_hall_ticks = 0
+                self.right_hall_ticks = 0
+            
             self.last_speed_check_time = current_time
 
     def set_target_speed(self, left_tps: float, right_tps: float):

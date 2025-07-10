@@ -89,6 +89,7 @@ class PIDController:
         self.Kp = Kp
         self.Ki = Ki
         self.Kd = Kd
+        self.reset()
 
     def reset(self):
         """Reseta o estado do controlador PID."""
