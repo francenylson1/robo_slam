@@ -176,8 +176,15 @@ class RobotMotorController(QObject):
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
 
-            # O bloco de print foi removido para evitar o crash da thread.
-            # Os dados do PID ainda podem ser vistos na interface grÃ¡fica.
+            # --- DEBUG: Imprime os valores internos do PID para o motor esquerdo ---
+            if self.pid_left.setpoint > 0: # Imprime apenas quando há um alvo
+                print(f"L_PID -> Alvo:{self.pid_left.setpoint:4.1f} | "
+                      f"Real:{self.current_left_tps:5.1f} | "
+                      f"Erro:{self.pid_left._last_error:5.1f} | "
+                      f"P:{self.pid_left._proportional_term:6.2f} | "
+                      f"I:{self.pid_left.Ki * self.pid_left._integral_term:6.2f} | "
+                      f"D:{self.pid_left._derivative_term:6.2f} | "
+                      f"Saida:{left_power:6.2f}")
             
             # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
             current_time = time.time()

@@ -4,7 +4,7 @@ class PIDController:
     """
     Uma implementacao de um controlador Proporcional-Integral-Derivativo (PID).
     """
-    def __init__(self, Kp, Ki, Kd, setpoint=0, sample_time=0.01, output_limits=(-100, 100)):
+    def __init__(self, Kp, Ki, Kd, setpoint, output_limits=(-100, 100)):
         """
         Inicializa o controlador PID.
 
@@ -13,60 +13,67 @@ class PIDController:
             Ki (float): Ganho Integral.
             Kd (float): Ganho Derivativo.
             setpoint (float): O valor desejado que o controlador tentara alcancar.
-            sample_time (float): O intervalo de tempo entre as atualizacoes do controlador.
             output_limits (tuple): Uma tupla (min, max) para limitar a saida do controlador.
         """
-        self.Kp, self.Ki, self.Kd = Kp, Ki, Kd
-        self.setpoint = setpoint
-        self.sample_time = sample_time
-        self.output_limits = output_limits
-
-        self._proportional_term = 0
-        self._integral_term = 0
-        self._derivative_term = 0
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
         
-        self._last_error = 0
-        self._last_output = 0
-        self._last_time = time.time()
+        self.setpoint = setpoint
+        self.output_limits = output_limits
+        
+        self.proportional_term = 0.0
+        self.integral_term = 0.0
+        self.derivative_term = 0.0
+        
+        self.last_error = 0.0
+        self.last_time = time.time()
         
         self.reset()
 
     def update(self, process_variable):
         """
         Calcula a saida do controlador PID com base no valor atual do processo.
+
+        Args:
+            process_variable (float): O valor medido atual do sistema (ex: velocidade real).
+
+        Returns:
+            float: O valor de controle calculado para ser aplicado ao sistema (ex: potencia do motor).
         """
         current_time = time.time()
-        dt = current_time - self._last_time
+        delta_time = current_time - self.last_time
 
-        if dt <= self.sample_time:
-            return self._last_output
+        # Evita divisao por zero ou picos em caso de reset
+        if delta_time == 0:
+            return self.last_output
 
         error = self.setpoint - process_variable
         
         # --- Termo Proporcional ---
-        self._proportional_term = self.Kp * error
+        self.proportional_term = self.Kp * error
         
-        # --- Termo Integral (com anti-windup implÃ­cito pela limitaÃ§Ã£o da saÃ­da) ---
-        self._integral_term += error * dt
-        
-        # --- Termo Derivativo (evita "derivative kick" na primeira iteraÃ§Ã£o) ---
-        if self._last_error != 0:
-            delta_error = error - self._last_error
-            self._derivative_term = self.Kd * (delta_error / dt)
-        else:
-            self._derivative_term = 0
+        # --- Termo Integral (com anti-windup) ---
+        self.integral_term += error * delta_time
+        # Anti-windup: limita o termo integral para evitar que ele cresca indefinidamente
+        # (Isso sera melhorado apos a integracao inicial)
+
+        # --- Termo Derivativo ---
+        delta_error = error - self.last_error
+        self.derivative_term = 0.0
+        if delta_time > 0:
+            self.derivative_term = delta_error / delta_time
         
         # --- Saida Final ---
-        output = self._proportional_term + (self.Ki * self._integral_term) + self._derivative_term
+        output = self.proportional_term + (self.Ki * self.integral_term) + (self.Kd * self.derivative_term)
+        
+        # Limita a saida
+        output = max(self.output_limits[0], min(self.output_limits[1], output))
 
-        # Limita a saÃ­da
-        if self.output_limits is not None:
-            output = max(self.output_limits[0], min(self.output_limits[1], output))
-
-        # Guarda os valores para a prÃ³xima iteraÃ§Ã£o
-        self._last_error = error
-        self._last_time = current_time
-        self._last_output = output
+        # Guarda os valores para a proxima iteracao
+        self.last_error = error
+        self.last_time = current_time
+        self.last_output = output
         
         return output
 
@@ -82,13 +89,12 @@ class PIDController:
         self.Kp = Kp
         self.Ki = Ki
         self.Kd = Kd
-        self.reset()
 
     def reset(self):
         """Reseta o estado do controlador PID."""
-        self._proportional_term = 0
-        self._integral_term = 0
-        self._derivative_term = 0
-        self._last_error = 0
-        self._last_output = 0
-        self._last_time = time.time()
+        self.proportional_term = 0.0
+        self.integral_term = 0.0
+        self.derivative_term = 0.0
+        self.last_error = 0.0
+        self.last_time = time.time()
+        self.last_output = 0.0 
