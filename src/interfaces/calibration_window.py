@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QGroupBox)
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
+import time
 
 class CalibrationWindow(QDialog):
     """
@@ -57,12 +58,42 @@ class CalibrationWindow(QDialog):
         
         control_panel_widget = QWidget()
         control_panel_widget.setLayout(control_panel_layout)
-        panels_layout.addWidget(control_panel_widget)
+        panels_layout.addWidget(control_panel_widget, 1) # Proporção 1
 
         # --- Painel de Gráficos (Direita) ---
-        # TODO: Adicionar os gráficos aqui
+        charts_panel_widget = QWidget()
+        charts_layout = QVBoxLayout()
+        self.left_plot = pg.PlotWidget(title="Motor Esquerdo")
+        self.right_plot = pg.PlotWidget(title="Motor Direito")
+        charts_layout.addWidget(self.left_plot)
+        charts_layout.addWidget(self.right_plot)
+        charts_panel_widget.setLayout(charts_layout)
+        panels_layout.addWidget(charts_panel_widget, 2) # Proporção 2 (mais largo)
         
         self.main_layout.addLayout(panels_layout)
+
+        # Configura as linhas dos gráficos
+        self._setup_plots()
+
+    def _setup_plots(self):
+        """Configura as plotagens iniciais para os gráficos."""
+        # Linhas do Gráfico Esquerdo
+        self.left_plot.addLegend()
+        self.left_setpoint_line = self.left_plot.plot(pen='g', name='Alvo (Setpoint)')
+        self.left_real_speed_line = self.left_plot.plot(pen='r', name='Velocidade Real')
+        self.left_pid_output_line = self.left_plot.plot(pen='b', name='Saída PID')
+
+        # Linhas do Gráfico Direito
+        self.right_plot.addLegend()
+        self.right_setpoint_line = self.right_plot.plot(pen='g', name='Alvo (Setpoint)')
+        self.right_real_speed_line = self.right_plot.plot(pen='r', name='Velocidade Real')
+        self.right_pid_output_line = self.right_plot.plot(pen='b', name='Saída PID')
+
+        # Armazenamento de dados
+        self.time_data = []
+        self.left_setpoint_data, self.left_real_speed_data, self.left_pid_output_data = [], [], []
+        self.right_setpoint_data, self.right_real_speed_data, self.right_pid_output_data = [], [], []
+        self.start_time = time.time()
 
     def _create_pid_group(self, title):
         """Cria um grupo de widgets para o ajuste de PID de um motor."""
@@ -100,6 +131,10 @@ class CalibrationWindow(QDialog):
         for gain, (slider, label) in self.right_pid_sliders.items():
             slider.valueChanged.connect(lambda value, g=gain, l=label: self._update_pid_label(value, g, l, "right"))
         
+        # Conecta o sinal do motor_controller ao slot de atualização dos gráficos
+        if self.motor_controller:
+            self.motor_controller.pid_data_updated.connect(self._update_plots)
+
         # Conecta os botões de teste
         self.forward_button.clicked.connect(self._test_forward)
         self.stop_button.clicked.connect(self._test_stop)
@@ -126,6 +161,32 @@ class CalibrationWindow(QDialog):
         self.motor_controller.set_pid_gains(motor_side, kp, ki, kd)
         print(f"PID Aply: Lado={motor_side}, Kp={kp:.2f}, Ki={ki:.2f}, Kd={kd:.2f}")
 
+    def _update_plots(self, side, setpoint, real_speed, output):
+        """Recebe os dados do motor e atualiza os gráficos."""
+        current_time = time.time() - self.start_time
+        self.time_data.append(current_time)
+        
+        # Limita o tamanho dos dados para não consumir muita memória
+        if len(self.time_data) > 200:
+            self.time_data.pop(0)
+            if side == "left": self.left_setpoint_data.pop(0); self.left_real_speed_data.pop(0); self.left_pid_output_data.pop(0)
+            if side == "right": self.right_setpoint_data.pop(0); self.right_real_speed_data.pop(0); self.right_pid_output_data.pop(0)
+
+        if side == "left":
+            self.left_setpoint_data.append(setpoint)
+            self.left_real_speed_data.append(real_speed)
+            self.left_pid_output_data.append(output)
+            self.left_setpoint_line.setData(self.time_data, self.left_setpoint_data)
+            self.left_real_speed_line.setData(self.time_data, self.left_real_speed_data)
+            self.left_pid_output_line.setData(self.time_data, self.left_pid_output_data)
+        elif side == "right":
+            self.right_setpoint_data.append(setpoint)
+            self.right_real_speed_data.append(real_speed)
+            self.right_pid_output_data.append(output)
+            self.right_setpoint_line.setData(self.time_data, self.right_setpoint_data)
+            self.right_real_speed_line.setData(self.time_data, self.right_real_speed_data)
+            self.right_pid_output_line.setData(self.time_data, self.right_pid_output_data)
+
     def _test_forward(self):
         """Envia um comando para o robô andar reto."""
         print("Comando: Andar Reto")
@@ -138,6 +199,12 @@ class CalibrationWindow(QDialog):
         print("Comando: PARAR")
         self.motor_controller.stop()
 
+        # Limpa os dados dos gráficos ao parar
+        self.time_data.clear()
+        self.left_setpoint_data.clear(); self.left_real_speed_data.clear(); self.left_pid_output_data.clear()
+        self.right_setpoint_data.clear(); self.right_real_speed_data.clear(); self.right_pid_output_data.clear()
+        self.start_time = time.time()
+
 
 # Bloco para teste independente da janela (opcional, mas útil)
 if __name__ == '__main__':
@@ -148,6 +215,11 @@ if __name__ == '__main__':
     class MockMotorController:
         def __init__(self):
             print("MockMotorController inicializado.")
+            # Simula o sinal de atualização dos gráficos
+            self.pid_data_updated = self.emit_pid_data_updated
+
+        def emit_pid_data_updated(self, side, setpoint, real_speed, output):
+            print(f"MockMotorController: Emitindo sinal pid_data_updated para o gráfico. Lado: {side}, Setpoint: {setpoint}, Real Speed: {real_speed}, Output: {output}")
 
     mock_controller = MockMotorController()
     cal_window = CalibrationWindow(motor_controller=mock_controller)

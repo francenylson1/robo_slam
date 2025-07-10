@@ -3,6 +3,7 @@ import time
 import sys
 import os
 import threading
+from PyQt5.QtCore import QObject, pyqtSignal
 
 # Adiciona o diretório raiz ao PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -20,12 +21,16 @@ if GPIO_AVAILABLE:
 else:
     GPIO = None
 
-class RobotMotorController:
+class RobotMotorController(QObject):
     """
     Controla os motores do robô, abstraindo a complexidade do hardware.
     Pode operar em modo real (com Raspberry Pi e RPi.GPIO) ou em modo simulado.
     """
+    # --- 3. DEFINIR O SINAL ---
+    pid_data_updated = pyqtSignal(str, float, float, float) # side, setpoint, real_speed, output
+
     def __init__(self):
+        super().__init__() # <-- 4. CHAMAR O __INIT__ DA CLASSE PAI
         self.left_speed_percent = 0
         self.right_speed_percent = 0
         self.is_moving = False
@@ -159,6 +164,10 @@ class RobotMotorController:
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
             
+            # --- 5. EMITIR OS SINAIS COM OS DADOS ---
+            self.pid_data_updated.emit("left", self.pid_left.setpoint, self.current_left_tps, left_power)
+            self.pid_data_updated.emit("right", self.pid_right.setpoint, self.current_right_tps, right_power)
+
             # 3. Aplica a potencia aos motores COM A LÓGICA DE DIREÇÃO CORRETA
             # Esta verificação garante que o código só rode no hardware real
             if GPIO_AVAILABLE and GPIO:
