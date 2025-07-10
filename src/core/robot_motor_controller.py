@@ -35,6 +35,10 @@ class RobotMotorController(QObject):
         self.right_speed_percent = 0
         self.is_moving = False
         
+        # --- NOVO: Controle de frequência de emissão de sinal ---
+        self.last_emit_time = 0
+        self.emit_interval = 0.2  # segundos (200ms)
+
         # --- NOVO: Atributos para o modo de simulação ---
         self.simulated_left_tps = 0.0
         self.simulated_right_tps = 0.0
@@ -164,12 +168,15 @@ class RobotMotorController(QObject):
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
             
-            # --- Emite um único sinal com um dicionário contendo todos os dados ---
-            combined_data = {
-                'left': {'setpoint': self.pid_left.setpoint, 'real_speed': self.current_left_tps, 'output': left_power},
-                'right': {'setpoint': self.pid_right.setpoint, 'real_speed': self.current_right_tps, 'output': right_power}
-            }
-            self.pid_data_updated.emit(combined_data)
+            # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
+            current_time = time.time()
+            if current_time - self.last_emit_time > self.emit_interval:
+                combined_data = {
+                    'left': {'setpoint': self.pid_left.setpoint, 'real_speed': self.current_left_tps, 'output': left_power},
+                    'right': {'setpoint': self.pid_right.setpoint, 'real_speed': self.current_right_tps, 'output': right_power}
+                }
+                self.pid_data_updated.emit(combined_data)
+                self.last_emit_time = current_time
 
             # 3. Aplica a potencia aos motores COM A LÓGICA DE DIREÇÃO CORRETA
             # Esta verificação garante que o código só rode no hardware real
