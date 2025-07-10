@@ -173,7 +173,7 @@ class RobotMotorController(QObject):
                 print(f"L_PID -> Alvo:{self.pid_left.setpoint:4.1f} | "
                       f"Real:{self.current_left_tps:5.1f} | "
                       f"Erro:{self.pid_left.last_error:5.1f} | "
-                      f"P:{self.pid_left.proporcional_term:6.2f} | "
+                      f"P:{self.pid_left.proportional_term:6.2f} | "
                       f"I:{self.pid_left.integral_term*self.pid_left.Ki:6.2f} | "
                       f"D:{self.pid_left.derivative_term:6.2f} | "
                       f"Saida:{left_power:6.2f}")
