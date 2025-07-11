@@ -174,21 +174,52 @@ class RobotMotorController(QObject):
         """
         if not GPIO_AVAILABLE:
             return
+
+        # Inicializa a potência em zero para o primeiro ciclo
+        left_power = 0
+        right_power = 0
             
         while not self.shutdown_event.is_set():
-            # --- NOVO: So executa o controle se o interruptor estiver ligado ---
             if not self.pid_enabled:
-                time.sleep(0.1) # Dorme se desativado para nao usar CPU
+                time.sleep(0.1)
                 continue
 
-            # 1. Calcula a velocidade real atual (ticks/s)
+            # --- NOVA LÓGICA DE CONTROLE ---
+            # 1. Aplica a potência que foi calculada no ciclo ANTERIOR.
+            if GPIO_AVAILABLE and GPIO:
+                # --- MOTOR ESQUERDO ---
+                if left_power >= 0:
+                    GPIO.output(self.dir_E, GPIO.HIGH)
+                else:
+                    GPIO.output(self.dir_E, GPIO.LOW)
+                self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
+
+                # --- MOTOR DIREITO ---
+                if right_power >= 0:
+                    GPIO.output(self.dir_D, GPIO.LOW)
+                else:
+                    GPIO.output(self.dir_D, GPIO.HIGH)
+                self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
+                
+                # Libera os freios se houver potência
+                if abs(left_power) > 0.1 or abs(right_power) > 0.1:
+                    GPIO.output(self.break_E, GPIO.LOW)
+                    GPIO.output(self.break_D, GPIO.LOW)
+                else:
+                    GPIO.output(self.break_E, GPIO.HIGH)
+                    GPIO.output(self.break_D, GPIO.HIGH)
+            
+            # 2. Pausa para o ruído do motor diminuir e para definir a frequência do loop.
+            time.sleep(0.05) # Loop de controle a 20Hz
+
+            # 3. Mede a velocidade (agora que os motores estão quietos).
             self._update_current_speed()
             
-            # 2. Calcula a saida de potencia usando o PID
+            # 4. Calcula a potência para ser usada no PRÓXIMO ciclo.
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
 
-            # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
+            # 5. Emite os dados para a GUI (opcional, pode ser mantido aqui).
             current_time = time.time()
             if current_time - self.last_emit_time > self.emit_interval:
                 combined_data = {
@@ -197,36 +228,6 @@ class RobotMotorController(QObject):
                 }
                 self.pid_data_updated.emit(combined_data)
                 self.last_emit_time = current_time
-
-            # 3. Aplica a potencia aos motores COM A LÓGICA DE DIREÇÃO CORRETA
-            # Esta verificação garante que o código só rode no hardware real
-            if GPIO_AVAILABLE and GPIO:
-                # --- MOTOR ESQUERDO ---
-                if left_power >= 0: # Para frente
-                    GPIO.output(self.dir_E, GPIO.HIGH)
-                else: # Para trás
-                    GPIO.output(self.dir_E, GPIO.LOW)
-                self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
-
-                # --- MOTOR DIREITO (CORRIGIDO para lógica original do hardware) ---
-                # A lógica de direção foi restaurada para a original (LOW para frente),
-                # que é a que funciona com a fiação do robô.
-                if right_power >= 0: # Para frente
-                    GPIO.output(self.dir_D, GPIO.LOW)
-                else: # Para trás
-                    GPIO.output(self.dir_D, GPIO.HIGH)
-                self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
-
-                # Libera os freios se houver qualquer potência
-                if abs(left_power) > 0.1 or abs(right_power) > 0.1:
-                    GPIO.output(self.break_E, GPIO.LOW)
-                    GPIO.output(self.break_D, GPIO.LOW)
-                else:
-                    GPIO.output(self.break_E, GPIO.HIGH)
-                    GPIO.output(self.break_D, GPIO.HIGH)
-            
-            # 4. Define a frequencia do loop de controle (ex: 20Hz)
-            time.sleep(0.05)
 
     def _update_current_speed(self):
         """
