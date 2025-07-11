@@ -143,15 +143,22 @@ class RobotMotorController(QObject):
             try:
                 current_state_E = GPIO.input(self.hall_E)
                 if current_state_E == 1 and self.last_hall_E_state == 0:
-                    with self.ticks_lock:
-                        self.left_hall_ticks += 1
+                    # --- FILTRO DEBOUNCE ---
+                    # Pausa por 1ms e verifica o pino novamente para ignorar ruído
+                    time.sleep(0.001)
+                    if GPIO.input(self.hall_E) == 1:
+                        with self.ticks_lock:
+                            self.left_hall_ticks += 1
                 self.last_hall_E_state = current_state_E
 
                 # Leitura do sensor direito
                 current_state_D = GPIO.input(self.hall_D)
                 if current_state_D == 1 and self.last_hall_D_state == 0:
-                    with self.ticks_lock:
-                        self.right_hall_ticks += 1
+                    # --- FILTRO DEBOUNCE ---
+                    time.sleep(0.001)
+                    if GPIO.input(self.hall_D) == 1:
+                        with self.ticks_lock:
+                            self.right_hall_ticks += 1
                 self.last_hall_D_state = current_state_D
             
             except RuntimeError:
@@ -177,16 +184,10 @@ class RobotMotorController(QObject):
             # 1. Calcula a velocidade real atual (ticks/s)
             self._update_current_speed()
             
-            # DEBUG: Imprime a velocidade calculada antes de ser usada pelo PID
-            print(f"VELOCIDADE MEDIDA --> Esquerda: {self.current_left_tps:.1f} tps, Direita: {self.current_right_tps:.1f} tps")
-
             # 2. Calcula a saida de potencia usando o PID
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
 
-            # O bloco de print foi removido para evitar o crash da thread.
-            # Os dados do PID ainda podem ser vistos na interface grÃ¡fica.
-            
             # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
             current_time = time.time()
             if current_time - self.last_emit_time > self.emit_interval:
