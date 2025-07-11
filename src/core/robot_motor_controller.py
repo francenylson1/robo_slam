@@ -177,6 +177,9 @@ class RobotMotorController(QObject):
             # 1. Calcula a velocidade real atual (ticks/s)
             self._update_current_speed()
             
+            # DEBUG: Imprime a velocidade calculada antes de ser usada pelo PID
+            print(f"VELOCIDADE MEDIDA --> Esquerda: {self.current_left_tps:.1f} tps, Direita: {self.current_right_tps:.1f} tps")
+
             # 2. Calcula a saida de potencia usando o PID
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
