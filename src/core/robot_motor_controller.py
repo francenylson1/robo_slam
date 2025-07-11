@@ -50,8 +50,8 @@ class RobotMotorController(QObject):
         # --- ATRIBUTOS DO PID ---
         # Movidos para fora do bloco 'if GPIO_AVAILABLE' para que existam
         # tanto em modo real quanto simulado.
-        self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-100, 100))
-        self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-100, 100))
+        self.pid_left = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-25, 25))
+        self.pid_right = PIDController(Kp=0.05, Ki=0.05, Kd=0.01, setpoint=0, output_limits=(-25, 25))
         self.pid_enabled = False
 
         # Atributos para feedback de velocidade
@@ -143,22 +143,15 @@ class RobotMotorController(QObject):
             try:
                 current_state_E = GPIO.input(self.hall_E)
                 if current_state_E == 1 and self.last_hall_E_state == 0:
-                    # --- FILTRO DEBOUNCE ---
-                    # Pausa por 1ms e verifica o pino novamente para ignorar ruído
-                    time.sleep(0.001)
-                    if GPIO.input(self.hall_E) == 1:
-                        with self.ticks_lock:
-                            self.left_hall_ticks += 1
+                    with self.ticks_lock:
+                        self.left_hall_ticks += 1
                 self.last_hall_E_state = current_state_E
 
                 # Leitura do sensor direito
                 current_state_D = GPIO.input(self.hall_D)
                 if current_state_D == 1 and self.last_hall_D_state == 0:
-                    # --- FILTRO DEBOUNCE ---
-                    time.sleep(0.001)
-                    if GPIO.input(self.hall_D) == 1:
-                        with self.ticks_lock:
-                            self.right_hall_ticks += 1
+                    with self.ticks_lock:
+                        self.right_hall_ticks += 1
                 self.last_hall_D_state = current_state_D
             
             except RuntimeError:
@@ -174,52 +167,20 @@ class RobotMotorController(QObject):
         """
         if not GPIO_AVAILABLE:
             return
-
-        # Inicializa a potência em zero para o primeiro ciclo
-        left_power = 0
-        right_power = 0
             
         while not self.shutdown_event.is_set():
             if not self.pid_enabled:
-                time.sleep(0.1)
+                time.sleep(0.1) # Dorme se desativado para nao usar CPU
                 continue
 
-            # --- NOVA LÓGICA DE CONTROLE ---
-            # 1. Aplica a potência que foi calculada no ciclo ANTERIOR.
-            if GPIO_AVAILABLE and GPIO:
-                # --- MOTOR ESQUERDO ---
-                if left_power >= 0:
-                    GPIO.output(self.dir_E, GPIO.HIGH)
-                else:
-                    GPIO.output(self.dir_E, GPIO.LOW)
-                self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
-
-                # --- MOTOR DIREITO ---
-                if right_power >= 0:
-                    GPIO.output(self.dir_D, GPIO.LOW)
-                else:
-                    GPIO.output(self.dir_D, GPIO.HIGH)
-                self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
-                
-                # Libera os freios se houver potência
-                if abs(left_power) > 0.1 or abs(right_power) > 0.1:
-                    GPIO.output(self.break_E, GPIO.LOW)
-                    GPIO.output(self.break_D, GPIO.LOW)
-                else:
-                    GPIO.output(self.break_E, GPIO.HIGH)
-                    GPIO.output(self.break_D, GPIO.HIGH)
-            
-            # 2. Pausa para o ruído do motor diminuir e para definir a frequência do loop.
-            time.sleep(0.05) # Loop de controle a 20Hz
-
-            # 3. Mede a velocidade (agora que os motores estão quietos).
+            # 1. Calcula a velocidade real atual (ticks/s)
             self._update_current_speed()
             
-            # 4. Calcula a potência para ser usada no PRÓXIMO ciclo.
+            # 2. Calcula a saida de potencia usando o PID
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
-
-            # 5. Emite os dados para a GUI (opcional, pode ser mantido aqui).
+            
+            # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
             current_time = time.time()
             if current_time - self.last_emit_time > self.emit_interval:
                 combined_data = {
@@ -229,6 +190,33 @@ class RobotMotorController(QObject):
                 self.pid_data_updated.emit(combined_data)
                 self.last_emit_time = current_time
 
+            # 3. Aplica a potencia aos motores COM A LÓGICA DE DIREÇÃO CORRETA
+            if GPIO_AVAILABLE and GPIO:
+                # --- MOTOR ESQUERDO ---
+                if left_power >= 0: # Para frente
+                    GPIO.output(self.dir_E, GPIO.HIGH)
+                else: # Para trás
+                    GPIO.output(self.dir_E, GPIO.LOW)
+                self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
+
+                # --- MOTOR DIREITO ---
+                if right_power >= 0: # Para frente
+                    GPIO.output(self.dir_D, GPIO.LOW)
+                else: # Para trás
+                    GPIO.output(self.dir_D, GPIO.HIGH)
+                self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
+
+                # Libera os freios se houver qualquer potência
+                if abs(left_power) > 0.1 or abs(right_power) > 0.1:
+                    GPIO.output(self.break_E, GPIO.LOW)
+                    GPIO.output(self.break_D, GPIO.LOW)
+                else:
+                    GPIO.output(self.break_E, GPIO.HIGH)
+                    GPIO.output(self.break_D, GPIO.HIGH)
+            
+            # 4. Define a frequencia do loop de controle (ex: 20Hz)
+            time.sleep(0.05)
+
     def _update_current_speed(self):
         """
         Calcula e atualiza a velocidade instantanea (ticks/s) para uso no PID.
@@ -236,8 +224,7 @@ class RobotMotorController(QObject):
         current_time = time.time()
         delta_time = current_time - self.last_speed_check_time
 
-        # ATUALIZAÇÃO: Aumenta o intervalo de amostragem para 0.2s para estabilizar a leitura
-        if delta_time > 0.2: # Atualiza em intervalos regulares e mais longos
+        if delta_time > 0.01: # Atualiza em intervalos regulares
             with self.ticks_lock:
                 self.current_left_tps = self.left_hall_ticks / delta_time
                 self.current_right_tps = self.right_hall_ticks / delta_time
