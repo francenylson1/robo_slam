@@ -1,25 +1,49 @@
-A conversa começou com o usuário relatando uma discrepância entre o robô virtual e o real. O robô virtual completava seu ciclo de navegação (ida, pausa, retorno), mas o robô real chegava ao destino e começava a se mover aleatoriamente.
+# Resumo do Projeto e Próximos Passos (12/07/2025)
 
-**1. Correção da Tolerância de Chegada:**
-*   **Hipótese:** A primeira hipótese foi que a odometria imprecisa do robô real o impedia de atingir a tolerância de chegada de 5cm, fazendo com que o controle PID tentasse se corrigir infinitamente.
-*   **Ação:** Investiguei o código `src/core/robot_navigator.py` e confirmei a tolerância. Editei o arquivo para aumentar a tolerância para 15cm.
-*   **Sincronização:** O usuário não sabia como atualizar o código na Raspberry Pi. Eu o guiei pelo processo de usar o `git`, incluindo a inicialização de um novo repositório na Pi (`git init`), conectando-o ao GitHub (`git remote add`), e usando `git fetch` e `git reset --hard` para baixar o código.
+## 1. Visão Geral do Projeto
 
-**2. Correção da Lógica de Direção do Motor:**
-*   **Novo Problema:** Com a nova tolerância, o robô real chegava ao destino, mas depois começava a andar para trás, enquanto o virtual andava para frente.
-*   **Hipótese:** Isso apontou para uma lógica de direção assimétrica no controlador do motor (`src/core/robot_motor_controller.py`), onde o sinal para "frente" era diferente para os motores esquerdo e direito, e o loop de controle PID não estava ciente disso.
-*   **Ação:** Investiguei o controlador e confirmei a suspeita. Editei a função `_pid_control_loop` para aplicar a mesma lógica de direção do controle manual, corrigindo o comportamento. Após algumas tentativas e correções de linter, a alteração foi aplicada com sucesso.
+O objetivo é o desenvolvimento de um **robô garçom autônomo** utilizando uma **Raspberry Pi 4 (4GB)** como unidade de processamento principal. O sistema de controle de alto nível é gerenciado por uma interface gráfica (PyQt) em um PC, que lida com o mapa (SLAM), definição de destinos e monitoramento. A navegação autônoma é o objetivo final.
 
-**3. Sincronização de Arquivos de Mapa e Banco de Dados:**
-*   **Problema:** O usuário queria sincronizar os pontos de interesse, que estavam diferentes entre o desktop e a Pi. Isso levou à necessidade de sincronizar o arquivo `data/robot.db`.
-*   **Investigação:** Inicialmente, presumi que havia um arquivo de imagem de mapa (`map.png`), mas as buscas no código (`map_widget.py`, `main_window.py`) revelaram que o mapa é desenhado proceduralmente com base nas dimensões em `src/core/config.py`. Os arquivos essenciais para o "mapa" são, portanto, `data/robot.db` e `src/core/config.py`.
-*   **Ação:** Guiei o usuário para adicionar `data/robot.db` ao `git`. Encontramos um problema com o `.gitignore`, que ignorava a pasta `data/`. A solução foi usar `git add -f data/robot.db` para forçar a inclusão do arquivo.
-*   **Problema de Permissão na Pi:** Ao tentar baixar o arquivo na Raspberry Pi, ocorreu um erro de `Permissão negada`. A solução foi o usuário tomar posse da pasta do projeto com `sudo chown -R amd:amd /home/amd/robo_slam`.
+## 2. O Que Já Fizemos: A Saga da Calibração do Controle de Motores
 
-**4. Validação Final e Ponto de Parada:**
-*   **Validação Virtual:** O usuário testou a versão mais recente do código no **robô virtual**. O resultado foi um sucesso: o robô completou o ciclo `IDA -> PAUSA -> VOLTA` perfeitamente, embora com uma longa espera no destino (provavelmente devido a um timeout de segurança).
-*   **Sincronização Final:** Após o usuário esclarecer que o teste foi apenas virtual, realizamos o processo final de `git add`, `commit` e `push` para enviar a última correção (a da lógica de retorno) para o GitHub.
-*   **Atualização da Pi:** Guiei o usuário a executar `git fetch origin` e depois `git reset --hard origin/sincronia-virtual-real-ajuste-fino-chegada` na Raspberry Pi. A saída do terminal confirmou que o robô real foi atualizado para a versão mais recente do código (`commit 7f88bd9`).
+A fase mais recente do projeto foi uma profunda e desafiadora jornada para estabilizar o controle de baixo nível dos motores do robô físico.
 
-**Estado Atual (Ponto de Parada):**
-O projeto está em um ponto crucial. A lógica de navegação foi totalmente corrigida e validada na simulação. O código mais recente foi implantado com sucesso no robô real. O próximo passo imediato é **executar o teste no robô real** e observar se ele replica o comportamento bem-sucedido da simulação. 
+*   **Diagnóstico Inicial:** O robô não se movia corretamente. Identificamos problemas como lógica de direção invertida e ganhos PID ineficazes.
+*   **Criação da Ferramenta de Calibração:** Desenvolvemos a `calibration_window.py` para permitir o ajuste fino e em tempo real dos ganhos PID (`Kp`, `Ki`, `Kd`).
+*   **Investigação de Bugs e Instabilidade:**
+    *   **Ruído Elétrico:** Descobrimos que o principal vilão era o **ruído elétrico** gerado pelos motores, que corrompia a leitura dos sensores Hall (encoders), gerando "tiques fantasmas" e leituras de velocidade falsamente altas.
+    *   **Tentativas de Filtro:** Implementamos várias soluções de software para combater o ruído, incluindo `locks` para evitar condições de corrida, filtros `debounce` para ignorar pulsos falsos, e até mesmo alteramos a frequência do loop de controle.
+*   **O Ponto de Virada (Insight Chave):** Após muita depuração, chegamos a duas conclusões críticas:
+    1.  Uma versão específica do código (commit `f3f3a7a`), que opera com um loop de controle a **20Hz**, provou ser a mais estável.
+    2.  Nesta configuração, a **menor velocidade estável e mensurável** que o sistema consegue atingir de forma confiável é **20 tps (tiques por segundo)**. Tentar forçar o sistema a um alvo menor (como os 15 tps que usávamos) causa instabilidade inevitável.
+
+## 3. Estado Atual (Onde Estamos)
+
+*   **Código Estável:** Revertemos o código para a versão estável de 20Hz (commit `f3f3a7a`), que contém o filtro debounce e os limites de potência seguros para o PID.
+*   **Ganhos Ótimos Identificados:** Encontramos uma combinação de ganhos PID que produz um movimento **fluido e contínuo para frente**, estabilizando a velocidade em `20 tps`. Os ganhos são:
+    *   `Kp = 0.11`
+    *   `Ki = 0.05`
+    *   `Kd = 0.0`
+*   **Pronto para a Próxima Fase:** O controle de baixo nível está, pela primeira vez, previsível e funcional.
+
+## 4. O Que Falta Fazer: A Transição para a Navegação Inteligente
+
+Nossa pendência principal é adaptar a lógica de alto nível do robô para trabalhar **COM** a realidade do hardware, em vez de lutar contra ela.
+
+**A Grande Transição: Adotar 20 tps como a Nova Realidade**
+
+A tarefa agora é revisar a arquitetura de software para que ela use `20 tps` como uma velocidade base ou mínima, em vez dos `15 tps` arbitrários de antes.
+
+**Plano de Ação Detalhado:**
+
+*   **Etapa 1: Persistir os Ganhos Ótimos (Trabalho Rápido)**
+    *   **Ação:** Atualizar os valores padrão na inicialização dos `PIDController` dentro do `src/core/robot_motor_controller.py` para `Kp=0.11`, `Ki=0.05`, `Kd=0.0`.
+
+*   **Etapa 2: Análise e Adaptação da Lógica de Navegação (Trabalho Principal)**
+    *   **Objetivo:** Encontrar onde o código de alto nível (provavelmente em `src/core/robot_navigator.py`) calcula as velocidades das rodas e as converte para tiques por segundo.
+    *   **Hipótese:** Existe uma constante `MAX_TPS` ou uma fórmula de conversão de `m/s` para `tps` que precisa ser reavaliada.
+    *   **Ação:** Precisamos garantir que, quando o navegador pedir um movimento lento, o comando enviado ao controlador de motor seja de, no mínimo, `20 tps`, ou um valor que o sistema possa executar de forma estável.
+
+*   **Etapa 3: Teste de Navegação Completo**
+    *   **Objetivo:** Validar a nova lógica em um cenário de uso real.
+    *   **Ação:** Usar a interface principal para comandar o robô a navegar para um ponto específico no mapa. Observar se ele segue o caminho calculado com precisão e se o movimento é suave, sem hesitações ou tremedeiras, especialmente em baixas velocidades e ao iniciar o movimento. 
