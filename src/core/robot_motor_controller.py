@@ -231,7 +231,8 @@ class RobotMotorController(QObject):
         current_time = time.time()
         delta_time = current_time - self.last_speed_check_time
 
-        if delta_time > 0.01: # Atualiza em intervalos regulares
+        # ATUALIZAÇÃO: Aumenta o intervalo de amostragem para 0.2s para estabilizar a leitura
+        if delta_time > 0.2: # Atualiza em intervalos regulares e mais longos
             with self.ticks_lock:
                 self.current_left_tps = self.left_hall_ticks / delta_time
                 self.current_right_tps = self.right_hall_ticks / delta_time
