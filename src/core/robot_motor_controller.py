@@ -143,15 +143,21 @@ class RobotMotorController(QObject):
             try:
                 current_state_E = GPIO.input(self.hall_E)
                 if current_state_E == 1 and self.last_hall_E_state == 0:
-                    with self.ticks_lock:
-                        self.left_hall_ticks += 1
+                    # --- FILTRO DEBOUNCE AGRESSIVO ---
+                    time.sleep(0.01) # Pausa por 10ms
+                    if GPIO.input(self.hall_E) == 1:
+                        with self.ticks_lock:
+                            self.left_hall_ticks += 1
                 self.last_hall_E_state = current_state_E
 
                 # Leitura do sensor direito
                 current_state_D = GPIO.input(self.hall_D)
                 if current_state_D == 1 and self.last_hall_D_state == 0:
-                    with self.ticks_lock:
-                        self.right_hall_ticks += 1
+                    # --- FILTRO DEBOUNCE AGRESSIVO ---
+                    time.sleep(0.01) # Pausa por 10ms
+                    if GPIO.input(self.hall_D) == 1:
+                        with self.ticks_lock:
+                            self.right_hall_ticks += 1
                 self.last_hall_D_state = current_state_D
             
             except RuntimeError:
