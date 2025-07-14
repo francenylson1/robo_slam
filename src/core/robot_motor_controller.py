@@ -60,6 +60,11 @@ class RobotMotorController(QObject):
         self.last_speed_check_time = time.time()
         self.current_left_tps = 0.0
         self.current_right_tps = 0.0
+
+        # --- CORREÇÃO: Contadores de ticks dedicados para odometria ---
+        # Estes contadores são usados pelo RobotNavigator e zerados a cada chamada de get_and_reset_ticks
+        self.left_ticks_for_odometry = 0
+        self.right_ticks_for_odometry = 0
         
         # --- NOVO: Evento para desligamento limpo das threads ---
         self.shutdown_event = threading.Event()
@@ -148,6 +153,7 @@ class RobotMotorController(QObject):
                     if GPIO.input(self.hall_E) == 1:
                         with self.ticks_lock:
                             self.left_hall_ticks += 1
+                            self.left_ticks_for_odometry += 1 # Incrementa o contador para odometria
                 self.last_hall_E_state = current_state_E
 
                 # Leitura do sensor direito
@@ -158,6 +164,7 @@ class RobotMotorController(QObject):
                     if GPIO.input(self.hall_D) == 1:
                         with self.ticks_lock:
                             self.right_hall_ticks += 1
+                            self.right_ticks_for_odometry += 1 # Incrementa o contador para odometria
                 self.last_hall_D_state = current_state_D
             
             except RuntimeError:
@@ -345,17 +352,19 @@ class RobotMotorController(QObject):
 
     def get_and_reset_ticks(self) -> dict:
         """
-        Retorna a contagem de ticks desde a última chamada e a zera.
-        Este método permanece para compatibilidade com o RobotNavigator que o usa para odometria.
+        Retorna a contagem de ticks de odometria desde a última chamada e a zera.
+        Este método é a fonte de dados para a odometria do RobotNavigator.
+        É seguro para threads.
         """
-        # A lógica de zerar os ticks já ocorre em _update_current_speed,
-        # mas garantimos aqui a consistência para o navegador.
-        ticks = {
-            "left": self.current_left_tps * (time.time() - self.last_speed_check_time),
-            "right": self.current_right_tps * (time.time() - self.last_speed_check_time)
-        }
-        # Não zeramos os contadores globais aqui para não interferir no PID
-        return { "left": 0, "right": 0 } # Retorna 0 para evitar dupla contagem no navegador
+        with self.ticks_lock:
+            ticks = {
+                "left": self.left_ticks_for_odometry,
+                "right": self.right_ticks_for_odometry
+            }
+            # Zera os contadores de odometria após a leitura
+            self.left_ticks_for_odometry = 0
+            self.right_ticks_for_odometry = 0
+        return ticks
 
     def get_real_time_speed(self) -> dict:
         """Retorna a velocidade atual em ticks por segundo, sem zerar os contadores."""
