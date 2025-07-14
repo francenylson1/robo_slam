@@ -7,15 +7,26 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import time
 import math
 from typing import List, Tuple, Optional
+from PyQt5.QtCore import QObject, pyqtSignal
 from .slamtec_manager import SlamtecManager
 from .robot_motor_controller import RobotMotorController
 from .config import *
 from src.core.environment import GPIO_AVAILABLE, is_raspberry_pi
 from .path_finder import PathFinder
 
-class RobotNavigator:
+class RobotNavigator(QObject):
+
+    # Sinal para notificar a UI sobre a atualização da posição e ângulo do robô
+    position_updated = pyqtSignal(float, float, float)
+    # Sinal para notificar a UI sobre a atualização do estado da navegação
+    navigation_status_updated = pyqtSignal(dict)
+    # Sinal para notificar a UI quando a navegação for finalizada ou interrompida
+    navigation_completed = pyqtSignal(str)
+
+
     def __init__(self):
         """Inicializa o navegador do robô."""
+        super().__init__()  # Essencial para inicializar o QObject
         self.slamtec = SlamtecManager()
         self.motors = RobotMotorController()
         
@@ -847,42 +858,53 @@ class RobotNavigator:
 
     def _update_pose_with_odometry(self):
         """
-        Atualiza a posição (x, y) e o ângulo (theta) do robô com base nos ticks dos encoders.
-        Esta é a implementação da odometria.
+        Atualiza a posição (pose) do robô com base nos ticks dos encoders dos motores.
+        Esta função é a fonte única da verdade para a odometria do robô.
         """
+        # A função get_and_reset_ticks retorna os ticks acumulados e os zera.
         ticks_data = self.motors.get_and_reset_ticks()
         if not ticks_data:
             return
 
-        # Correção Definitiva: Garante que os ticks sejam inteiros.
-        left_ticks = int(ticks_data.get('left', 0))
-        right_ticks = int(ticks_data.get('right', 0))
+        left_ticks = ticks_data.get('left', 0)
+        right_ticks = ticks_data.get('right', 0)
 
         # Calcula a distância percorrida por cada roda
         dist_left = (left_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
         dist_right = (right_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
 
-        # Calcula a distância média percorrida pelo centro do robô
+        # Calcula a distância média percorrida pelo robô
         delta_distance = (dist_left + dist_right) / 2.0
 
-        # Calcula a mudança no ângulo (em radianos)
+        # Calcula a mudança no ângulo
         delta_angle_rad = (dist_right - dist_left) / ROBOT_WHEEL_BASE_M
+        delta_angle_deg = math.degrees(delta_angle_rad)
+        
+        # Atualiza o ângulo do robô
+        self.current_angle += delta_angle_deg
 
-        # Atualiza o ângulo do robô (theta)
-        self.current_angle += math.degrees(delta_angle_rad)
-        self.current_angle = self.current_angle % 360  # Normaliza o ângulo para 0-360
+        # Garante que o ângulo permaneça no intervalo [-180, 180]
+        if self.current_angle > 180:
+            self.current_angle -= 360
+        elif self.current_angle < -180:
+            self.current_angle += 360
 
-        # Converte o ângulo para radianos para os cálculos de posição
-        current_angle_rad = math.radians(self.current_angle)
+        # Calcula a nova posição (x, y)
+        angle_rad = math.radians(self.current_angle)
+        delta_x = delta_distance * math.cos(angle_rad)
+        delta_y = delta_distance * math.sin(angle_rad)
 
-        # Atualiza a posição (x, y)
-        self.current_position = (
-            self.current_position[0] + delta_distance * math.cos(current_angle_rad),
-            self.current_position[1] + delta_distance * math.sin(current_angle_rad)
-        )
+        self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
+        
+        # Atualiza o tempo da última atualização
+        self.last_position_update = time.time()
+
+        # >>>>> CORREÇÃO FUNDAMENTAL <<<<<
+        # Emite o sinal com a nova posição e ângulo para que a UI possa ser atualizada.
+        self.position_updated.emit(self.current_position[0], self.current_position[1], self.current_angle)
 
     def get_motor_controller(self):
-        """Retorna a instância do controlador de motor."""
+        """Retorna a instância do controlador do motor."""
         return self.motors
 
     def stop(self):

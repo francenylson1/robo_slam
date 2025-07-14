@@ -195,6 +195,9 @@ class MainWindow(QMainWindow):
         self.navigator = RobotNavigator()
         print(f"DEBUG: Navegador inicializado - Posição: {self.navigator.current_position}, Ângulo: {self.navigator.current_angle}°")
         
+        # Conecta o sinal de atualização de posição do navegador ao slot da UI
+        self.navigator.position_updated.connect(self._update_robot_position_on_map)
+
         # Configura callbacks do mapa
         self.map_widget.area_clicked_callback = self._on_area_clicked
         
@@ -212,6 +215,12 @@ class MainWindow(QMainWindow):
         # Timer para diagnóstico
         self.diag_timer = QTimer()
         self.diag_timer.timeout.connect(self._update_speed_feedback)
+
+    def _update_robot_position_on_map(self, x: float, y: float, angle: float):
+        """
+        Slot para receber a atualização de posição do navegador e atualizar o widget do mapa.
+        """
+        self.map_widget.update_robot_position(x, y, angle)
 
     # --- 3. CRIAR A FUNÇÃO DE ABERTURA ---
     def _open_calibration_window(self):
