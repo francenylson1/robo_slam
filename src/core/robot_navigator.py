@@ -209,8 +209,8 @@ class RobotNavigator(QObject):
 
             # Se chegou ao waypoint anterior ao destino, muda para aproximação final
             if is_near_final_destination_waypoint and distance_to_target < 0.15: # 15cm
-                print("🔄 MUDANÇA DE FASE: NAVIGATING_TO_DESTINATION → FINAL_APPROACH")
-                self.navigation_state = "FINAL_APPROACH"
+                print("🔄 MUDANÇA DE FASE: NAVIGATING_TO_DESTINATION → FINAL_APPROACH_DESTINATION")
+                self.navigation_state = "FINAL_APPROACH_DESTINATION"
                 # O alvo da aproximação final é sempre o 'original_destination'
                 self.current_target = self.original_destination
                 return
@@ -230,12 +230,12 @@ class RobotNavigator(QObject):
             # Se não chegou, continua se movendo
             self._move_towards_target()
 
-        elif self.navigation_state == "FINAL_APPROACH":
-            print("DEBUG: update() - Estado: FINAL_APPROACH")
+        elif self.navigation_state == "FINAL_APPROACH_DESTINATION":
+            print("DEBUG: update() - Estado: FINAL_APPROACH_DESTINATION")
             # _stable_final_approach gerencia seu próprio movimento
             if self._stable_final_approach(self.original_destination):
                 # Chegou ao destino com sucesso
-                print("🔄 MUDANÇA DE FASE: FINAL_APPROACH → PAUSED_AT_DESTINATION")
+                print("🔄 MUDANÇA DE FASE: FINAL_APPROACH_DESTINATION → PAUSED_AT_DESTINATION")
                 self.motors.stop()
                 self.navigation_state = "PAUSED_AT_DESTINATION"
                 self.arrival_time = time.time()
@@ -271,31 +271,39 @@ class RobotNavigator(QObject):
                 self._finalize_navigation()
                 return
 
-            # Verifica se o alvo atual é o último ponto do caminho (a base)
-            is_final_waypoint = (self.path_index == len(self.path) - 1)
+            # Verifica se está no ponto ANTERIOR à base
+            is_near_base_waypoint = (self.path_index == len(self.path) - 2)
+            distance_to_target = self._calculate_distance(self.current_position, self.current_target)
 
-            if is_final_waypoint:
-                # Usa a aproximação lenta e estável para o ponto final
-                if self._stable_final_approach(self.current_target):
-                    print("🏁 FINALIZOU FASE: RETURNING_TO_BASE")
+            # Se chegou ao penúltimo ponto, muda para o estado de aproximação final da base
+            if is_near_base_waypoint and distance_to_target < 0.15:
+                print("🔄 MUDANÇA DE FASE: RETURNING_TO_BASE → FINAL_APPROACH_BASE")
+                self.navigation_state = "FINAL_APPROACH_BASE"
+                self.current_target = self.path[-1]  # O alvo agora é o último ponto (base)
+                # Zera o timeout da aproximação final para a base
+                self.final_approach_start_time = None 
+                return
+
+            # Lógica para pontos intermediários do caminho de volta
+            if distance_to_target < NAVIGATION_GOAL_TOLERANCE:
+                self.path_index += 1
+                if self.path_index < len(self.path):
+                    self.current_target = self.path[self.path_index]
+                    print(f"DEBUG: Próximo alvo do retorno: {self.current_target}")
+                else:
+                    print("DEBUG: ERRO - Fim inesperado do caminho em RETURNING_TO_BASE")
                     self._start_final_angle_adjustment()
-                    return
-            else:
-                # Para pontos intermediários, usa a navegação padrão
-                distance_to_target = self._calculate_distance(self.current_position, self.current_target)
-                
-                if distance_to_target < NAVIGATION_GOAL_TOLERANCE:
-                    self.path_index += 1
-                    if self.path_index < len(self.path):
-                        self.current_target = self.path[self.path_index]
-                        print(f"DEBUG: Próximo alvo do retorno: {self.current_target}")
-                    else:
-                        # Se algo der errado e o índice ultrapassar, finaliza
-                        print("🏁 FINALIZOU FASE (inesperado): RETURNING_TO_BASE")
-                        self._start_final_angle_adjustment()
-                        return
-                
-                self._move_towards_target()
+                return
+            
+            self._move_towards_target()
+
+        elif self.navigation_state == "FINAL_APPROACH_BASE":
+            print("DEBUG: update() - Estado: FINAL_APPROACH_BASE")
+            # Usa a aproximação lenta, tendo como alvo o último ponto do caminho
+            if self._stable_final_approach(self.path[-1]):
+                print("🏁 FINALIZOU FASE: Chegou na BASE")
+                self._start_final_angle_adjustment()
+                return
 
         elif self.navigation_state == "ADJUSTING_FINAL_ANGLE":
             # A função _adjust_final_angle gerencia o estado e a finalização
