@@ -50,8 +50,8 @@ class RobotMotorController(QObject):
         # --- ATRIBUTOS DO PID ---
         # Movidos para fora do bloco 'if GPIO_AVAILABLE' para que existam
         # tanto em modo real quanto simulado.
-        self.pid_left = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-35, 35))
-        self.pid_right = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-35, 35))
+        self.pid_left = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-70, 70))
+        self.pid_right = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-70, 70))
         self.pid_enabled = False
 
         # Atributos para feedback de velocidade
