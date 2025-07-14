@@ -258,6 +258,12 @@ class RobotMotorController(QObject):
         self.pid_left.set_setpoint(left_tps)
         self.pid_right.set_setpoint(right_tps)
 
+        # --- CORREÇÃO PARA SIMULAÇÃO ---
+        # Se não estiver no hardware, armazena a velocidade alvo para simular os ticks.
+        if not GPIO_AVAILABLE:
+            self.simulated_left_tps = left_tps
+            self.simulated_right_tps = right_tps
+
     def set_pid_gains(self, side, Kp, Ki, Kd):
         """
         Atualiza os ganhos do PID para um dos motores.
@@ -354,17 +360,33 @@ class RobotMotorController(QObject):
         """
         Retorna a contagem de ticks de odometria desde a última chamada e a zera.
         Este método é a fonte de dados para a odometria do RobotNavigator.
-        É seguro para threads.
+        Funciona tanto em modo real (com hardware) quanto em modo simulado.
         """
-        with self.ticks_lock:
-            ticks = {
-                "left": self.left_ticks_for_odometry,
-                "right": self.right_ticks_for_odometry
+        if GPIO_AVAILABLE:
+            # Em modo real, usa os contadores incrementados pela thread do sensor Hall.
+            with self.ticks_lock:
+                ticks = {
+                    "left": self.left_ticks_for_odometry,
+                    "right": self.right_ticks_for_odometry
+                }
+                # Zera os contadores de odometria após a leitura
+                self.left_ticks_for_odometry = 0
+                self.right_ticks_for_odometry = 0
+            return ticks
+        else:
+            # Em modo simulado, calcula os ticks com base na velocidade alvo e no tempo.
+            current_time = time.time()
+            delta_t = current_time - self.last_sim_time
+            
+            simulated_left_ticks = self.simulated_left_tps * delta_t
+            simulated_right_ticks = self.simulated_right_tps * delta_t
+            
+            self.last_sim_time = current_time
+            
+            return {
+                "left": simulated_left_ticks,
+                "right": simulated_right_ticks
             }
-            # Zera os contadores de odometria após a leitura
-            self.left_ticks_for_odometry = 0
-            self.right_ticks_for_odometry = 0
-        return ticks
 
     def get_real_time_speed(self) -> dict:
         """Retorna a velocidade atual em ticks por segundo, sem zerar os contadores."""
