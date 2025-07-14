@@ -205,22 +205,30 @@ class RobotMotorController(QObject):
 
             # 3. Aplica a potencia aos motores COM A LÓGICA DE DIREÇÃO CORRETA
             if GPIO_AVAILABLE and GPIO:
+
+                # --- CORREÇÃO DEFINITIVA: Inverte o sinal do PID ---
+                # A observação em campo mostrou que o robô se move para trás quando a potência é positiva.
+                # Invertemos o sinal da potência aqui para corrigir o movimento real,
+                # mantendo a lógica de direção (HIGH/LOW) que foi validada como correta.
+                final_left_power = -left_power
+                final_right_power = -right_power
+
                 # --- MOTOR ESQUERDO ---
-                if left_power >= 0: # Para frente
+                if final_left_power >= 0: # Para frente
                     GPIO.output(self.dir_E, GPIO.HIGH)
                 else: # Para trás
                     GPIO.output(self.dir_E, GPIO.LOW)
-                self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
+                self.pwm_E.ChangeDutyCycle(min(abs(final_left_power), 100))
 
                 # --- MOTOR DIREITO ---
-                if right_power >= 0: # Para frente
+                if final_right_power >= 0: # Para frente
                     GPIO.output(self.dir_D, GPIO.LOW)
                 else: # Para trás
                     GPIO.output(self.dir_D, GPIO.HIGH)
-                self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
+                self.pwm_D.ChangeDutyCycle(min(abs(final_right_power), 100))
 
                 # Libera os freios se houver qualquer potência
-                if abs(left_power) > 0.1 or abs(right_power) > 0.1:
+                if abs(final_left_power) > 0.1 or abs(final_right_power) > 0.1:
                     GPIO.output(self.break_E, GPIO.LOW)
                     GPIO.output(self.break_D, GPIO.LOW)
                 else:
