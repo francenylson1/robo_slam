@@ -359,26 +359,29 @@ class RobotMotorController(QObject):
 
     def get_and_reset_ticks(self) -> dict:
         """
-        Retorna a contagem de ticks de odometria desde a última chamada e a zera.
-        Este método é a fonte de dados para a odometria do RobotNavigator.
-        Funciona tanto em modo real (com hardware) quanto em modo simulado.
+        Retorna os ticks acumulados e os zera. Este é o coração da odometria.
+        - Em modo real, aplica o sinal (+/-) baseado na direção do setpoint do PID.
+        - Em modo simulado, calcula os ticks com base na velocidade alvo e no tempo.
         """
         if GPIO_AVAILABLE:
-            # Em modo real, usa os contadores incrementados pela thread do sensor Hall.
             with self.ticks_lock:
-                ticks = {
-                    "left": self.left_ticks_for_odometry,
-                    "right": self.right_ticks_for_odometry
+                # Determina a direção com base no setpoint do PID para o robô real
+                left_direction = 1 if self.pid_left.setpoint >= 0 else -1
+                right_direction = 1 if self.pid_right.setpoint >= 0 else -1
+
+                ticks_to_return = {
+                    "left": self.left_ticks_for_odometry * left_direction,
+                    "right": self.right_ticks_for_odometry * right_direction
                 }
-                # Zera os contadores de odometria após a leitura
                 self.left_ticks_for_odometry = 0
                 self.right_ticks_for_odometry = 0
-            return ticks
+            return ticks_to_return
         else:
-            # Em modo simulado, calcula os ticks com base na velocidade alvo e no tempo.
+            # Em modo simulado, calcula os ticks com base na velocidade alvo e no tempo
             current_time = time.time()
             delta_t = current_time - self.last_sim_time
             
+            # Os `simulated_..._tps` já têm o sinal correto (positivo/negativo)
             simulated_left_ticks = self.simulated_left_tps * delta_t
             simulated_right_ticks = self.simulated_right_tps * delta_t
             
@@ -390,7 +393,7 @@ class RobotMotorController(QObject):
             }
 
     def get_real_time_speed(self) -> dict:
-        """Retorna a velocidade atual em ticks por segundo, sem zerar os contadores."""
+        """Retorna a velocidade em tempo real (TPS) de cada motor."""
         return {"left": self.current_left_tps, "right": self.current_right_tps}
 
     def stop(self):
