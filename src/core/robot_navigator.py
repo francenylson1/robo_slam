@@ -704,13 +704,11 @@ class RobotNavigator(QObject):
 
         # --- 5. Enviar Comando para o Controlador PID ---
         # O log agora mostrará a velocidade alvo em TPS
-        print(f"DEBUG PID: Target L:{left_tps:.1f}tps R:{right_tps:.1f}tps | Lin:{v:.2f}m/s Ang:{w:.2f}rad/s")
+        print(f"DEBUG PID: Target L:{left_tps:.1f}tps R:{right_tps:.1f}tps | Lin:{linear_speed_ms:.2f}m/s Ang:{angular_speed_rads:.2f}rad/s")
         self.motors.set_target_speed(left_tps, right_tps)
         
         # A odometria é sempre atualizada no loop principal 'update', não precisamos chamar aqui.
         # if not GPIO_AVAILABLE: self._update_position(...)
-            
-        return False # Ainda não chegou
 
     def _stable_final_approach(self):
         """
