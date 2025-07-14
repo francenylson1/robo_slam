@@ -233,7 +233,7 @@ class RobotNavigator(QObject):
         elif self.navigation_state == "FINAL_APPROACH":
             print("DEBUG: update() - Estado: FINAL_APPROACH")
             # _stable_final_approach gerencia seu próprio movimento
-            if self._stable_final_approach():
+            if self._stable_final_approach(self.original_destination):
                 # Chegou ao destino com sucesso
                 print("🔄 MUDANÇA DE FASE: FINAL_APPROACH → PAUSED_AT_DESTINATION")
                 self.motors.stop()
@@ -266,25 +266,36 @@ class RobotNavigator(QObject):
 
         elif self.navigation_state == "RETURNING_TO_BASE":
             print("DEBUG: update() - Estado: RETURNING_TO_BASE")
-            if self.current_target is None or self.current_position is None:
-                print("DEBUG: ERRO - Alvo ou posição atual nulos em RETURNING_TO_BASE")
+            if self.current_target is None or self.current_position is None or not self.path:
+                print("DEBUG: ERRO - Estado inválido em RETURNING_TO_BASE")
                 self._finalize_navigation()
                 return
 
-            distance_to_target = self._calculate_distance(self.current_position, self.current_target)
-            
-            if distance_to_target < NAVIGATION_GOAL_TOLERANCE: # 15cm
-                self.path_index += 1
-                if self.path_index >= len(self.path):
-                    # Chegou ao fim do caminho de volta (base)
+            # Verifica se o alvo atual é o último ponto do caminho (a base)
+            is_final_waypoint = (self.path_index == len(self.path) - 1)
+
+            if is_final_waypoint:
+                # Usa a aproximação lenta e estável para o ponto final
+                if self._stable_final_approach(self.current_target):
                     print("🏁 FINALIZOU FASE: RETURNING_TO_BASE")
                     self._start_final_angle_adjustment()
                     return
-                else:
-                    self.current_target = self.path[self.path_index]
-                    print(f"DEBUG: Próximo alvo do retorno: {self.current_target}")
-            
-            self._move_towards_target()
+            else:
+                # Para pontos intermediários, usa a navegação padrão
+                distance_to_target = self._calculate_distance(self.current_position, self.current_target)
+                
+                if distance_to_target < NAVIGATION_GOAL_TOLERANCE:
+                    self.path_index += 1
+                    if self.path_index < len(self.path):
+                        self.current_target = self.path[self.path_index]
+                        print(f"DEBUG: Próximo alvo do retorno: {self.current_target}")
+                    else:
+                        # Se algo der errado e o índice ultrapassar, finaliza
+                        print("🏁 FINALIZOU FASE (inesperado): RETURNING_TO_BASE")
+                        self._start_final_angle_adjustment()
+                        return
+                
+                self._move_towards_target()
 
         elif self.navigation_state == "ADJUSTING_FINAL_ANGLE":
             # A função _adjust_final_angle gerencia o estado e a finalização
@@ -714,24 +725,27 @@ class RobotNavigator(QObject):
         # A odometria é sempre atualizada no loop principal 'update', não precisamos chamar aqui.
         # if not GPIO_AVAILABLE: self._update_position(...)
 
-    def _stable_final_approach(self):
+    def _stable_final_approach(self, final_target: Tuple[float, float]):
         """
         Executa uma aproximação final estável e precisa, parando ao chegar.
         """
-        if not hasattr(self, 'original_destination') or self.original_destination is None:
-            return False
-            
+        if final_target is None:
+            print("AVISO: _stable_final_approach chamado com alvo nulo.")
+            self.motors.stop()
+            return True # Considera finalizado para não travar
+
         current_time = time.time()
         if self.final_approach_start_time is None:
             self.final_approach_start_time = current_time
 
         if current_time - self.final_approach_start_time > self.final_approach_timeout:
+            print("TIMEOUT na aproximação final. Forçando parada.")
             self.motors.stop()
             self.final_approach_start_time = None
             return True 
         
-        dx = self.original_destination[0] - self.current_position[0]
-        dy = self.original_destination[1] - self.current_position[1]
+        dx = final_target[0] - self.current_position[0]
+        dy = final_target[1] - self.current_position[1]
         total_distance = math.sqrt(dx**2 + dy**2)
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
