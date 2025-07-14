@@ -682,6 +682,15 @@ class RobotNavigator:
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
 
+        # --- NOVA LÓGICA: PISO DE VELOCIDADE MÍNIMA ---
+        # Se qualquer velocidade for solicitada (maior que zero), mas for menor
+        # que nossa velocidade mínima estável (20 tps), use 20 tps.
+        MIN_STABLE_TPS = 20.0
+        if 0 < abs(left_tps) < MIN_STABLE_TPS:
+            left_tps = MIN_STABLE_TPS * (1 if left_tps > 0 else -1)
+        if 0 < abs(right_tps) < MIN_STABLE_TPS:
+            right_tps = MIN_STABLE_TPS * (1 if right_tps > 0 else -1)
+
         # --- 5. Enviar Comando para o Controlador PID ---
         # O log agora mostrará a velocidade alvo em TPS
         print(f"DEBUG PID: Target L:{left_tps:.1f}tps R:{right_tps:.1f}tps | Lin:{v:.2f}m/s Ang:{w:.2f}rad/s")

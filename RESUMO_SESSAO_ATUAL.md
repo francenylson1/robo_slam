@@ -28,22 +28,20 @@ A fase mais recente do projeto foi uma profunda e desafiadora jornada para estab
 
 ## 4. O Que Falta Fazer: A Transição para a Navegação Inteligente
 
-Nossa pendência principal é adaptar a lógica de alto nível do robô para trabalhar **COM** a realidade do hardware, em vez de lutar contra ela.
+Concluímos a calibração do PID e agora estamos adaptando a lógica de navegação de alto nível para trabalhar **COM** as capacidades reais do hardware, em vez de lutar contra elas.
 
-**A Grande Transição: Adotar 20 tps como a Nova Realidade**
+**Plano de Ação e Estado Atual:**
 
-A tarefa agora é revisar a arquitetura de software para que ela use `20 tps` como uma velocidade base ou mínima, em vez dos `15 tps` arbitrários de antes.
+*   **Etapa 1: Persistir os Ganhos Ótimos (CONCLUÍDO)**
+    *   **Ação Realizada:** Os ganhos ótimos (`Kp=0.11`, `Ki=0.05`, `Kd=0.0`) foram persistidos no `robot_motor_controller.py`.
+    *   **Status:** Finalizado e enviado para o GitHub (commit `be98b98`).
 
-**Plano de Ação Detalhado:**
+*   **Etapa 2: Adaptação da Lógica de Navegação (EM ANDAMENTO)**
+    *   **Análise (CONCLUÍDO):** Analisamos o `src/core/robot_navigator.py` e identificamos a função `_move_towards_target` como o local onde as velocidades são calculadas e enviadas ao controle PID.
+    *   **Implementação (PENDENTE DE COMMIT):** Para resolver o problema de instabilidade em baixas velocidades, implementamos uma lógica de **"piso de velocidade mínima"**. Esta alteração garante que o navegador nunca comande uma velocidade abaixo do nosso mínimo estável de `20 tps`.
+    *   **Arquivo Modificado:** `src/core/robot_navigator.py`.
 
-*   **Etapa 1: Persistir os Ganhos Ótimos (Trabalho Rápido)**
-    *   **Ação:** Atualizar os valores padrão na inicialização dos `PIDController` dentro do `src/core/robot_motor_controller.py` para `Kp=0.11`, `Ki=0.05`, `Kd=0.0`.
-
-*   **Etapa 2: Análise e Adaptação da Lógica de Navegação (Trabalho Principal)**
-    *   **Objetivo:** Encontrar onde o código de alto nível (provavelmente em `src/core/robot_navigator.py`) calcula as velocidades das rodas e as converte para tiques por segundo.
-    *   **Hipótese:** Existe uma constante `MAX_TPS` ou uma fórmula de conversão de `m/s` para `tps` que precisa ser reavaliada.
-    *   **Ação:** Precisamos garantir que, quando o navegador pedir um movimento lento, o comando enviado ao controlador de motor seja de, no mínimo, `20 tps`, ou um valor que o sistema possa executar de forma estável.
-
-*   **Etapa 3: Teste de Navegação Completo**
-    *   **Objetivo:** Validar a nova lógica em um cenário de uso real.
-    *   **Ação:** Usar a interface principal para comandar o robô a navegar para um ponto específico no mapa. Observar se ele segue o caminho calculado com precisão e se o movimento é suave, sem hesitações ou tremedeiras, especialmente em baixas velocidades e ao iniciar o movimento. 
+*   **Etapa 3: Próximos Passos Imediatos (Início da Próxima Sessão)**
+    *   **Ação 1: Finalizar o Commit:** Fazer o `commit` e `push` da alteração pendente no `src/core/robot_navigator.py`. A mensagem do commit deve ser: `"Feat: Implementa piso de velocidade mínima no navegador"`.
+    *   **Ação 2: Sincronizar a Raspberry Pi:** Executar o procedimento seguro (`git fetch`, `git reset --hard`, `git clean -fd`) na Raspberry Pi para garantir que ela tenha a versão mais recente e corrigida.
+    *   **Ação 3: Teste de Navegação Completo:** Com a lógica de navegação atualizada, realizar o teste definitivo: usar a interface principal para comandar o robô a um ponto no mapa. O critério de sucesso é um movimento **suave e contínuo**, sem as tremedeiras ou hesitações que víamos antes, especialmente ao iniciar o movimento e ao se aproximar do alvo. 
