@@ -709,95 +709,60 @@ class RobotNavigator(QObject):
         
         # A odometria é sempre atualizada no loop principal 'update', não precisamos chamar aqui.
         # if not GPIO_AVAILABLE: self._update_position(...)
+            
+        return False # Ainda não chegou
 
     def _stable_final_approach(self):
         """
         Executa uma aproximação final estável e precisa, parando ao chegar.
         """
-        # **CORREÇÃO CRÍTICA: USA O DESTINO ORIGINAL, NÃO O CURRENT_TARGET**
         if not hasattr(self, 'original_destination') or self.original_destination is None:
-            print("DEBUG: ⚠️ Destino original não definido na aproximação final")
             return False
             
-        # **SISTEMA DE TIMEOUT PARA EVITAR TRAVAMENTO**
         current_time = time.time()
         if self.final_approach_start_time is None:
             self.final_approach_start_time = current_time
-            print("DEBUG: Iniciando timeout da aproximação final")
 
-        elapsed_time = current_time - self.final_approach_start_time
-        print(f"DEBUG: Tempo decorrido na aproximação: {elapsed_time:.1f}s / {self.final_approach_timeout:.1f}s")
-        if elapsed_time > self.final_approach_timeout:
-            print(f"DEBUG: ⚠️ TIMEOUT DA APROXIMAÇÃO FINAL ({self.final_approach_timeout}s)")
+        if current_time - self.final_approach_start_time > self.final_approach_timeout:
             self.motors.stop()
             self.final_approach_start_time = None
-            return True # Considera como sucesso para não travar
+            return True 
         
-        # **USA O DESTINO ORIGINAL REAL**
-        if self.original_destination is None or self.current_position is None:
-            print("DEBUG: ⚠️ Posição ou destino não definidos")
-            return False
-            
         dx = self.original_destination[0] - self.current_position[0]
         dy = self.original_destination[1] - self.current_position[1]
         total_distance = math.sqrt(dx**2 + dy**2)
         target_angle = math.degrees(math.atan2(dy, dx))
-        target_angle = (target_angle + 360) % 360
         angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
 
-        # Logs de depuração
-        print("-" * 30, "MÉTRICAS DE APROXIMAÇÃO FINAL", "-" * 30)
-        print(f"  📍 Destino: ({self.original_destination[0]:.4f}, {self.original_destination[1]:.4f})")
-        print(f"  🤖 Robô: ({self.current_position[0]:.4f}, {self.current_position[1]:.4f})")
-        print(f"  📏 Distância: {total_distance*100:.1f}cm")
-        print(f"  📐 Ângulo: {angle_diff:.1f}°")
-        
-        final_tolerance = 0.15  # 15cm (Aumentado de 0.05 para maior tolerância no mundo real)
+        final_tolerance = 0.15
         if total_distance <= final_tolerance:
-            print("🎉 DESTINO FINAL ALCANÇADO COM SUCESSO!")
-            self.motors.stop() # Usa o stop() que desativa o PID
+            self.motors.stop()
             self.final_approach_start_time = None
             return True
 
-        # --- LÓGICA DE MOVIMENTO REATORADA PARA USAR O CONTROLE PID ---
-        # A lógica é similar a _move_towards_target, mas com ganhos e velocidades
-        # mais conservadores para garantir uma aproximação precisa.
-
-        # 1. Calcular velocidades alvo
-        # Prioriza o giro, zerando a velocidade de avanço se o erro angular for grande.
-        angle_tolerance_approach = 5.0 # Tolerância de 5 graus para aproximação
+        angle_tolerance_approach = 5.0
         if abs(angle_diff) > angle_tolerance_approach:
-            linear_speed_ms = 0.0 # Para e gira
+            linear_speed_ms = 0.0
         else:
-            # Avança com velocidade proporcional à distância, de forma um pouco mais agressiva.
-            # Original: min(MAX_LINEAR_SPEED_MS * 0.5, total_distance / 2.0)
             linear_speed_ms = min(MAX_LINEAR_SPEED_MS * 0.7, total_distance / 1.5)
         
-        # Velocidade angular proporcional ao erro, com ganho aumentado para mais responsividade.
-        # Original: angular_gain = 1.5
-        angular_gain = 2.5 # Ganho (P) do controlador de giro
+        angular_gain = 2.5
         angular_speed_rads = math.radians(angle_diff) * angular_gain
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
-        # 2. Converter para velocidade das rodas (em m/s)
         v = linear_speed_ms
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         right_wheel_speed_ms = v + (w * L) / 2.0
         left_wheel_speed_ms = v - (w * L) / 2.0
 
-        # 3. Converter m/s para Ticks por Segundo (TPS)
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
 
-        # 4. Enviar comando para o controlador PID
-        print(f"DEBUG PID (Approach): Target L:{left_tps:.1f}tps R:{right_tps:.1f}tps")
+        # Não há necessidade de inverter o sinal aqui. O cálculo deve estar correto.
         self.motors.set_target_speed(left_tps, right_tps)
-
-        # Como a odometria real está ativa, não precisamos da simulação _update_position
-        # self._update_position(forward_value, turn_value)
             
-        return False # Ainda não chegou
+        return False
 
     def _adjust_final_angle(self):
         """Ajusta o ângulo final para 270°"""

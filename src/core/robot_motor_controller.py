@@ -77,22 +77,18 @@ class RobotMotorController(QObject):
             GPIO.setmode(GPIO.BCM)
             GPIO.setwarnings(False)
 
-            # --- CORREÇÃO DEFINITIVA: INVERSÃO DE CANAIS ESQUERDA/DIREITA ---
-            # A observação em campo (virtual vira à direita, real vira à esquerda)
-            # confirma que os canais dos motores estão fisicamente trocados.
-            # Trocamos as definições dos pinos aqui para alinhar o software com o hardware.
+            # --- Pinos Originais Restaurados ---
+            # PINOS DO MOTOR ESQUERDO
+            self.dir_E = 5      # Direção
+            self.break_E = 6    # Freio
+            self.speed_E = 18   # PWM para Velocidade
+            self.hall_E = 16    # Sensor Hall (Encoder)
 
-            # PINOS DO MOTOR ESQUERDO (usando os pinos físicos do motor direito)
-            self.dir_E = 23     # Direção
-            self.break_E = 24   # Freio
-            self.speed_E = 12   # PWM para Velocidade
-            self.hall_E = 17    # Sensor Hall (Encoder)
-
-            # PINOS DO MOTOR DIREITO (usando os pinos físicos do motor esquerdo)
-            self.dir_D = 5      # Direção
-            self.break_D = 6    # Freio
-            self.speed_D = 18   # PWM para Velocidade
-            self.hall_D = 16    # Sensor Hall (Encoder)
+            # PINOS DO MOTOR DIREITO
+            self.dir_D = 23     # Direção
+            self.break_D = 24   # Freio
+            self.speed_D = 12   # PWM para Velocidade
+            self.hall_D = 17    # Sensor Hall (Encoder)
             
             # Configura pinos de saída
             for pin in [self.dir_E, self.break_E, self.speed_E, self.dir_D, self.break_D, self.speed_D]:
