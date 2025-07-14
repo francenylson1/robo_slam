@@ -77,17 +77,22 @@ class RobotMotorController(QObject):
             GPIO.setmode(GPIO.BCM)
             GPIO.setwarnings(False)
 
-            # PINOS DO MOTOR ESQUERDO
-            self.dir_E = 5      # Direção
-            self.break_E = 6    # Freio
-            self.speed_E = 18   # PWM para Velocidade
-            self.hall_E = 16    # Sensor Hall (Encoder)
+            # --- CORREÇÃO DEFINITIVA: INVERSÃO DE CANAIS ESQUERDA/DIREITA ---
+            # A observação em campo (virtual vira à direita, real vira à esquerda)
+            # confirma que os canais dos motores estão fisicamente trocados.
+            # Trocamos as definições dos pinos aqui para alinhar o software com o hardware.
 
-            # PINOS DO MOTOR DIREITO
-            self.dir_D = 23     # Direção
-            self.break_D = 24   # Freio
-            self.speed_D = 12   # PWM para Velocidade
-            self.hall_D = 17    # Sensor Hall (Encoder)
+            # PINOS DO MOTOR ESQUERDO (usando os pinos físicos do motor direito)
+            self.dir_E = 23     # Direção
+            self.break_E = 24   # Freio
+            self.speed_E = 12   # PWM para Velocidade
+            self.hall_E = 17    # Sensor Hall (Encoder)
+
+            # PINOS DO MOTOR DIREITO (usando os pinos físicos do motor esquerdo)
+            self.dir_D = 5      # Direção
+            self.break_D = 6    # Freio
+            self.speed_D = 18   # PWM para Velocidade
+            self.hall_D = 16    # Sensor Hall (Encoder)
             
             # Configura pinos de saída
             for pin in [self.dir_E, self.break_E, self.speed_E, self.dir_D, self.break_D, self.speed_D]:
@@ -205,30 +210,22 @@ class RobotMotorController(QObject):
 
             # 3. Aplica a potencia aos motores COM A LÓGICA DE DIREÇÃO CORRETA
             if GPIO_AVAILABLE and GPIO:
-
-                # --- CORREÇÃO DEFINITIVA: Inverte o sinal do PID ---
-                # A observação em campo mostrou que o robô se move para trás quando a potência é positiva.
-                # Invertemos o sinal da potência aqui para corrigir o movimento real,
-                # mantendo a lógica de direção (HIGH/LOW) que foi validada como correta.
-                final_left_power = -left_power
-                final_right_power = -right_power
-
                 # --- MOTOR ESQUERDO ---
-                if final_left_power >= 0: # Para frente
+                if left_power >= 0: # Para frente
                     GPIO.output(self.dir_E, GPIO.HIGH)
                 else: # Para trás
                     GPIO.output(self.dir_E, GPIO.LOW)
-                self.pwm_E.ChangeDutyCycle(min(abs(final_left_power), 100))
+                self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
 
                 # --- MOTOR DIREITO ---
-                if final_right_power >= 0: # Para frente
+                if right_power >= 0: # Para frente
                     GPIO.output(self.dir_D, GPIO.LOW)
                 else: # Para trás
                     GPIO.output(self.dir_D, GPIO.HIGH)
-                self.pwm_D.ChangeDutyCycle(min(abs(final_right_power), 100))
+                self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
 
                 # Libera os freios se houver qualquer potência
-                if abs(final_left_power) > 0.1 or abs(final_right_power) > 0.1:
+                if abs(left_power) > 0.1 or abs(right_power) > 0.1:
                     GPIO.output(self.break_E, GPIO.LOW)
                     GPIO.output(self.break_D, GPIO.LOW)
                 else:
