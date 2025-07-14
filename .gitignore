@@ -56,3 +56,4 @@ logs/
 .env
 config.local.py prompt_*.md
 !data/robot.db
+\n# Log files\npid_logs.txt

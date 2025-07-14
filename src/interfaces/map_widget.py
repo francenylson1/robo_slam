@@ -34,6 +34,14 @@ class MapWidget(QWidget):
         self.selected_area_id = None  # ID da área selecionada
         self.area_clicked_callback: Optional[Callable[[int], None]] = None  # Callback para clique em área
         
+        # --- NOVO: Atributo para armazenar o caminho da navegação ---
+        self.current_path: List[Tuple[float, float]] = []
+        
+    def set_current_path(self, path: List[Tuple[float, float]]):
+        """Define o caminho de navegação atual para ser desenhado."""
+        self.current_path = path
+        self.update()  # Força o widget a se redesenhar
+
     def update_robot_position(self, x: float, y: float, angle: float):
         """Atualiza a posição do robô no mapa."""
         self.robot_position = (x, y)
@@ -78,6 +86,9 @@ class MapWidget(QWidget):
             painter.setFont(QFont('Arial', 8))
             painter.drawText(screen_x + 10, screen_y + 5, f"{name} ({point_type})")
             
+        # --- NOVO: Desenha o caminho da navegação ---
+        self._draw_path(painter)
+
         # Desenha o robô
         self._draw_robot(painter)
         
@@ -113,6 +124,22 @@ class MapWidget(QWidget):
             screen_y = int(y * self.scale * 0.5)
             painter.drawText(5, screen_y - 5, f"{y * 0.5:.1f}")
         
+    def _draw_path(self, painter: QPainter):
+        """Desenha o caminho de navegação atual no mapa."""
+        if not self.current_path or len(self.current_path) < 2:
+            return
+
+        painter.setPen(QPen(QColor(0, 0, 255, 150), 3, Qt.PenStyle.DashLine))
+        
+        for i in range(len(self.current_path) - 1):
+            p1 = self.current_path[i]
+            p2 = self.current_path[i+1]
+            
+            screen_p1 = QPoint(int(p1[0] * self.scale), int(p1[1] * self.scale))
+            screen_p2 = QPoint(int(p2[0] * self.scale), int(p2[1] * self.scale))
+            
+            painter.drawLine(screen_p1, screen_p2)
+
     def _world_to_screen_x(self, x):
         """Converte coordenada X do mundo para tela."""
         return int(x * MAP_SCALE)

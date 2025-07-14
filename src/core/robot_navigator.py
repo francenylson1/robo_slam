@@ -323,6 +323,10 @@ class RobotNavigator(QObject):
         # Inicia o ajuste de ângulo
         self._adjust_final_angle()
         
+    def get_current_path(self) -> List[Tuple[float, float]]:
+        """Retorna o caminho de navegação atual."""
+        return self.path
+
     def _check_emergency_obstacles(self) -> bool:
         """Verifica se há obstáculos que requerem parada de emergência"""
         # Simulação de detecção de obstáculos próximos

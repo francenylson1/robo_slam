@@ -724,6 +724,11 @@ class MainWindow(QMainWindow):
         # Reinicia o loop de atualização
         self._update()
         
+        # --- NOVO: Visualização do Caminho ---
+        # Após iniciar a navegação, obtém o caminho calculado e o envia para o widget do mapa.
+        current_path = self.navigator.get_current_path()
+        self.map_widget.set_current_path(current_path)
+
         print("DEBUG: Navegação iniciada com sucesso")
         print("DEBUG: ===== FIM DA INICIALIZAÇÃO =====")
             
