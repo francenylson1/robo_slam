@@ -689,8 +689,8 @@ class RobotNavigator(QObject):
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         
-        right_wheel_speed_ms = v + (w * L) / 2.0
-        left_wheel_speed_ms = v - (w * L) / 2.0
+        right_wheel_speed_ms = v - (w * L) / 2.0
+        left_wheel_speed_ms = v + (w * L) / 2.0
 
         # --- 4. Converter m/s para Ticks por Segundo (TPS) ---
         # TPS = (metros / segundo) / (metros / revolução) * (ticks / revolução)
