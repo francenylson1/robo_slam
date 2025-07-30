@@ -194,15 +194,18 @@ class RobotMotorController(QObject):
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
             
-            # --- TESTE: Aplicar 16% diretamente (bypassando o PID) ---
-            # Se o setpoint for maior que zero, aplica 16% de potência
-            if abs(self.pid_left.setpoint) > 0:
-                left_power = 16.0 if self.pid_left.setpoint > 0 else -16.0
-            if abs(self.pid_right.setpoint) > 0:
-                right_power = 16.0 if self.pid_right.setpoint > 0 else -16.0
+            # --- SOLUÇÃO DEFINITIVA: Piso de potência mínima ---
+            # Se o PID gerar potência muito baixa mas há setpoint, aplica potência mínima
+            MIN_POWER_THRESHOLD = 8.0  # Se PID gerar menos que 8%, usa piso mínimo
+            MIN_POWER_FLOOR = 16.0     # Piso de potência mínima (seu limite de segurança)
+            
+            if abs(self.pid_left.setpoint) > 0 and abs(left_power) < MIN_POWER_THRESHOLD:
+                left_power = MIN_POWER_FLOOR if self.pid_left.setpoint > 0 else -MIN_POWER_FLOOR
+            if abs(self.pid_right.setpoint) > 0 and abs(right_power) < MIN_POWER_THRESHOLD:
+                right_power = MIN_POWER_FLOOR if self.pid_right.setpoint > 0 else -MIN_POWER_FLOOR
             
             # --- NOVO: Print detalhado do PID para debug ---
-            print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}% (TESTE DIRETO)")
+            print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}%")
             
             # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
             current_time = time.time()
