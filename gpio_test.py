@@ -19,7 +19,7 @@ def test_forward_movement():
         GPIO.setwarnings(False)
         GPIO.cleanup()
         print("GPIO.cleanup() inicial executado.")
-
+        
         # Re-configura o modo apos a limpeza
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)

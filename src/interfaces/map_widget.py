@@ -88,7 +88,7 @@ class MapWidget(QWidget):
             
         # --- NOVO: Desenha o caminho da navegação ---
         self._draw_path(painter)
-
+            
         # Desenha o robô
         self._draw_robot(painter)
         
@@ -139,7 +139,7 @@ class MapWidget(QWidget):
             screen_p2 = QPoint(int(p2[0] * self.scale), int(p2[1] * self.scale))
             
             painter.drawLine(screen_p1, screen_p2)
-
+        
     def _world_to_screen_x(self, x):
         """Converte coordenada X do mundo para tela."""
         return int(x * MAP_SCALE)

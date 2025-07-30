@@ -274,7 +274,7 @@ class RobotNavigator(QObject):
             # Verifica se está no ponto ANTERIOR à base
             is_near_base_waypoint = (self.path_index == len(self.path) - 2)
             distance_to_target = self._calculate_distance(self.current_position, self.current_target)
-
+            
             # Se chegou ao penúltimo ponto, muda para o estado de aproximação final da base
             if is_near_base_waypoint and distance_to_target < 0.15:
                 print("🔄 MUDANÇA DE FASE: RETURNING_TO_BASE → FINAL_APPROACH_BASE")
@@ -282,7 +282,7 @@ class RobotNavigator(QObject):
                 self.current_target = self.path[-1]  # O alvo agora é o último ponto (base)
                 # Zera o timeout da aproximação final para a base
                 self.final_approach_start_time = None 
-                return
+                    return
 
             # Lógica para pontos intermediários do caminho de volta
             if distance_to_target < NAVIGATION_GOAL_TOLERANCE:
@@ -345,7 +345,7 @@ class RobotNavigator(QObject):
     def get_current_path(self) -> List[Tuple[float, float]]:
         """Retorna o caminho de navegação atual."""
         return self.path
-
+        
     def _check_emergency_obstacles(self) -> bool:
         """Verifica se há obstáculos que requerem parada de emergência"""
         # Simulação de detecção de obstáculos próximos
@@ -751,7 +751,7 @@ class RobotNavigator(QObject):
             self.motors.stop()
             self.final_approach_start_time = None
             return True 
-        
+            
         dx = final_target[0] - self.current_position[0]
         dy = final_target[1] - self.current_position[1]
         total_distance = math.sqrt(dx**2 + dy**2)
@@ -785,7 +785,7 @@ class RobotNavigator(QObject):
 
         # Não há necessidade de inverter o sinal aqui. O cálculo deve estar correto.
         self.motors.set_target_speed(left_tps, right_tps)
-            
+
         return False
 
     def _adjust_final_angle(self):
@@ -868,7 +868,7 @@ class RobotNavigator(QObject):
         # Calcula a mudança no ângulo
         delta_angle_rad = (dist_right - dist_left) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
-        
+
         # Atualiza o ângulo do robô
         self.current_angle += delta_angle_deg
 
