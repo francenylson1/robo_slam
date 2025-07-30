@@ -144,6 +144,10 @@ class RobotMotorController(QObject):
         if not GPIO_AVAILABLE or not GPIO:
             return
 
+        # Debug: Contadores para monitorar os ticks
+        debug_counter = 0
+        last_debug_time = time.time()
+
         while not self.shutdown_event.is_set():
             # Leitura do sensor esquerdo
             try:
@@ -172,6 +176,16 @@ class RobotMotorController(QObject):
                 # Se o GPIO foi limpo, a thread deve parar.
                 break
             
+            # Debug: A cada 1000 iterações, mostra o status dos encoders
+            debug_counter += 1
+            if debug_counter >= 1000:
+                current_time = time.time()
+                if current_time - last_debug_time > 5.0:  # A cada 5 segundos
+                    with self.ticks_lock:
+                        print(f"DEBUG ENCODER: L:{self.left_hall_ticks} ticks, R:{self.right_hall_ticks} ticks | Estados: L:{current_state_E}, R:{current_state_D}")
+                    last_debug_time = current_time
+                debug_counter = 0
+            
             # Pausa muito curta para evitar 100% de uso da CPU
             time.sleep(0.001) # Poll a ~1000Hz
 
@@ -196,8 +210,8 @@ class RobotMotorController(QObject):
             
             # --- SOLUÇÃO DEFINITIVA: Piso de potência mínima ---
             # Se o PID gerar potência muito baixa mas há setpoint, aplica potência mínima
-            MIN_POWER_THRESHOLD = 8.0  # Se PID gerar menos que 8%, usa piso mínimo
-            MIN_POWER_FLOOR = 16.0     # Piso de potência mínima (seu limite de segurança)
+            MIN_POWER_THRESHOLD = 4.0  # Se PID gerar menos que 4%, usa piso mínimo
+            MIN_POWER_FLOOR = 12.0     # AUMENTADO: Piso de potência mínima (era 6.0)
             
             if abs(self.pid_left.setpoint) > 0 and abs(left_power) < MIN_POWER_THRESHOLD:
                 left_power = MIN_POWER_FLOOR if self.pid_left.setpoint > 0 else -MIN_POWER_FLOOR
@@ -251,10 +265,16 @@ class RobotMotorController(QObject):
         current_time = time.time()
         delta_time = current_time - self.last_speed_check_time
 
-        if delta_time > 0.01: # Atualiza em intervalos regulares
+        # AUMENTADO: Intervalo de atualização de 0.01s para 0.1s (10Hz em vez de 100Hz)
+        # Isso permite que os ticks se acumulem adequadamente
+        if delta_time > 0.1: # Atualiza a cada 100ms em vez de 10ms
             with self.ticks_lock:
                 self.current_left_tps = self.left_hall_ticks / delta_time
                 self.current_right_tps = self.right_hall_ticks / delta_time
+
+                # Debug: Mostra quando há ticks sendo processados
+                if self.left_hall_ticks > 0 or self.right_hall_ticks > 0:
+                    print(f"DEBUG SPEED: Processando ticks - L:{self.left_hall_ticks}, R:{self.right_hall_ticks} em {delta_time:.3f}s")
 
                 self.left_hall_ticks = 0
                 self.right_hall_ticks = 0

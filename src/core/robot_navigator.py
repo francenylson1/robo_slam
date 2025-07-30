@@ -813,23 +813,29 @@ class RobotNavigator(QObject):
             # Define a direção do giro baseado na diferença
             if angle_diff > 0:
                 # Precisa girar no sentido horário (ângulo atual < 270°)
-                turn_value = abs(turn_value)
+                # CORREÇÃO: Inverte a lógica para corrigir a direção
+                left_speed = -turn_value * 100
+                right_speed = turn_value * 100
                 direction = "horário"
             else:
                 # Precisa girar no sentido anti-horário (ângulo atual > 270°)
-                turn_value = -abs(turn_value)
+                # CORREÇÃO: Inverte a lógica para corrigir a direção
+                left_speed = turn_value * 100
+                right_speed = -turn_value * 100
                 direction = "anti-horário"
                 
             print(f"DEBUG: Comando de giro: {turn_value:.3f}")
             print(f"DEBUG: Direção do giro: {direction}")
+            print(f"DEBUG: Velocidades: L:{left_speed:.1f}% R:{right_speed:.1f}%")
             print(f"DEBUG: Ângulo atual: {self.current_angle:.2f}°, objetivo: {ROBOT_INITIAL_ANGLE}°")
             
             # Aplica o comando de giro
-            self.motors.set_speed(-turn_value * 100, turn_value * 100)
-            self._update_position(0.0, turn_value)
+            self.motors.set_speed(left_speed, right_speed)
             
-            print(f"DEBUG: Novo ângulo após giro: {self.current_angle:.2f}°")
-            print(f"DEBUG: Diferença restante: {(ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180:.2f}°")
+            # CORREÇÃO: NÃO chama _update_position aqui - deixa a odometria real funcionar
+            # self._update_position(0.0, turn_value)  # REMOVIDO
+            
+            print(f"DEBUG: Comando de giro aplicado - aguardando odometria real...")
         else:
             print("DEBUG: === ÂNGULO AJUSTADO COM SUCESSO ===")
             print(f"DEBUG: Ângulo final: {self.current_angle:.2f}°")
@@ -837,7 +843,7 @@ class RobotNavigator(QObject):
             print("DEBUG: Robô na base com ângulo 270° (apontando para cima)")
             
             # Finaliza a navegação usando o método centralizado
-            self._finalize_navigation() 
+            self._finalize_navigation()
 
     def _get_next_waypoint_info(self):
         """Obtém informações sobre o próximo waypoint no caminho."""
