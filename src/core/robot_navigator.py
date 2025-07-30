@@ -282,7 +282,7 @@ class RobotNavigator(QObject):
                 self.current_target = self.path[-1]  # O alvo agora é o último ponto (base)
                 # Zera o timeout da aproximação final para a base
                 self.final_approach_start_time = None 
-                    return
+                return
 
             # Lógica para pontos intermediários do caminho de volta
             if distance_to_target < NAVIGATION_GOAL_TOLERANCE:
