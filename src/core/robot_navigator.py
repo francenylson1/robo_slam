@@ -246,23 +246,10 @@ class RobotNavigator(QObject):
             if self.arrival_time is not None and (time.time() - self.arrival_time > self.arrival_pause_time):
                 self.is_paused_at_destination = False
                 
-                # ETAPA FINAL DA CORREÇÃO: Calcular o caminho de volta AGORA.
-                print("DEBUG: Calculando caminho de volta a partir da posição real...")
-                path_to_base = self.path_finder.find_path(self.current_position, self.base_position)
-
-                if not path_to_base or len(path_to_base) < 2:
-                    print("DEBUG: ERRO - Não foi possível encontrar caminho de volta. Finalizando.")
-                    self._start_final_angle_adjustment()
-                    return
-
-                # --- CORREÇÃO: Lógica de retorno simplificada e robusta ---
-                # Anexa o novo caminho de volta e continua a navegação.
-                self.path = self.path + path_to_base[1:] # Adiciona o caminho de volta, pulando o ponto inicial duplicado.
-                self.path_index = self.destination_index + 1
-                self.current_target = self.path[self.path_index]
-                print("🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → RETURNING_TO_BASE")
-                self.navigation_state = "RETURNING_TO_BASE"
-                self.is_returning_to_base = True
+                # NOVA LÓGICA: Calcular ângulo para retornar à base
+                print("DEBUG: Calculando ângulo para retornar à base...")
+                self._calculate_and_execute_return_angle()
+                return
 
         elif self.navigation_state == "RETURNING_TO_BASE":
             print("DEBUG: update() - Estado: RETURNING_TO_BASE")
@@ -305,6 +292,10 @@ class RobotNavigator(QObject):
                 self._start_final_angle_adjustment()
                 return
 
+        elif self.navigation_state == "TURNING_TO_RETURN":
+            # Executa o giro para retornar à base
+            self._execute_return_turn()
+            
         elif self.navigation_state == "ADJUSTING_FINAL_ANGLE":
             # A função _adjust_final_angle gerencia o estado e a finalização
             self._adjust_final_angle()
@@ -326,6 +317,110 @@ class RobotNavigator(QObject):
         self.path = []
         self.path_index = 0
         print("DEBUG: === NAVEGAÇÃO FINALIZADA ===")
+        
+    def _calculate_and_execute_return_angle(self):
+        """Calcula o ângulo necessário para retornar à base e inicia o giro"""
+        print("DEBUG: === CALCULANDO ÂNGULO DE RETORNO ===")
+        
+        # Calcula o ângulo para a base
+        dx = self.base_position[0] - self.current_position[0]
+        dy = self.base_position[1] - self.current_position[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        
+        # Calcula a diferença de ângulo
+        angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
+        
+        print(f"DEBUG: Posição atual: {self.current_position}")
+        print(f"DEBUG: Posição da base: {self.base_position}")
+        print(f"DEBUG: Ângulo atual: {self.current_angle:.2f}°")
+        print(f"DEBUG: Ângulo para base: {target_angle:.2f}°")
+        print(f"DEBUG: Diferença calculada: {angle_diff:.2f}°")
+        
+        # Se a diferença for pequena, vai direto para o retorno
+        if abs(angle_diff) < 5.0:
+            print("DEBUG: Ângulo já está correto, iniciando retorno direto")
+            self._start_return_navigation()
+            return
+            
+        # Armazena o ângulo alvo para o giro
+        self.return_target_angle = target_angle
+        self.return_angle_diff = angle_diff
+        
+        # Inicia o estado de giro
+        print("🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → TURNING_TO_RETURN")
+        self.navigation_state = "TURNING_TO_RETURN"
+        self.turn_start_time = time.time()
+        
+    def _execute_return_turn(self):
+        """Executa o giro para retornar à base"""
+        print(f"DEBUG: === EXECUTANDO GIRO DE RETORNO ===")
+        print(f"DEBUG: Ângulo atual: {self.current_angle:.2f}°")
+        print(f"DEBUG: Ângulo alvo: {self.return_target_angle:.2f}°")
+        print(f"DEBUG: Diferença restante: {self.return_angle_diff:.2f}°")
+        
+        # Verifica timeout (10 segundos)
+        if time.time() - self.turn_start_time > 10.0:
+            print("DEBUG: TIMEOUT no giro de retorno, forçando continuação")
+            self._start_return_navigation()
+            return
+            
+        # Calcula a diferença atual
+        current_diff = (self.return_target_angle - self.current_angle + 180) % 360 - 180
+        
+        # Se chegou próximo do ângulo alvo, inicia o retorno
+        if abs(current_diff) < 5.0:
+            print("DEBUG: Giro de retorno concluído, iniciando navegação de retorno")
+            self._start_return_navigation()
+            return
+            
+        # Executa o giro
+        if abs(current_diff) > 30:
+            turn_value = 0.08  # 8% para diferenças grandes
+        elif abs(current_diff) > 10:
+            turn_value = 0.06  # 6% para diferenças moderadas
+        else:
+            turn_value = 0.04  # 4% para ajustes finos
+            
+        # CORREÇÃO: Inverte a lógica para alinhar interface com robô físico
+        # Interface mostra esquerda = robô físico gira direita
+        if current_diff > 0:
+            # Precisa girar no sentido horário (interface mostra direita)
+            # CORREÇÃO: Inverte para alinhar com robô físico
+            left_speed = -turn_value * 100
+            right_speed = turn_value * 100
+            direction = "horário (corrigido)"
+        else:
+            # Precisa girar no sentido anti-horário (interface mostra esquerda)
+            # CORREÇÃO: Inverte para alinhar com robô físico
+            left_speed = turn_value * 100
+            right_speed = -turn_value * 100
+            direction = "anti-horário (corrigido)"
+            
+        print(f"DEBUG: Comando de giro: {turn_value:.3f} - {direction}")
+        print(f"DEBUG: Velocidades: L:{left_speed:.1f}% R:{right_speed:.1f}%")
+        
+        # Aplica o comando de giro
+        self.motors.set_speed(left_speed, right_speed)
+        
+    def _start_return_navigation(self):
+        """Inicia a navegação de retorno à base"""
+        print("DEBUG: === INICIANDO NAVEGAÇÃO DE RETORNO DIRETO ===")
+        
+        # NOVA LÓGICA: Retorno direto à base sem waypoints intermediários
+        # Isso força o robô a ir direto para a base, fazendo o giro de 180° necessário
+        
+        # Cria um caminho direto: posição atual -> base
+        direct_path = [self.current_position, self.base_position]
+        
+        # Substitui o caminho atual pelo caminho direto
+        self.path = direct_path
+        self.path_index = 0
+        self.current_target = self.path[1]  # O alvo é a base
+        
+        print(f"DEBUG: Caminho direto criado: {self.current_position} -> {self.base_position}")
+        print("🔄 MUDANÇA DE FASE: TURNING_TO_RETURN → RETURNING_TO_BASE")
+        self.navigation_state = "RETURNING_TO_BASE"
+        self.is_returning_to_base = True
         
     def _start_final_angle_adjustment(self):
         """Inicia o ajuste do ângulo final"""
