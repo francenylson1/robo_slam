@@ -211,7 +211,7 @@ class RobotMotorController(QObject):
             # --- SOLUÇÃO DEFINITIVA: Piso de potência mínima ---
             # Se o PID gerar potência muito baixa mas há setpoint, aplica potência mínima
             MIN_POWER_THRESHOLD = 4.0  # Se PID gerar menos que 4%, usa piso mínimo
-            MIN_POWER_FLOOR = 12.0     # AUMENTADO: Piso de potência mínima (era 6.0)
+            MIN_POWER_FLOOR = 7.0     # AUMENTADO: Piso de potência mínima (era 6.0)
             
             if abs(self.pid_left.setpoint) > 0 and abs(left_power) < MIN_POWER_THRESHOLD:
                 left_power = MIN_POWER_FLOOR if self.pid_left.setpoint > 0 else -MIN_POWER_FLOOR
