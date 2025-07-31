@@ -1,47 +1,145 @@
-# Resumo do Projeto e Próximos Passos (12/07/2025)
+# RESUMO DA SESSÃO ATUAL - Robô SLAM
 
-## 1. Visão Geral do Projeto
+## 📋 **Status do Projeto**
 
-O objetivo é o desenvolvimento de um **robô garçom autônomo** utilizando uma **Raspberry Pi 4 (4GB)** como unidade de processamento principal. O sistema de controle de alto nível é gerenciado por uma interface gráfica (PyQt) em um PC, que lida com o mapa (SLAM), definição de destinos e monitoramento. A navegação autônoma é o objetivo final.
+**Projeto:** Robô Garçom Autônomo com Navegação SLAM  
+**Objetivo:** Robô que navega autonomamente para pontos de interesse e retorna à base  
+**Tecnologia:** Raspberry Pi + Python + PyQt5 + PID Control + Odometria
 
-## 2. O Que Já Fizemos: A Saga da Calibração do Controle de Motores
+## ✅ **Funcionalidades Implementadas e Funcionando**
 
-A fase mais recente do projeto foi uma profunda e desafiadora jornada para estabilizar o controle de baixo nível dos motores do robô físico.
+### 1. **Navegação em Linha Reta**
+- ✅ Robô navega em linha reta com correções automáticas
+- ✅ PID funcionando corretamente
+- ✅ Odometria real baseada em ticks dos encoders
+- ✅ Potência mínima configurada e estável
 
-*   **Diagnóstico Inicial:** O robô não se movia corretamente. Identificamos problemas como lógica de direção invertida e ganhos PID ineficazes.
-*   **Criação da Ferramenta de Calibração:** Desenvolvemos a `calibration_window.py` para permitir o ajuste fino e em tempo real dos ganhos PID (`Kp`, `Ki`, `Kd`).
-*   **Investigação de Bugs e Instabilidade:**
-    *   **Ruído Elétrico:** Descobrimos que o principal vilão era o **ruído elétrico** gerado pelos motores, que corrompia a leitura dos sensores Hall (encoders), gerando "tiques fantasmas" e leituras de velocidade falsamente altas.
-    *   **Tentativas de Filtro:** Implementamos várias soluções de software para combater o ruído, incluindo `locks` para evitar condições de corrida, filtros `debounce` para ignorar pulsos falsos, e até mesmo alteramos a frequência do loop de controle.
-*   **O Ponto de Virada (Insight Chave):** Após muita depuração, chegamos a duas conclusões críticas:
-    1.  Uma versão específica do código (commit `f3f3a7a`), que opera com um loop de controle a **20Hz**, provou ser a mais estável.
-    2.  Nesta configuração, a **menor velocidade estável e mensurável** que o sistema consegue atingir de forma confiável é **20 tps (tiques por segundo)**. Tentar forçar o sistema a um alvo menor (como os 15 tps que usávamos) causa instabilidade inevitável.
+### 2. **Chegada ao Destino**
+- ✅ Robô para corretamente ao chegar no ponto de interesse
+- ✅ Aproximação final estável
+- ✅ Pausa configurada no destino
 
-## 3. Estado Atual (Onde Estamos)
+### 3. **Retorno à Base**
+- ✅ Robô retorna à posição inicial
+- ✅ Navegação de retorno funcionando
+- ✅ Chegada à base com sucesso
 
-*   **Código Estável:** Revertemos o código para a versão estável de 20Hz (commit `f3f3a7a`), que contém o filtro debounce e os limites de potência seguros para o PID.
-*   **Ganhos Ótimos Identificados:** Encontramos uma combinação de ganhos PID que produz um movimento **fluido e contínuo para frente**, estabilizando a velocidade em `20 tps`. Os ganhos são:
-    *   `Kp = 0.11`
-    *   `Ki = 0.05`
-    *   `Kd = 0.0`
-*   **Pronto para a Próxima Fase:** O controle de baixo nível está, pela primeira vez, previsível e funcional.
+### 4. **Ajuste Final de Ângulo**
+- ✅ Robô ajusta para posição inicial (270°)
+- ✅ Velocidade adaptativa funcionando
+- ✅ Finalização completa da navegação
 
-## 4. O Que Falta Fazer: A Transição para a Navegação Inteligente
+## 🔧 **Configurações Atuais (ESTÁVEIS)**
 
-Concluímos a calibração do PID e agora estamos adaptando a lógica de navegação de alto nível para trabalhar **COM** as capacidades reais do hardware, em vez de lutar contra elas.
+```python
+# Configurações de Potência (ESTÁVEIS)
+MIN_POWER_THRESHOLD = 4.0
+MIN_POWER_FLOOR = 7.0
 
-**Plano de Ação e Estado Atual:**
+# Configurações de Velocidade
+ROBOT_SPEED = 0.25 m/s
+MAX_LINEAR_SPEED_MS = 0.25 m/s
 
-*   **Etapa 1: Persistir os Ganhos Ótimos (CONCLUÍDO)**
-    *   **Ação Realizada:** Os ganhos ótimos (`Kp=0.11`, `Ki=0.05`, `Kd=0.0`) foram persistidos no `robot_motor_controller.py`.
-    *   **Status:** Finalizado e enviado para o GitHub (commit `be98b98`).
+# Configurações de PID
+Kp = 0.11
+Ki = 0.05
+Kd = 0.0
+output_limits = (-70, 70)
 
-*   **Etapa 2: Adaptação da Lógica de Navegação (EM ANDAMENTO)**
-    *   **Análise (CONCLUÍDO):** Analisamos o `src/core/robot_navigator.py` e identificamos a função `_move_towards_target` como o local onde as velocidades são calculadas e enviadas ao controle PID.
-    *   **Implementação (PENDENTE DE COMMIT):** Para resolver o problema de instabilidade em baixas velocidades, implementamos uma lógica de **"piso de velocidade mínima"**. Esta alteração garante que o navegador nunca comande uma velocidade abaixo do nosso mínimo estável de `20 tps`.
-    *   **Arquivo Modificado:** `src/core/robot_navigator.py`.
+# Configurações de Ângulo
+ROBOT_INITIAL_ANGLE = 270°
+```
 
-*   **Etapa 3: Próximos Passos Imediatos (Início da Próxima Sessão)**
-    *   **Ação 1: Finalizar o Commit:** Fazer o `commit` e `push` da alteração pendente no `src/core/robot_navigator.py`. A mensagem do commit deve ser: `"Feat: Implementa piso de velocidade mínima no navegador"`.
-    *   **Ação 2: Sincronizar a Raspberry Pi:** Executar o procedimento seguro (`git fetch`, `git reset --hard`, `git clean -fd`) na Raspberry Pi para garantir que ela tenha a versão mais recente e corrigida.
-    *   **Ação 3: Teste de Navegação Completo:** Com a lógica de navegação atualizada, realizar o teste definitivo: usar a interface principal para comandar o robô a um ponto no mapa. O critério de sucesso é um movimento **suave e contínuo**, sem as tremedeiras ou hesitações que víamos antes, especialmente ao iniciar o movimento e ao se aproximar do alvo. 
+## ⚠️ **Limitações Conhecidas (A SEREM CORRIGIDAS)**
+
+### 1. **Sincronização de Direção (PRIORIDADE ALTA)**
+- **Problema:** Interface mostra giro para direita, robô físico gira para esquerda
+- **Impacto:** Comportamento confuso e inconsistente
+- **Status:** A ser corrigido no próximo chat
+
+### 2. **Precisão do Giro de Retorno**
+- **Problema:** Robô faz giro de ~170° em vez de 180°
+- **Impacto:** Funciona, mas não é o comportamento ideal
+- **Status:** A ser otimizado
+
+### 3. **Precisão do Ajuste Final**
+- **Problema:** Ajuste final para ~260° em vez de 270°
+- **Impacto:** Funciona, mas não é preciso
+- **Status:** A ser otimizado
+
+## 🏷️ **Versões Criadas**
+
+### **v1.0-estavel-base** (d3727e0)
+- Versão base funcional
+- Navegação completa funcionando
+- Giro de ~90° (limitação conhecida)
+
+### **v1.1-giro-170-graus** (f6dcd96) - **VERSÃO ATUAL ESTÁVEL**
+- Navegação em linha reta funcionando
+- Giro de ~170° (melhorado)
+- Retorno à base funcionando
+- Ajuste final para ~260°
+
+## 📁 **Estrutura do Projeto**
+
+```
+robo_slam/
+├── src/
+│   ├── core/
+│   │   ├── robot_navigator.py      # Navegação principal
+│   │   ├── robot_motor_controller.py # Controle PID dos motores
+│   │   ├── config.py               # Configurações globais
+│   │   └── path_finder.py          # Cálculo de caminhos
+│   ├── interfaces/
+│   │   ├── main_window.py          # Interface gráfica
+│   │   └── map_widget.py           # Widget do mapa
+│   └── main.py                     # Ponto de entrada
+├── gpio_test.py                    # Teste direto dos motores
+└── VERSION_BASE_ESTAVEL.md         # Documentação da versão base
+```
+
+## 🎯 **Próximo Passo: Correção da Sincronização de Direção**
+
+### **Problema Específico:**
+- Interface mostra giro para **direita**
+- Robô físico gira para **esquerda**
+- Inconsistência entre simulação e realidade
+
+### **O que precisa ser corrigido:**
+1. **Cinemática diferencial** - Fórmulas de conversão de velocidades
+2. **Lógica de direção** - Comandos de giro
+3. **Sincronização interface/robô** - Alinhar simulação com realidade
+
+### **Arquivos a serem modificados:**
+- `src/core/robot_navigator.py` - Método `_move_towards_target()`
+- `src/core/robot_motor_controller.py` - Lógica de direção dos motores
+
+## 🚀 **Como Testar**
+
+### **Comandos na Raspberry Pi:**
+```bash
+# Sincronizar com versão estável
+git checkout v1.1-giro-170-graus
+
+# Executar o robô
+python3 src/main.py
+```
+
+### **Comportamento Esperado:**
+1. Robô vai ao destino em linha reta
+2. Para no destino
+3. Faz giro de ~170° para retornar
+4. Retorna à base
+5. Ajusta para ~260°
+
+## 📝 **Notas Importantes**
+
+- **NÃO alterar** `MIN_POWER_THRESHOLD = 4.0` e `MIN_POWER_FLOOR = 7.0`
+- Esses valores garantem navegação estável sem perder o rumo
+- Qualquer alteração deve ser testada cuidadosamente
+- Sempre criar backup antes de modificações
+
+---
+**Data:** 31/07/2025  
+**Status:** ✅ ESTÁVEL - PRONTO PARA PRÓXIMOS AJUSTES  
+**Próximo Foco:** Sincronização de direção interface/robô físico 
