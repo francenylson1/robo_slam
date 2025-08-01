@@ -1058,8 +1058,8 @@ class RobotNavigator(QObject):
                 forced_linear_speed = MAX_LINEAR_SPEED_MS * 0.5  # 50% da velocidade máxima
                 angular_speed = 0.0
                 
-                # Converter para TPS
-                left_tps = forced_linear_speed / (math.pi * ROBOT_WHEEL_DIAMETER_M) * TICKS_PER_REVOLUTION
+                # Converter para TPS (usando o mesmo padrão das outras conversões)
+                left_tps = (forced_linear_speed / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
                 right_tps = left_tps
                 
                 print(f"🚨 TPS forçado: L:{left_tps:.1f} R:{right_tps:.1f}")
