@@ -194,6 +194,20 @@ class RobotNavigator(QObject):
             # Não faz nada, aguardando comando
             return
 
+        # ===== NOVOS ESTADOS SIMPLIFICADOS =====
+        elif self.navigation_state == "NAVIGATING":
+            # Estado simplificado: navegando para qualquer destino
+            print("DEBUG: update() - Estado: NAVIGATING (novo)")
+            self._handle_simple_navigation()
+            return
+            
+        elif self.navigation_state == "RETURNING":
+            # Estado simplificado: retornando à base
+            print("DEBUG: update() - Estado: RETURNING (novo)")
+            self._handle_return_navigation()
+            return
+
+        # ===== ESTADOS LEGADOS (manter compatibilidade) =====
         elif self.navigation_state == "NAVIGATING_TO_DESTINATION":
             print("DEBUG: update() - Estado: NAVIGATING_TO_DESTINATION")
             
@@ -246,9 +260,9 @@ class RobotNavigator(QObject):
             if self.arrival_time is not None and (time.time() - self.arrival_time > self.arrival_pause_time):
                 self.is_paused_at_destination = False
                 
-                # NOVA LÓGICA: Calcular ângulo para retornar à base
-                print("DEBUG: Calculando ângulo para retornar à base...")
-                self._calculate_and_execute_return_angle()
+                # NOVA ARQUITETURA: Para no destino e aguarda novo comando
+                print("🎯 CHEGOU AO DESTINO: Finalizando navegação e aguardando novo comando")
+                self._finalize_navigation_at_destination()
                 return
 
         elif self.navigation_state == "RETURNING_TO_BASE":
@@ -317,6 +331,90 @@ class RobotNavigator(QObject):
         self.path = []
         self.path_index = 0
         print("DEBUG: === NAVEGAÇÃO FINALIZADA ===")
+        
+    def _finalize_navigation_at_destination(self):
+        """
+        NOVA ARQUITETURA: Finaliza navegação no destino (sem retorno automático).
+        O robô para no destino e aguarda novo comando.
+        """
+        print("🎯 === FINALIZANDO NAVEGAÇÃO NO DESTINO ===")
+        print(f"🎯 Posição final: {self.current_position}")
+        print(f"🎯 Ângulo final: {self.current_angle}°")
+        
+        # Para o robô e finaliza navegação
+        self.motors.stop()
+        self.navigation_active = False
+        self.is_adjusting_final_angle = False
+        self.navigation_state = "IDLE"  # Volta para IDLE, aguardando novo comando
+        self.current_target = None
+        self.is_returning_to_base = False
+        self.is_paused_at_destination = False
+        
+        # MANTÉM o path para debug, mas limpa index
+        self.path_index = len(self.path) if self.path else 0
+        
+        print("✅ === ROBÔ PAROU NO DESTINO - AGUARDANDO NOVO COMANDO ===")
+        print(f"✅ Estado atual: {self.navigation_state}")
+        print(f"✅ Na base: {self._is_at_base()}")
+        
+    def _handle_simple_navigation(self):
+        """
+        NOVA ARQUITETURA: Gerencia navegação simples para destino.
+        """
+        if self.current_target is None or self.current_position is None:
+            print("❌ ERRO: Alvo ou posição atual nulos em NAVIGATING")
+            self._finalize_navigation()
+            return
+            
+        distance_to_target = self._calculate_distance(self.current_position, self.current_target)
+        
+        # Verifica se chegou ao waypoint atual
+        if distance_to_target < 0.12:  # 12cm de tolerância
+            self.path_index += 1
+            
+            # Se chegou ao último ponto (destino final)
+            if self.path_index >= len(self.path):
+                print("🎯 CHEGOU AO DESTINO FINAL - Iniciando pausa")
+                self.navigation_state = "PAUSED_AT_DESTINATION"
+                self.arrival_time = time.time()
+                self.is_paused_at_destination = True
+                self.motors.stop()
+                return
+                
+            # Próximo waypoint
+            self.current_target = self.path[self.path_index]
+            print(f"DEBUG: Próximo waypoint: {self.current_target}")
+            
+        # Continua navegando
+        self._move_towards_target()
+        
+    def _handle_return_navigation(self):
+        """
+        NOVA ARQUITETURA: Gerencia retorno à base.
+        """
+        if self.current_target is None or self.current_position is None:
+            print("❌ ERRO: Alvo ou posição atual nulos em RETURNING")
+            self._finalize_navigation()
+            return
+            
+        distance_to_target = self._calculate_distance(self.current_position, self.current_target)
+        
+        # Verifica se chegou ao waypoint atual
+        if distance_to_target < 0.12:  # 12cm de tolerância
+            self.path_index += 1
+            
+            # Se chegou à base
+            if self.path_index >= len(self.path):
+                print("🏠 CHEGOU À BASE - Iniciando ajuste final de ângulo")
+                self._start_final_angle_adjustment()
+                return
+                
+            # Próximo waypoint
+            self.current_target = self.path[self.path_index]
+            print(f"DEBUG: Próximo waypoint do retorno: {self.current_target}")
+            
+        # Continua navegando
+        self._move_towards_target()
         
     def _calculate_and_execute_return_angle(self):
         """Calcula o ângulo necessário para retornar à base e inicia o giro"""
@@ -719,7 +817,130 @@ class RobotNavigator(QObject):
         
         print(f"DEBUG: Caminho de ida calculado com {len(self.path)} pontos.")
         print(f"DEBUG: ===== NAVEGAÇÃO INICIADA =====")
+
+    # ===== NOVA ARQUITETURA MODULAR =====
+    
+    def navigate_to(self, destination: Tuple[float, float]) -> bool:
+        """
+        NOVA ARQUITETURA: Navega apenas até o destino e para (sem retorno automático).
         
+        Args:
+            destination: Coordenadas (x, y) do destino
+            
+        Returns:
+            bool: True se navegação foi iniciada com sucesso, False caso contrário
+        """
+        print(f"🎯 ===== NAVEGAÇÃO SIMPLES PARA DESTINO =====")
+        print(f"🎯 Destino: {destination}")
+        print(f"🎯 Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
+        
+        # Verifica se o robô está disponível para navegação
+        if self.navigation_active:
+            print("❌ ERRO: Robô já está navegando")
+            return False
+            
+        # Calcula o caminho para o destino
+        path_to_destination = self.path_finder.find_path(self.current_position, destination)
+        if not path_to_destination or len(path_to_destination) < 2:
+            print("❌ ERRO: Não foi possível encontrar caminho para o destino")
+            return False
+
+        # Configura a navegação APENAS para o destino
+        self.navigation_active = True
+        self.start_time = time.time()
+        self.navigation_state = "NAVIGATING"  # Estado simplificado
+        self.is_returning_to_base = False
+        self.final_approach_start_time = None
+        
+        # Define o caminho e destino
+        self.path = path_to_destination
+        self.path_index = 0
+        self.original_destination = destination
+        self.destination_index = len(path_to_destination) - 1
+        self.current_target = self.path[0]
+        
+        print(f"✅ Navegação iniciada com {len(self.path)} pontos")
+        print(f"✅ Estado: {self.navigation_state}")
+        return True
+        
+    def return_to_base(self) -> bool:
+        """
+        NOVA ARQUITETURA: Comando separado para retornar à base.
+        
+        Returns:
+            bool: True se retorno foi iniciado com sucesso, False caso contrário
+        """
+        print(f"🏠 ===== INICIANDO RETORNO À BASE =====")
+        print(f"🏠 Posição atual: {self.current_position}")
+        print(f"🏠 Base: {ROBOT_INITIAL_POSITION}")
+        
+        # Verifica se o robô está disponível
+        if self.navigation_active:
+            print("❌ ERRO: Robô já está navegando")
+            return False
+            
+        # Calcula caminho direto para a base
+        path_to_base = self.path_finder.find_path(self.current_position, ROBOT_INITIAL_POSITION)
+        if not path_to_base or len(path_to_base) < 2:
+            print("❌ ERRO: Não foi possível encontrar caminho para a base")
+            return False
+            
+        # Configura navegação de retorno
+        self.navigation_active = True
+        self.start_time = time.time()
+        self.navigation_state = "RETURNING"  # Estado simplificado
+        self.is_returning_to_base = True
+        self.final_approach_start_time = None
+        
+        # Define o caminho para a base
+        self.path = path_to_base
+        self.path_index = 0
+        self.current_target = self.path[0]
+        self.base_position = ROBOT_INITIAL_POSITION
+        
+        print(f"✅ Retorno iniciado com {len(self.path)} pontos")
+        print(f"✅ Estado: {self.navigation_state}")
+        return True
+        
+    def get_robot_state(self) -> dict:
+        """
+        NOVA ARQUITETURA: Retorna o estado atual do robô.
+        
+        Returns:
+            dict: Estado completo do robô com informações relevantes
+        """
+        # Estados possíveis: IDLE, NAVIGATING, AT_DESTINATION, RETURNING
+        if not self.navigation_active:
+            if self._is_at_base():
+                robot_state = "IDLE"
+                location = "Base"
+            else:
+                robot_state = "AT_DESTINATION"
+                location = f"Destino ({self.current_position[0]:.1f}, {self.current_position[1]:.1f})"
+        else:
+            if self.is_returning_to_base or self.navigation_state == "RETURNING":
+                robot_state = "RETURNING"
+                location = "Em rota para Base"
+            else:
+                robot_state = "NAVIGATING"
+                location = "Em rota para Destino"
+                
+        return {
+            "state": robot_state,
+            "location": location,
+            "position": self.current_position,
+            "angle": self.current_angle,
+            "navigation_active": self.navigation_active,
+            "is_at_base": self._is_at_base(),
+            "current_target": self.current_target,
+            "progress": self.progress if hasattr(self, 'progress') else 0.0
+        }
+        
+    def _is_at_base(self) -> bool:
+        """Verifica se o robô está na base."""
+        base_distance = self._calculate_distance(self.current_position, ROBOT_INITIAL_POSITION)
+        return base_distance < 0.3  # 30cm de tolerância
+
     def get_navigation_status(self) -> dict:
         """Retorna o status atual da navegação"""
         if not self.navigation_active:

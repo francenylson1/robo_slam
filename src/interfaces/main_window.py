@@ -140,6 +140,11 @@ class MainWindow(QMainWindow):
         self.nav_status_label = QLabel("Status: Parado")
         nav_layout.addWidget(self.nav_status_label)
         
+        # NOVA ARQUITETURA: Status do robô
+        self.robot_state_label = QLabel("Robô: Aguardando na Base")
+        self.robot_state_label.setStyleSheet("font-weight: bold; color: blue;")
+        nav_layout.addWidget(self.robot_state_label)
+        
         # Barra de progresso da navegação
         self.nav_progress_bar = QProgressBar()
         self.nav_progress_bar.setVisible(False)
@@ -169,8 +174,15 @@ class MainWindow(QMainWindow):
         stop_nav_btn = QPushButton("Parar")
         stop_nav_btn.clicked.connect(self._stop_robot)
         
+        # NOVA ARQUITETURA: Botão para voltar à base
+        self.return_to_base_btn = QPushButton("Voltar para Base")
+        self.return_to_base_btn.clicked.connect(self._return_to_base)
+        self.return_to_base_btn.setEnabled(False)  # Desabilitado inicialmente
+        self.return_to_base_btn.setStyleSheet("background-color: #90EE90;")  # Verde claro
+        
         nav_buttons.addWidget(start_nav_btn, 0, 0)
         nav_buttons.addWidget(stop_nav_btn, 0, 1)
+        nav_buttons.addWidget(self.return_to_base_btn, 1, 0, 1, 2)  # Ocupa duas colunas
         nav_layout.addLayout(nav_buttons)
         nav_group.setLayout(nav_layout)
         
@@ -358,6 +370,9 @@ class MainWindow(QMainWindow):
         robot_angle = self.navigator.current_angle
         print(f"DEBUG: Atualizando posição do robô - Posição: {robot_position}, Ângulo: {robot_angle}°")
         self.map_widget.update_robot_position(robot_position[0], robot_position[1], robot_angle)
+        
+        # NOVA ARQUITETURA: Atualiza estado do robô e botões dinamicamente
+        self._update_robot_state_display()
         
         # Agenda a próxima atualização APENAS se a navegação não foi concluída
         if self.navigation_active:
@@ -693,20 +708,25 @@ class MainWindow(QMainWindow):
         print(f"🎯 Estado do navegador antes da chamada: {self.navigator.get_navigation_status()['state']}")
         print(f"🎯 Chamando navigate_to_and_return...")
         
-        # VERIFICA SE A FUNÇÃO VAI SER EXECUTADA
+        # NOVA ARQUITETURA: Usa navigate_to() em vez de navigate_to_and_return()
         try:
-            print("⚡ EXECUTANDO navigate_to_and_return...")
-            self.navigator.navigate_to_and_return(destination, ROBOT_INITIAL_POSITION)
-            print("✅ navigate_to_and_return EXECUTOU SEM ERRO")
+            print("⚡ EXECUTANDO navigate_to (nova arquitetura)...")
+            success = self.navigator.navigate_to(destination)
+            if success:
+                print("✅ navigate_to EXECUTOU COM SUCESSO")
+            else:
+                print("❌ navigate_to FALHOU")
+                QMessageBox.warning(self, "Erro", "Não foi possível iniciar a navegação.")
+                return
         except Exception as e:
-            print(f"❌ ERRO na execução de navigate_to_and_return: {e}")
+            print(f"❌ ERRO na execução de navigate_to: {e}")
             import traceback
             traceback.print_exc()
             return
         
         # VERIFICA SE O ESTADO MUDOU APÓS A CHAMADA
         nav_status_after_call = self.navigator.get_navigation_status()
-        print(f"🔍 Estado após navigate_to_and_return: {nav_status_after_call['state']}")
+        print(f"🔍 Estado após navigate_to: {nav_status_after_call['state']}")
         print(f"🔍 navigation_active do navegador: {getattr(self.navigator, 'navigation_active', 'UNDEFINED')}")
         print(f"🔍 path do navegador: {len(getattr(self.navigator, 'path', []))} pontos")
         
@@ -744,6 +764,93 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Modo: Manual")
         
         print("DEBUG: Robô parado")
+
+    def _return_to_base(self):
+        """NOVA ARQUITETURA: Comando para retornar à base."""
+        print("🏠 ===== COMANDO: VOLTAR PARA BASE =====")
+        
+        # Verifica estado do robô
+        robot_state = self.navigator.get_robot_state()
+        print(f"🔍 Estado atual do robô: {robot_state['state']}")
+        print(f"🔍 Posição atual: {robot_state['position']}")
+        print(f"🔍 Na base: {robot_state['is_at_base']}")
+        
+        if robot_state['state'] != "AT_DESTINATION":
+            QMessageBox.warning(self, "Erro", "O robô precisa estar em um destino para retornar à base.")
+            return
+            
+        if robot_state['is_at_base']:
+            QMessageBox.information(self, "Info", "O robô já está na base.")
+            return
+            
+        # Inicia retorno à base
+        try:
+            success = self.navigator.return_to_base()
+            if success:
+                print("✅ Retorno à base iniciado com sucesso")
+                self.navigation_active = True
+                
+                # Atualiza interface
+                self.nav_status_label.setText("Status: Retornando...")
+                self.nav_progress_bar.setVisible(True)
+                self.nav_progress_bar.setValue(0)
+                self.status_label.setText("Retornando à base...")
+                self._update_robot_state_display()
+                
+                # --- NOVO: Visualização do Caminho ---
+                current_path = self.navigator.get_current_path()
+                self.map_widget.set_current_path(current_path)
+                
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível iniciar o retorno à base.")
+                
+        except Exception as e:
+            print(f"❌ ERRO no retorno à base: {e}")
+            QMessageBox.critical(self, "Erro", f"Erro ao retornar à base: {str(e)}")
+
+    def _update_robot_state_display(self):
+        """NOVA ARQUITETURA: Atualiza o display do estado do robô e botões dinamicamente."""
+        try:
+            robot_state = self.navigator.get_robot_state()
+            state = robot_state['state']
+            location = robot_state['location']
+            is_at_base = robot_state['is_at_base']
+            
+            # Atualiza label do estado
+            state_colors = {
+                "IDLE": "blue",
+                "NAVIGATING": "orange", 
+                "AT_DESTINATION": "green",
+                "RETURNING": "purple"
+            }
+            color = state_colors.get(state, "black")
+            
+            self.robot_state_label.setText(f"Robô: {location}")
+            self.robot_state_label.setStyleSheet(f"font-weight: bold; color: {color};")
+            
+            # Atualiza botões dinamicamente
+            if state == "AT_DESTINATION" and not is_at_base:
+                # Robô está em um destino (não na base) - pode voltar
+                self.return_to_base_btn.setEnabled(True)
+                self.return_to_base_btn.setText("Voltar para Base")
+            elif state == "IDLE" and is_at_base:
+                # Robô está na base - pode ir para destino
+                self.return_to_base_btn.setEnabled(False)
+                self.return_to_base_btn.setText("Na Base")
+            elif state in ["NAVIGATING", "RETURNING"]:
+                # Robô navegando - não pode fazer novos comandos
+                self.return_to_base_btn.setEnabled(False)
+                self.return_to_base_btn.setText("Navegando...")
+            else:
+                # Estado desconhecido
+                self.return_to_base_btn.setEnabled(False)
+                self.return_to_base_btn.setText("Indisponível")
+                
+            # Debug
+            print(f"🔄 Estado atualizado: {state} | Botão ativo: {self.return_to_base_btn.isEnabled()}")
+            
+        except Exception as e:
+            print(f"❌ ERRO ao atualizar estado do robô: {e}")
 
     def _mark_unsaved_changes(self):
         """Marca que há alterações não salvas."""
