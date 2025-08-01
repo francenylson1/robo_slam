@@ -561,10 +561,11 @@ class RobotNavigator(QObject):
             print(f"DEBUG: Forward: {forward_value:.2f}, Turn: {turn_value:.2f}")
                 
         # Converte para velocidades das rodas (limitando a -100 a 100)
-        # CORREÇÃO: Aplicando mesma lógica dos botões que funcionam
-        # BOTÕES: DIREITA=set_speed(+ESQ,-DIR) → quando turn_value>0, ESQ>DIR
-        left_speed = max(-100, min(100, forward_value + turn_value))   # CORRIGIDO: era forward_value - turn_value
-        right_speed = max(-100, min(100, forward_value - turn_value))  # CORRIGIDO: era forward_value + turn_value
+        # CORREÇÃO CONSERVADORA: Voltar ao original e aplicar inversão apenas no turn_value
+        # IDEIA: Inverter apenas o sinal do turn_value antes de usar
+        corrected_turn_value = -turn_value  # INVERSÃO APENAS DO COMPONENTE DE ROTAÇÃO
+        left_speed = max(-100, min(100, forward_value - corrected_turn_value))   
+        right_speed = max(-100, min(100, forward_value + corrected_turn_value))
         
         # Aplica os comandos aos motores
         if hasattr(self, 'motors'):
@@ -669,10 +670,9 @@ class RobotNavigator(QObject):
             return  # Ignora comandos manuais em modo autônomo
             
         # Converte valores do joystick (-1 a 1) para velocidades dos motores
-        # CORREÇÃO: Aplicando mesma lógica dos botões que funcionam
-        # Para manter consistência com todas as outras correções
-        left_speed = (forward_value + turn_value) * 100   # CORRIGIDO: era forward_value - turn_value
-        right_speed = (forward_value - turn_value) * 100  # CORRIGIDO: era forward_value + turn_value
+        # REVERTIDO: Voltando ao original para manter consistência
+        left_speed = (forward_value - turn_value) * 100   # REVERTIDO para original
+        right_speed = (forward_value + turn_value) * 100  # REVERTIDO para original
         
         self.motors.set_speed(left_speed, right_speed)
         
@@ -846,18 +846,15 @@ class RobotNavigator(QObject):
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         # --- 3. Converter para Velocidade das Rodas ---
-        # Fórmulas de cinemática diferencial:
-        # CORREÇÃO: Invertendo sinais para alinhar com os botões que funcionam
-        # BOTÕES CORRETOS: DIREITA=set_speed(+ESQ,-DIR), ESQUERDA=set_speed(-ESQ,+DIR)
+        # CORREÇÃO CONSERVADORA: Reverter cinemática diferencial para original
+        # Manter apenas correção no cálculo final de movimento
         v = linear_speed_ms
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         
-        # CORREÇÃO: Aplicando a mesma lógica dos botões
-        # Para giro DIREITA (w>0): ESQ deve ser MAIOR que DIR
-        # Para giro ESQUERDA (w<0): DIR deve ser MAIOR que ESQ
-        right_wheel_speed_ms = v - (w * L) / 2.0  # CORRIGIDO: era v + (w * L) / 2.0
-        left_wheel_speed_ms = v + (w * L) / 2.0   # CORRIGIDO: era v - (w * L) / 2.0
+        # VOLTA AO ORIGINAL: Cinemática diferencial padrão
+        right_wheel_speed_ms = v + (w * L) / 2.0  # REVERTIDO para original
+        left_wheel_speed_ms = v - (w * L) / 2.0   # REVERTIDO para original
 
         # --- 4. Converter m/s para Ticks por Segundo (TPS) ---
         # TPS = (metros / segundo) / (metros / revolução) * (ticks / revolução)
