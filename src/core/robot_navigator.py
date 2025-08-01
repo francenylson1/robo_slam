@@ -407,7 +407,8 @@ class RobotNavigator(QObject):
         print(f"DEBUG: Velocidades: L:{left_speed:.1f}% R:{right_speed:.1f}%")
         
         # Aplica o comando de giro
-        self.motors.set_speed(left_speed, right_speed)
+        print(f"DEBUG GIRO: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")
+        self.motors.set_speed(right_speed, left_speed)  # INVERTIDO: era (left_speed, right_speed)
         
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
@@ -561,31 +562,20 @@ class RobotNavigator(QObject):
             print(f"DEBUG: Forward: {forward_value:.2f}, Turn: {turn_value:.2f}")
                 
         # Converte para velocidades das rodas (limitando a -100 a 100)
-        # CORREÇÃO DEFINITIVA: Aplicar EXATAMENTE a lógica dos botões que funcionam
-        # BOTÃO DIREITA: set_speed(+ESQ, -DIR) quando precisa girar à direita
-        # BOTÃO ESQUERDA: set_speed(-ESQ, +DIR) quando precisa girar à esquerda
-        
-        if turn_value > 0:
-            # Precisa girar à DIREITA → Aplicar lógica do BOTÃO DIREITA
-            # Botão direita funciona com: set_speed(+ESQ, -DIR) 
-            # Quando turn_value > 0: ESQ deve ser MAIOR que DIR
-            left_speed = max(-100, min(100, forward_value + abs(turn_value)))   # ESQ recebe MAIS velocidade
-            right_speed = max(-100, min(100, forward_value - abs(turn_value)))  # DIR recebe MENOS velocidade
-        elif turn_value < 0:
-            # Precisa girar à ESQUERDA → Aplicar lógica do BOTÃO ESQUERDA  
-            # Botão esquerda funciona com: set_speed(-ESQ, +DIR)
-            # Quando turn_value < 0: DIR deve ser MAIOR que ESQ
-            left_speed = max(-100, min(100, forward_value - abs(turn_value)))   # ESQ recebe MENOS velocidade
-            right_speed = max(-100, min(100, forward_value + abs(turn_value)))  # DIR recebe MAIS velocidade
-        else:
-            # Sem rotação → Ambas as rodas iguais
-            left_speed = max(-100, min(100, forward_value))
-            right_speed = max(-100, min(100, forward_value))
+        # SIMPLIFICAÇÃO: Usar fórmulas originais + inversão simples no final
+        left_speed = max(-100, min(100, forward_value - turn_value))   # FÓRMULA ORIGINAL
+        right_speed = max(-100, min(100, forward_value + turn_value))  # FÓRMULA ORIGINAL
             
         # Aplica os comandos aos motores
         if hasattr(self, 'motors'):
-            self.motors.set_speed(left_speed, right_speed)
-            print(f"DEBUG: Motores - esquerda: {left_speed:.2f}, direita: {right_speed:.2f}")
+            # CORREÇÃO DIRETA: Se interface e robô físico estão invertidos, 
+            # simplesmente trocar os comandos left ↔ right
+            print(f"DEBUG: Velocidades calculadas - ESQ: {left_speed:.2f}, DIR: {right_speed:.2f}")
+            print(f"DEBUG: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")
+            
+            # INVERSÃO SIMPLES: Trocar os comandos
+            self.motors.set_speed(right_speed, left_speed)  # INVERTIDO: era (left_speed, right_speed)
+            print(f"DEBUG: Comandos enviados aos motores - ESQ: {right_speed:.2f}, DIR: {left_speed:.2f}")
             
         return forward_value, turn_value
         
@@ -689,7 +679,8 @@ class RobotNavigator(QObject):
         left_speed = (forward_value - turn_value) * 100   # REVERTIDO para original
         right_speed = (forward_value + turn_value) * 100  # REVERTIDO para original
         
-        self.motors.set_speed(left_speed, right_speed)
+        print(f"DEBUG JOYSTICK: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")
+        self.motors.set_speed(right_speed, left_speed)  # INVERTIDO: era (left_speed, right_speed)
         
     def move_to_point(self, target_point):
         """Move o robô para um ponto específico (modo autônomo)"""
@@ -886,28 +877,16 @@ class RobotNavigator(QObject):
             right_tps = MIN_STABLE_TPS * (1 if right_tps > 0 else -1)
 
         # --- 5. Enviar Comando para o Controlador PID ---
-        # CORREÇÃO DEFINITIVA: Aplicar mesma lógica dos botões antes de enviar para motores
-        # Se angular_speed_rads > 0 (girar direita): ESQ > DIR  
-        # Se angular_speed_rads < 0 (girar esquerda): DIR > ESQ
-        
-        if angular_speed_rads > 0:
-            # Precisa girar à DIREITA → ESQ deve receber mais velocidade
-            # Aplicando lógica do botão direita que funciona
-            final_left_tps = left_tps + abs(angular_speed_rads * 10)    # ESQ recebe boost
-            final_right_tps = right_tps - abs(angular_speed_rads * 10)  # DIR recebe redução
-        elif angular_speed_rads < 0:
-            # Precisa girar à ESQUERDA → DIR deve receber mais velocidade  
-            # Aplicando lógica do botão esquerda que funciona
-            final_left_tps = left_tps - abs(angular_speed_rads * 10)    # ESQ recebe redução
-            final_right_tps = right_tps + abs(angular_speed_rads * 10)  # DIR recebe boost
-        else:
-            # Sem rotação → Manter velocidades originais
-            final_left_tps = left_tps
-            final_right_tps = right_tps
+        # SIMPLIFICAÇÃO: Usar valores originais + inversão simples no final
+        final_left_tps = left_tps    # ORIGINAL
+        final_right_tps = right_tps  # ORIGINAL
             
-        # O log agora mostrará a velocidade alvo em TPS corrigida
-        print(f"DEBUG PID CORRIGIDO: Target L:{final_left_tps:.1f}tps R:{final_right_tps:.1f}tps | Lin:{linear_speed_ms:.2f}m/s Ang:{angular_speed_rads:.2f}rad/s")
-        self.motors.set_target_speed(final_left_tps, final_right_tps)
+        # O log agora mostrará a velocidade alvo em TPS original
+        print(f"DEBUG PID ORIGINAL: Target L:{final_left_tps:.1f}tps R:{final_right_tps:.1f}tps | Lin:{linear_speed_ms:.2f}m/s Ang:{angular_speed_rads:.2f}rad/s")
+        
+        # CORREÇÃO DIRETA: Aplicar mesma inversão que no _calculate_movement
+        print(f"DEBUG PID: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")  
+        self.motors.set_target_speed(final_right_tps, final_left_tps)  # INVERTIDO: era (final_left_tps, final_right_tps)
         
         # A odometria é sempre atualizada no loop principal 'update', não precisamos chamar aqui.
         # if not GPIO_AVAILABLE: self._update_position(...)
@@ -1011,7 +990,8 @@ class RobotNavigator(QObject):
             print(f"DEBUG: Ângulo atual: {self.current_angle:.2f}°, objetivo: {ROBOT_INITIAL_ANGLE}°")
             
             # Aplica o comando de giro
-            self.motors.set_speed(left_speed, right_speed)
+            print(f"DEBUG ADJUST: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")
+            self.motors.set_speed(right_speed, left_speed)  # INVERTIDO: era (left_speed, right_speed)
             
             # CORREÇÃO: NÃO chama _update_position aqui - deixa a odometria real funcionar
             # self._update_position(0.0, turn_value)  # REMOVIDO
