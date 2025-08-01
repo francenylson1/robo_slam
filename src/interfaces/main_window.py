@@ -797,6 +797,10 @@ class MainWindow(QMainWindow):
                 self.status_label.setText("Retornando à base...")
                 self._update_robot_state_display()
                 
+                # CORREÇÃO CRÍTICA: Reinicia o loop de atualização!
+                print("🔄 REINICIANDO LOOP DE ATUALIZAÇÃO...")
+                self._update()
+                
                 # --- NOVO: Visualização do Caminho ---
                 current_path = self.navigator.get_current_path()
                 self.map_widget.set_current_path(current_path)
