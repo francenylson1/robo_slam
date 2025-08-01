@@ -1040,16 +1040,16 @@ class RobotNavigator(QObject):
         # --- ZONA MORTA ANGULAR para evitar tremor ---
         ANGLE_DEADBAND = 3.0  # Zona morta de 3 graus
         
-        # CORREÇÃO CRÍTICA: Detecção de oscilação em ±180°
-        # Quando erro angular está próximo de ±180°, qualquer movimento causa inversão
-        OSCILLATION_ZONE = 170.0  # Se erro > 170°, está em zona de oscilação
+        # Parâmetros para controle de oscilação angular
+        OSCILLATION_ZONE = 178.0  # degrees - detect oscillation closer to ±180°
+        OSCILLATION_DEADBAND = 10.0  # degrees - smaller deadband for more precision
         
         if abs(angle_error) > OSCILLATION_ZONE:
             print(f"🚨 ZONA DE OSCILAÇÃO: Erro angular {angle_error:.1f}° > {OSCILLATION_ZONE}°")
             print(f"🚨 ESTRATÉGIA: Zona morta maior e movimento linear prioritário")
             
             # Para oscilação próxima de ±180°, use zona morta muito maior
-            OSCILLATION_DEADBAND = 15.0  # 15 graus de zona morta
+            # OSCILLATION_DEADBAND = 15.0  # 15 graus de zona morta
             if abs(abs(angle_error) - 180) < OSCILLATION_DEADBAND:
                 print(f"🚨 PARANDO OSCILAÇÃO: Erro {angle_error:.1f}° muito próximo de ±180°")
                 angle_error = 0.0  # Para de tentar ajustar ângulo
