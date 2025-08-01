@@ -381,20 +381,20 @@ class RobotNavigator(QObject):
         else:
             turn_value = 0.04  # 4% para ajustes finos
             
-        # CORREÇÃO: Inverte a lógica para alinhar interface com robô físico
-        # Interface mostra esquerda = robô físico gira direita
+        # CORREÇÃO: Lógica de giro alinhada com a odometria corrigida
+        # Cinemática diferencial padrão
         if current_diff > 0:
-            # Precisa girar no sentido horário (interface mostra direita)
-            # CORREÇÃO: Inverte para alinhar com robô físico
-            left_speed = -turn_value * 100
-            right_speed = turn_value * 100
-            direction = "horário (corrigido)"
-        else:
-            # Precisa girar no sentido anti-horário (interface mostra esquerda)
-            # CORREÇÃO: Inverte para alinhar com robô físico
+            # Precisa girar no sentido horário (para ângulo maior)
+            # Motor esquerdo para frente (+), motor direito para trás (-)
             left_speed = turn_value * 100
             right_speed = -turn_value * 100
-            direction = "anti-horário (corrigido)"
+            direction = "horário"
+        else:
+            # Precisa girar no sentido anti-horário (para ângulo menor)
+            # Motor esquerdo para trás (-), motor direito para frente (+)
+            left_speed = -turn_value * 100
+            right_speed = turn_value * 100
+            direction = "anti-horário"
             
         print(f"DEBUG: Comando de giro: {turn_value:.3f} - {direction}")
         print(f"DEBUG: Velocidades: L:{left_speed:.1f}% R:{right_speed:.1f}%")
@@ -907,16 +907,16 @@ class RobotNavigator(QObject):
                 
             # Define a direção do giro baseado na diferença
             if angle_diff > 0:
-                # Precisa girar no sentido horário (ângulo atual < 270°)
-                # CORREÇÃO: Inverte a lógica para corrigir a direção
-                left_speed = -turn_value * 100
-                right_speed = turn_value * 100
-                direction = "horário"
-            else:
-                # Precisa girar no sentido anti-horário (ângulo atual > 270°)
-                # CORREÇÃO: Inverte a lógica para corrigir a direção
+                # Precisa girar no sentido horário para aumentar ângulo (ângulo atual < 270°)
+                # Motor esquerdo para frente (+), motor direito para trás (-)
                 left_speed = turn_value * 100
                 right_speed = -turn_value * 100
+                direction = "horário"
+            else:
+                # Precisa girar no sentido anti-horário para diminuir ângulo (ângulo atual > 270°)
+                # Motor esquerdo para trás (-), motor direito para frente (+)
+                left_speed = -turn_value * 100
+                right_speed = turn_value * 100
                 direction = "anti-horário"
                 
             print(f"DEBUG: Comando de giro: {turn_value:.3f}")
@@ -966,8 +966,10 @@ class RobotNavigator(QObject):
         # Calcula a distância média percorrida pelo robô
         delta_distance = (dist_left + dist_right) / 2.0
 
-        # Calcula a mudança no ângulo
-        delta_angle_rad = (dist_right - dist_left) / ROBOT_WHEEL_BASE_M
+        # CORREÇÃO: Inverte o sinal da cinemática diferencial para alinhar interface com robô físico
+        # Cinemática diferencial: quando roda direita gira mais → robô gira para ESQUERDA (ângulo diminui)
+        # Fórmula corrigida: (dist_left - dist_right) em vez de (dist_right - dist_left)
+        delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
 
         # Atualiza o ângulo do robô
