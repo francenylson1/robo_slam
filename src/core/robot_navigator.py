@@ -1039,6 +1039,41 @@ class RobotNavigator(QObject):
 
         # --- ZONA MORTA ANGULAR para evitar tremor ---
         ANGLE_DEADBAND = 3.0  # Zona morta de 3 graus
+        
+        # CORREÇÃO CRÍTICA: Detecção de oscilação em ±180°
+        # Quando erro angular está próximo de ±180°, qualquer movimento causa inversão
+        OSCILLATION_ZONE = 170.0  # Se erro > 170°, está em zona de oscilação
+        
+        if abs(angle_error) > OSCILLATION_ZONE:
+            print(f"🚨 ZONA DE OSCILAÇÃO: Erro angular {angle_error:.1f}° > {OSCILLATION_ZONE}°")
+            print(f"🚨 ESTRATÉGIA: Zona morta maior e movimento linear prioritário")
+            
+            # Para oscilação próxima de ±180°, use zona morta muito maior
+            OSCILLATION_DEADBAND = 15.0  # 15 graus de zona morta
+            if abs(abs(angle_error) - 180) < OSCILLATION_DEADBAND:
+                print(f"🚨 PARANDO OSCILAÇÃO: Erro {angle_error:.1f}° muito próximo de ±180°")
+                angle_error = 0.0  # Para de tentar ajustar ângulo
+                # Força movimento linear para mudar posição
+                linear_speed_ms = MAX_LINEAR_SPEED_MS * 0.3  # 30% da velocidade máxima
+                angular_speed_rads = 0.0  # Para de girar
+                
+                print(f"🚨 MOVIMENTO FORÇADO: Linear={linear_speed_ms:.3f}m/s, Angular=0")
+                
+                # Pula para aplicação direta
+                v = linear_speed_ms
+                w = 0.0
+                L = ROBOT_WHEEL_BASE_M
+                
+                right_wheel_speed_ms = v + (w * L) / 2.0
+                left_wheel_speed_ms = v - (w * L) / 2.0
+                
+                left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+                right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+                
+                print(f"🚨 TPS forçado: L:{left_tps:.1f} R:{right_tps:.1f}")
+                self.motors.set_target_speed(left_tps, right_tps)
+                return  # Sai da função
+        
         if abs(angle_error) < ANGLE_DEADBAND:
             angle_error = 0.0
             print(f"🎯 ZONA MORTA: Erro angular {abs(angle_error):.1f}° < {ANGLE_DEADBAND}° - ignorando")
