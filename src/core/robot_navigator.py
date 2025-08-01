@@ -561,12 +561,27 @@ class RobotNavigator(QObject):
             print(f"DEBUG: Forward: {forward_value:.2f}, Turn: {turn_value:.2f}")
                 
         # Converte para velocidades das rodas (limitando a -100 a 100)
-        # CORREÇÃO CONSERVADORA: Voltar ao original e aplicar inversão apenas no turn_value
-        # IDEIA: Inverter apenas o sinal do turn_value antes de usar
-        corrected_turn_value = -turn_value  # INVERSÃO APENAS DO COMPONENTE DE ROTAÇÃO
-        left_speed = max(-100, min(100, forward_value - corrected_turn_value))   
-        right_speed = max(-100, min(100, forward_value + corrected_turn_value))
+        # CORREÇÃO DEFINITIVA: Aplicar EXATAMENTE a lógica dos botões que funcionam
+        # BOTÃO DIREITA: set_speed(+ESQ, -DIR) quando precisa girar à direita
+        # BOTÃO ESQUERDA: set_speed(-ESQ, +DIR) quando precisa girar à esquerda
         
+        if turn_value > 0:
+            # Precisa girar à DIREITA → Aplicar lógica do BOTÃO DIREITA
+            # Botão direita funciona com: set_speed(+ESQ, -DIR) 
+            # Quando turn_value > 0: ESQ deve ser MAIOR que DIR
+            left_speed = max(-100, min(100, forward_value + abs(turn_value)))   # ESQ recebe MAIS velocidade
+            right_speed = max(-100, min(100, forward_value - abs(turn_value)))  # DIR recebe MENOS velocidade
+        elif turn_value < 0:
+            # Precisa girar à ESQUERDA → Aplicar lógica do BOTÃO ESQUERDA  
+            # Botão esquerda funciona com: set_speed(-ESQ, +DIR)
+            # Quando turn_value < 0: DIR deve ser MAIOR que ESQ
+            left_speed = max(-100, min(100, forward_value - abs(turn_value)))   # ESQ recebe MENOS velocidade
+            right_speed = max(-100, min(100, forward_value + abs(turn_value)))  # DIR recebe MAIS velocidade
+        else:
+            # Sem rotação → Ambas as rodas iguais
+            left_speed = max(-100, min(100, forward_value))
+            right_speed = max(-100, min(100, forward_value))
+            
         # Aplica os comandos aos motores
         if hasattr(self, 'motors'):
             self.motors.set_speed(left_speed, right_speed)
@@ -871,9 +886,28 @@ class RobotNavigator(QObject):
             right_tps = MIN_STABLE_TPS * (1 if right_tps > 0 else -1)
 
         # --- 5. Enviar Comando para o Controlador PID ---
-        # O log agora mostrará a velocidade alvo em TPS
-        print(f"DEBUG PID: Target L:{left_tps:.1f}tps R:{right_tps:.1f}tps | Lin:{linear_speed_ms:.2f}m/s Ang:{angular_speed_rads:.2f}rad/s")
-        self.motors.set_target_speed(left_tps, right_tps)
+        # CORREÇÃO DEFINITIVA: Aplicar mesma lógica dos botões antes de enviar para motores
+        # Se angular_speed_rads > 0 (girar direita): ESQ > DIR  
+        # Se angular_speed_rads < 0 (girar esquerda): DIR > ESQ
+        
+        if angular_speed_rads > 0:
+            # Precisa girar à DIREITA → ESQ deve receber mais velocidade
+            # Aplicando lógica do botão direita que funciona
+            final_left_tps = left_tps + abs(angular_speed_rads * 10)    # ESQ recebe boost
+            final_right_tps = right_tps - abs(angular_speed_rads * 10)  # DIR recebe redução
+        elif angular_speed_rads < 0:
+            # Precisa girar à ESQUERDA → DIR deve receber mais velocidade  
+            # Aplicando lógica do botão esquerda que funciona
+            final_left_tps = left_tps - abs(angular_speed_rads * 10)    # ESQ recebe redução
+            final_right_tps = right_tps + abs(angular_speed_rads * 10)  # DIR recebe boost
+        else:
+            # Sem rotação → Manter velocidades originais
+            final_left_tps = left_tps
+            final_right_tps = right_tps
+            
+        # O log agora mostrará a velocidade alvo em TPS corrigida
+        print(f"DEBUG PID CORRIGIDO: Target L:{final_left_tps:.1f}tps R:{final_right_tps:.1f}tps | Lin:{linear_speed_ms:.2f}m/s Ang:{angular_speed_rads:.2f}rad/s")
+        self.motors.set_target_speed(final_left_tps, final_right_tps)
         
         # A odometria é sempre atualizada no loop principal 'update', não precisamos chamar aqui.
         # if not GPIO_AVAILABLE: self._update_position(...)
