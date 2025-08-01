@@ -174,11 +174,65 @@ class MainWindow(QMainWindow):
         nav_layout.addLayout(nav_buttons)
         nav_group.setLayout(nav_layout)
         
+        # Grupo de Controles Manuais
+        manual_control_group = QGroupBox("Controles Manuais")
+        manual_layout = QVBoxLayout()
+        
+        # Informação sobre controles manuais
+        manual_info = QLabel("Use os controles abaixo para girar o robô manualmente\napós chegar ao destino:")
+        manual_info.setWordWrap(True)
+        manual_info.setStyleSheet("color: #666; font-style: italic;")
+        manual_layout.addWidget(manual_info)
+        
+        # Grid de botões direcionais
+        direction_grid = QGridLayout()
+        
+        # Botão FRENTE (↑)
+        self.btn_forward = QPushButton("⬆️\nFRENTE")
+        self.btn_forward.setMinimumSize(80, 60)
+        self.btn_forward.clicked.connect(lambda: self._manual_rotate("forward"))
+        direction_grid.addWidget(self.btn_forward, 0, 1)
+        
+        # Botão ESQUERDA (←)
+        self.btn_left = QPushButton("⬅️\nESQUERDA\n(-10°)")
+        self.btn_left.setMinimumSize(80, 60)
+        self.btn_left.clicked.connect(lambda: self._manual_rotate("left"))
+        direction_grid.addWidget(self.btn_left, 1, 0)
+        
+        # Botão DIREITA (→)
+        self.btn_right = QPushButton("➡️\nDIREITA\n(+10°)")
+        self.btn_right.setMinimumSize(80, 60)
+        self.btn_right.clicked.connect(lambda: self._manual_rotate("right"))
+        direction_grid.addWidget(self.btn_right, 1, 2)
+        
+        # Botão TRÁS (↓)
+        self.btn_backward = QPushButton("⬇️\nTRÁS\n(180°)")
+        self.btn_backward.setMinimumSize(80, 60)
+        self.btn_backward.clicked.connect(lambda: self._manual_rotate("backward"))
+        direction_grid.addWidget(self.btn_backward, 2, 1)
+        
+        manual_layout.addLayout(direction_grid)
+        
+        # Botões de ação
+        action_buttons = QHBoxLayout()
+        
+        self.btn_set_new_position = QPushButton("📍 Definir Nova Partida")
+        self.btn_set_new_position.clicked.connect(self._set_new_starting_position)
+        action_buttons.addWidget(self.btn_set_new_position)
+        
+        self.btn_return_base = QPushButton("🏠 Voltar à Base")
+        self.btn_return_base.clicked.connect(self._return_to_base)
+        action_buttons.addWidget(self.btn_return_base)
+        
+        manual_layout.addLayout(action_buttons)
+        manual_control_group.setLayout(manual_layout)
+        
         # Adiciona todos os grupos ao painel de controle
         control_layout.addWidget(poi_group)
         control_layout.addWidget(forbidden_group)
         control_layout.addWidget(map_management_group)
         control_layout.addWidget(nav_group)
+        control_layout.addWidget(manual_control_group) # Adiciona o novo grupo
         control_layout.addStretch()
         control_panel.setLayout(control_layout)
         
@@ -342,13 +396,13 @@ class MainWindow(QMainWindow):
             # Verifica se a navegação foi concluída
             if nav_status["state"] == "COMPLETED" or nav_status["state"] == "IDLE":
                 print("DEBUG: ===== NAVEGAÇÃO CONCLUÍDA =====")
-                print("DEBUG: update() - Definindo navigation_active = False")
-                self.navigation_active = False
-                self.nav_status_label.setText("Status: Concluído")
-                self.nav_progress_bar.setVisible(False)
-                self.nav_info_label.setVisible(False)
-                self.status_label.setText("Modo: Manual")
-                QMessageBox.information(self, "Navegação", "Navegação concluída com sucesso!")
+                print("DEBUG: update() - Chamando reset completo da interface")
+                
+                # Faz reset completo da interface
+                self._complete_navigation_and_reset()
+                
+                # Informa o usuário que a navegação foi concluída
+                QMessageBox.information(self, "Navegação", "Navegação concluída! Sistema resetado e pronto para nova navegação.")
                 print("DEBUG: ===== FIM DA NAVEGAÇÃO =====")
                 # PARA COMPLETAMENTE A ATUALIZAÇÃO - NÃO AGENDA PRÓXIMA
                 return
@@ -691,28 +745,34 @@ class MainWindow(QMainWindow):
         print(f"🎯 Destino: {destination}")
         print(f"🎯 Base: {ROBOT_INITIAL_POSITION}")
         print(f"🎯 Estado do navegador antes da chamada: {self.navigator.get_navigation_status()['state']}")
-        print(f"🎯 Chamando navigate_to_and_return...")
+        print(f"🎯 Chamando navigate_to_destination_only...")
         
         # VERIFICA SE A FUNÇÃO VAI SER EXECUTADA
         try:
-            print("⚡ EXECUTANDO navigate_to_and_return...")
-            self.navigator.navigate_to_and_return(destination, ROBOT_INITIAL_POSITION)
-            print("✅ navigate_to_and_return EXECUTOU SEM ERRO")
+            print("⚡ EXECUTANDO navigate_to_destination_only...")
+            self.navigator.navigate_to_destination_only(destination)
+            print("✅ navigate_to_destination_only EXECUTOU SEM ERRO")
         except Exception as e:
-            print(f"❌ ERRO na execução de navigate_to_and_return: {e}")
+            print(f"❌ ERRO na execução de navigate_to_destination_only: {e}")
             import traceback
             traceback.print_exc()
             return
         
         # VERIFICA SE O ESTADO MUDOU APÓS A CHAMADA
         nav_status_after_call = self.navigator.get_navigation_status()
-        print(f"🔍 Estado após navigate_to_and_return: {nav_status_after_call['state']}")
+        print(f"🔍 Estado após navigate_to_destination_only: {nav_status_after_call['state']}")
         print(f"🔍 navigation_active do navegador: {getattr(self.navigator, 'navigation_active', 'UNDEFINED')}")
         print(f"🔍 path do navegador: {len(getattr(self.navigator, 'path', []))} pontos")
         
-        print("✅ Função navigate_to_and_return chamada com sucesso")
+        print("✅ Função navigate_to_destination_only chamada com sucesso")
         self.navigation_active = True
         print(f"✅ navigation_active DA INTERFACE definido como: {self.navigation_active}")
+        
+        # NOVO: Exibe o percurso calculado no mapa
+        if hasattr(self.navigator, 'path') and self.navigator.path:
+            print(f"🗺️ Exibindo percurso calculado com {len(self.navigator.path)} pontos")
+            self.map_widget.set_current_path(self.navigator.path)
+            print("✅ Percurso exibido no mapa (linha azul)")
         
         # Atualiza interface
         self.nav_status_label.setText("Status: Navegando...")
@@ -868,3 +928,221 @@ class MainWindow(QMainWindow):
     def _update_speed_feedback(self):
         # Implemente a lógica para atualizar o feedback da velocidade
         pass
+
+    def _complete_navigation_and_reset(self):
+        """Completa a navegação e faz reset completo da interface para permitir nova navegação"""
+        print("🔄 ===== INICIANDO RESET COMPLETO DA INTERFACE =====")
+        
+        # 1. Para a navegação e motores
+        self.navigation_active = False
+        self.navigator.navigation_active = False
+        self.navigator.motors.stop()
+        
+        # 2. Limpa o percurso anterior do mapa
+        print("🧹 Limpando percurso anterior do mapa")
+        self.map_widget.set_current_path([])  # Remove linha azul do percurso
+        
+        # 3. NOVO: Mantém a posição atual como nova partida (não reseta para inicial)
+        print("📍 Mantendo posição atual como nova partida")
+        current_pos = self.navigator.current_position
+        current_angle = self.navigator.current_angle
+        print(f"📍 Nova posição de partida: {current_pos}")
+        print(f"📍 Novo ângulo de partida: {current_angle}°")
+        
+        # 4. Reseta o navegador para estado inicial MAS preserva posição atual
+        print("🔄 Resetando navegador (preservando posição atual)")
+        self.navigator.reset_to_initial_state()
+        
+        # 5. Restaura a posição atual após o reset
+        print("🎯 Restaurando posição atual após reset")
+        self.navigator.current_position = current_pos
+        self.navigator.current_angle = current_angle
+        
+        # 6. Atualiza elementos da interface
+        print("🖥️ Atualizando interface")
+        self.nav_status_label.setText("Status: Pronto (nova partida)")
+        self.nav_progress_bar.setVisible(False)
+        self.nav_info_label.setVisible(False)
+        self.status_label.setText("Modo: Manual")
+        
+        # 7. Força redesenho do mapa com posição atual
+        self.map_widget.update_robot_position(
+            current_pos[0], 
+            current_pos[1], 
+            current_angle
+        )
+        
+        print("✅ Reset completo da interface concluído")
+        print(f"✅ Posição do robô (nova partida): {self.navigator.current_position}")
+        print(f"✅ Ângulo do robô (nova partida): {self.navigator.current_angle}°")
+        print("✅ Sistema pronto para nova navegação a partir da posição atual")
+
+    def _manual_rotate(self, direction: str):
+        """Executa rotação manual do robô na direção especificada"""
+        print(f"🎮 ===== CONTROLE MANUAL: {direction.upper()} =====")
+        
+        # Verifica se não há navegação ativa
+        if self.navigation_active:
+            QMessageBox.warning(self, "Aviso", "Não é possível usar controles manuais durante a navegação automática.")
+            return
+        
+        # Define o ângulo de rotação (10 graus para cada direção)
+        rotation_angle = 10  # CORRIGIDO: 10 graus em vez de 90
+        current_angle = self.navigator.current_angle
+        
+        if direction == "forward":
+            # Não gira, apenas mantém direção atual
+            target_angle = current_angle
+            print(f"🎮 FRENTE: Mantendo ângulo atual {current_angle}°")
+        elif direction == "right":
+            target_angle = (current_angle + rotation_angle) % 360
+            print(f"🎮 DIREITA: {current_angle}° → {target_angle}° (+{rotation_angle}°)")
+        elif direction == "backward":
+            target_angle = (current_angle + 180) % 360
+            print(f"🎮 TRÁS: {current_angle}° → {target_angle}° (180°)")
+        elif direction == "left":
+            target_angle = (current_angle - rotation_angle) % 360
+            print(f"🎮 ESQUERDA: {current_angle}° → {target_angle}° (-{rotation_angle}°)")
+        else:
+            print(f"❌ Direção inválida: {direction}")
+            return
+        
+        # Atualiza o ângulo do robô (simulação ou comando real)
+        self.navigator.current_angle = target_angle
+        
+        # Atualiza a visualização no mapa
+        self.map_widget.update_robot_position(
+            self.navigator.current_position[0],
+            self.navigator.current_position[1], 
+            target_angle
+        )
+        
+        print(f"✅ Rotação manual concluída. Novo ângulo: {target_angle}°")
+
+    def _set_new_starting_position(self):
+        """Define a posição atual como nova posição de partida"""
+        print("📍 ===== DEFININDO NOVA POSIÇÃO DE PARTIDA =====")
+        
+        current_pos = self.navigator.current_position
+        current_angle = self.navigator.current_angle
+        
+        # Confirma com o usuário
+        reply = QMessageBox.question(
+            self, 
+            "Definir Nova Partida",
+            f"Definir posição atual como nova partida?\n\n"
+            f"Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f})\n"
+            f"Ângulo: {current_angle:.1f}°\n\n"
+            f"Esta será a nova referência para cálculos de percurso.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            # Atualiza a posição de partida no navegador
+            print(f"📍 Nova posição de partida: {current_pos}")
+            print(f"📍 Novo ângulo de partida: {current_angle}°")
+            
+            # Limpa qualquer percurso anterior
+            self.map_widget.set_current_path([])
+            
+            # Faz reset completo do navegador mantendo posição atual
+            self.navigator.reset_to_initial_state()
+            self.navigator.current_position = current_pos
+            self.navigator.current_angle = current_angle
+            
+            # Atualiza visualização no mapa
+            self.map_widget.update_robot_position(current_pos[0], current_pos[1], current_angle)
+            
+            QMessageBox.information(
+                self, 
+                "Nova Partida Definida",
+                f"Posição de partida atualizada!\n\n"
+                f"Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f})\n"
+                f"Ângulo: {current_angle:.1f}°\n\n"
+                f"O sistema agora calculará novos percursos a partir desta posição."
+            )
+            
+            print("✅ Nova posição de partida definida com sucesso")
+
+    def _return_to_base(self):
+        """Inicia navegação de retorno para a base original"""
+        print("🏠 ===== RETORNO À BASE ORIGINAL =====")
+        
+        # Verifica se não há navegação ativa
+        if self.navigation_active:
+            QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
+            return
+        
+        base_position = ROBOT_INITIAL_POSITION
+        current_pos = self.navigator.current_position
+        
+        print(f"🏠 Posição atual: {current_pos}")
+        print(f"🏠 Base original: {base_position}")
+        
+        # Verifica se já está na base
+        distance_to_base = ((current_pos[0] - base_position[0])**2 + 
+                           (current_pos[1] - base_position[1])**2)**0.5
+        
+        print(f"🏠 Distância para base: {distance_to_base:.2f}m")
+        
+        if distance_to_base < 0.3:  # 30cm de tolerância
+            QMessageBox.information(self, "Retorno à Base", "O robô já está próximo à base original!")
+            return
+        
+        # Confirma o retorno
+        reply = QMessageBox.question(
+            self, 
+            "Retornar à Base",
+            f"Iniciar navegação de retorno à base original?\n\n"
+            f"De: ({current_pos[0]:.2f}, {current_pos[1]:.2f})\n"
+            f"Para: ({base_position[0]:.2f}, {base_position[1]:.2f})\n"
+            f"Distância: {distance_to_base:.2f}m",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            print(f"🏠 Iniciando retorno de {current_pos} para {base_position}")
+            
+            # CORREÇÃO: Fazer reset completo antes de iniciar nova navegação
+            print("🔄 Fazendo reset antes do retorno à base")
+            self.navigator.reset_to_initial_state()
+            
+            # Restaura posição atual
+            self.navigator.current_position = current_pos
+            self.navigator.current_angle = self.navigator.current_angle
+            
+            # Usa o método de navegação apenas ao destino para ir à base
+            try:
+                print(f"🚀 Chamando navigate_to_destination_only para base: {base_position}")
+                self.navigator.navigate_to_destination_only(base_position)
+                
+                # Atualiza interface para navegação ativa
+                self.navigation_active = True
+                self.nav_status_label.setText("Status: Retornando à base...")
+                self.nav_progress_bar.setVisible(True)
+                self.nav_progress_bar.setValue(0)
+                self.nav_info_label.setVisible(True)
+                self.nav_info_label.setText("Estado: Retornando à base original")
+                
+                # NOVO: Exibe o percurso calculado no mapa
+                if hasattr(self.navigator, 'path') and self.navigator.path:
+                    print(f"🗺️ Exibindo percurso de retorno com {len(self.navigator.path)} pontos")
+                    self.map_widget.set_current_path(self.navigator.path)
+                    print("✅ Percurso de retorno exibido no mapa (linha azul)")
+                
+                print("✅ Navegação de retorno à base iniciada com sucesso")
+                
+                # IMPORTANTE: Inicia o loop de atualização
+                self._update()
+                
+            except Exception as e:
+                print(f"❌ Erro ao iniciar retorno: {e}")
+                import traceback
+                traceback.print_exc()
+                QMessageBox.warning(self, "Erro", f"Erro ao iniciar retorno à base:\n{e}")
+                
+                # Limpa estados em caso de erro
+                self.navigation_active = False
+                self.nav_status_label.setText("Status: Erro")
+                self.nav_progress_bar.setVisible(False)
+                self.nav_info_label.setVisible(False)

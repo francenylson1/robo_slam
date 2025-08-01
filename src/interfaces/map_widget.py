@@ -37,11 +37,25 @@ class MapWidget(QWidget):
         # --- NOVO: Atributo para armazenar o caminho da navegação ---
         self.current_path: List[Tuple[float, float]] = []
         
+        # NOVO: Atributos para distinguir posição base vs atual
+        self.base_position = ROBOT_INITIAL_POSITION  # Posição base original
+        self.show_base_marker = True  # Se deve mostrar marcador da base
+        
     def set_current_path(self, path: List[Tuple[float, float]]):
         """Define o caminho de navegação atual para ser desenhado."""
         self.current_path = path
         self.update()  # Força o widget a se redesenhar
 
+    def clear_current_path(self):
+        """Limpa o percurso atual da visualização"""
+        self.current_path = []
+        self.update()
+        
+    def set_show_base_marker(self, show: bool):
+        """Define se deve mostrar o marcador da base original"""
+        self.show_base_marker = show
+        self.update()
+        
     def update_robot_position(self, x: float, y: float, angle: float):
         """Atualiza a posição do robô no mapa."""
         self.robot_position = (x, y)
@@ -88,6 +102,10 @@ class MapWidget(QWidget):
             
         # --- NOVO: Desenha o caminho da navegação ---
         self._draw_path(painter)
+        
+        # --- NOVO: Desenha marcador da base (se habilitado) ---
+        if self.show_base_marker:
+            self._draw_base_marker(painter)
             
         # Desenha o robô
         self._draw_robot(painter)
@@ -351,6 +369,23 @@ class MapWidget(QWidget):
             QPoint(int(base2_x), int(base2_y))
         ])
         painter.drawPolygon(arrow)
+
+    def _draw_base_marker(self, painter: QPainter):
+        """Desenha um marcador para a posição base original"""
+        x, y = self.base_position
+        screen_x = int(x * self.scale)
+        screen_y = int(y * self.scale)
+        
+        # Desenha um quadrado verde para representar a base
+        painter.setPen(QPen(QColor(0, 150, 0), 2))
+        painter.setBrush(QBrush(QColor(0, 200, 0, 150)))  # Verde semi-transparente
+        base_size = 12
+        painter.drawRect(screen_x - base_size//2, screen_y - base_size//2, base_size, base_size)
+        
+        # Adiciona texto "BASE"
+        painter.setPen(QPen(QColor(0, 100, 0)))
+        painter.setFont(QFont('Arial', 8, QFont.Weight.Bold))
+        painter.drawText(screen_x + 8, screen_y - 8, "BASE")
 
     def _draw_forbidden_areas(self, painter: QPainter):
         """Desenha as áreas proibidas no mapa."""

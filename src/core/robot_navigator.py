@@ -71,6 +71,9 @@ class RobotNavigator(QObject):
         
         self.is_returning_to_initial_angle = False  # Nova flag para controle do retorno ao ângulo inicial
         
+        # NOVO: Atributo para controlar o tipo de navegação
+        self.should_return_to_base = True  # True = ida e volta, False = apenas ao destino
+        
         # Sistema de timeout para evitar travamento na aproximação final
         self.final_approach_start_time = None
         self.final_approach_timeout = 25.0  # Aumentado de 15s para 25s para dar mais tempo ao PID
@@ -246,9 +249,13 @@ class RobotNavigator(QObject):
             if self.arrival_time is not None and (time.time() - self.arrival_time > self.arrival_pause_time):
                 self.is_paused_at_destination = False
                 
-                # NOVA LÓGICA: Calcular ângulo para retornar à base
-                print("DEBUG: Calculando ângulo para retornar à base...")
-                self._calculate_and_execute_return_angle()
+                # NOVA LÓGICA: Verifica se deve retornar à base ou finalizar
+                if self.should_return_to_base:
+                    print("DEBUG: Navegação completa - Calculando ângulo para retornar à base...")
+                    self._calculate_and_execute_return_angle()
+                else:
+                    print("DEBUG: Navegação apenas ao destino - Finalizando navegação")
+                    self._finalize_navigation()
                 return
 
         elif self.navigation_state == "RETURNING_TO_BASE":
@@ -696,6 +703,7 @@ class RobotNavigator(QObject):
         self.start_time = time.time()
         self.navigation_state = "NAVIGATING_TO_DESTINATION"
         self.is_returning_to_base = False
+        self.should_return_to_base = True  # PRESERVA: Navegação completa (ida e volta)
         
         # Reset do timeout da aproximação final
         self.final_approach_start_time = None
@@ -720,6 +728,45 @@ class RobotNavigator(QObject):
         print(f"DEBUG: Caminho de ida calculado com {len(self.path)} pontos.")
         print(f"DEBUG: ===== NAVEGAÇÃO INICIADA =====")
         
+    def navigate_to_destination_only(self, destination: Tuple[float, float]) -> None:
+        """Navega apenas até o destino e para lá (sem retorno automático)"""
+        print(f"DEBUG: ===== NAVEGAÇÃO APENAS AO DESTINO =====")
+        print(f"DEBUG: Destino: {destination}")
+        print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
+        
+        # Reset completo para nova navegação (MANTÉM as áreas proibidas)
+        self.reset_to_initial_state()
+        
+        # Configura a navegação
+        self.navigation_active = True
+        self.start_time = time.time()
+        self.navigation_state = "NAVIGATING_TO_DESTINATION"
+        self.is_returning_to_base = False  # Importante: não vai retornar
+        self.should_return_to_base = False  # NOVO: Navegação apenas ao destino
+        
+        # Reset do timeout da aproximação final
+        self.final_approach_start_time = None
+        
+        # Calcula o caminho APENAS para o destino
+        path_to_destination = self.path_finder.find_path(self.current_position, destination)
+        if not path_to_destination or len(path_to_destination) < 2:
+            print("DEBUG: ERRO - Não foi possível encontrar caminho para o destino")
+            self.navigation_active = False
+            return
+
+        # O caminho é APENAS para o destino. Não haverá retorno.
+        self.path = path_to_destination
+        self.path_index = 0
+        
+        self.original_destination = destination
+        self.destination_index = len(path_to_destination) - 1
+        
+        # Define o primeiro alvo
+        self.current_target = self.path[0]
+        
+        print(f"DEBUG: Caminho calculado com {len(self.path)} pontos.")
+        print(f"DEBUG: ===== NAVEGAÇÃO APENAS AO DESTINO INICIADA =====")
+
     def get_navigation_status(self) -> dict:
         """Retorna o status atual da navegação"""
         if not self.navigation_active:
