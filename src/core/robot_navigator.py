@@ -392,15 +392,22 @@ class RobotNavigator(QObject):
         """
         NOVA ARQUITETURA: Gerencia retorno à base.
         """
+        print(f"🏠 === _handle_return_navigation CHAMADO ===")
+        print(f"🏠 current_target: {self.current_target}")
+        print(f"🏠 current_position: {self.current_position}")
+        print(f"🏠 path_index: {self.path_index}/{len(self.path) if self.path else 0}")
+        
         if self.current_target is None or self.current_position is None:
             print("❌ ERRO: Alvo ou posição atual nulos em RETURNING")
             self._finalize_navigation()
             return
             
         distance_to_target = self._calculate_distance(self.current_position, self.current_target)
+        print(f"🏠 Distância para target: {distance_to_target:.3f}m")
         
         # Verifica se chegou ao waypoint atual
         if distance_to_target < 0.12:  # 12cm de tolerância
+            print(f"🏠 CHEGOU ao waypoint {self.path_index}: {self.current_target}")
             self.path_index += 1
             
             # Se chegou à base
@@ -411,9 +418,10 @@ class RobotNavigator(QObject):
                 
             # Próximo waypoint
             self.current_target = self.path[self.path_index]
-            print(f"DEBUG: Próximo waypoint do retorno: {self.current_target}")
+            print(f"🏠 Próximo waypoint do retorno: {self.current_target}")
             
         # Continua navegando
+        print(f"🏠 Chamando _move_towards_target()...")
         self._move_towards_target()
         
     def _calculate_and_execute_return_angle(self):
@@ -885,6 +893,10 @@ class RobotNavigator(QObject):
             print("❌ ERRO: Não foi possível encontrar caminho para a base")
             return False
             
+        print(f"🏠 Caminho calculado: {len(path_to_base)} pontos")
+        for i, point in enumerate(path_to_base):
+            print(f"🏠   [{i}]: {point}")
+            
         # Configura navegação de retorno
         self.navigation_active = True
         self.start_time = time.time()
@@ -895,11 +907,20 @@ class RobotNavigator(QObject):
         # Define o caminho para a base
         self.path = path_to_base
         self.path_index = 0
-        self.current_target = self.path[0]
+        
+        # CORREÇÃO: Define target como PRÓXIMO ponto, não posição atual
+        if len(path_to_base) > 1:
+            self.current_target = self.path[1]  # Segundo ponto (primeiro é posição atual)
+            self.path_index = 1  # Começa no segundo ponto
+        else:
+            self.current_target = self.path[0]  # Caso especial: caminho direto
+            
         self.base_position = ROBOT_INITIAL_POSITION
         
         print(f"✅ Retorno iniciado com {len(self.path)} pontos")
         print(f"✅ Estado: {self.navigation_state}")
+        print(f"✅ Target inicial: {self.current_target}")
+        print(f"✅ Path index inicial: {self.path_index}")
         return True
         
     def get_robot_state(self) -> dict:
