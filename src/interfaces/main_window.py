@@ -990,24 +990,42 @@ class MainWindow(QMainWindow):
         rotation_angle = 10  # CORRIGIDO: 10 graus em vez de 90
         current_angle = self.navigator.current_angle
         
+        # NOVO: Implementar rotação física real
         if direction == "forward":
             # Não gira, apenas mantém direção atual
             target_angle = current_angle
             print(f"🎮 FRENTE: Mantendo ângulo atual {current_angle}°")
+            # Não executa rotação física
+            
         elif direction == "right":
             target_angle = (current_angle + rotation_angle) % 360
             print(f"🎮 DIREITA: {current_angle}° → {target_angle}° (+{rotation_angle}°)")
+            
+            # NOVO: Executa rotação física para direita (horário)
+            print(f"🔧 Executando rotação física: DIREITA (+{rotation_angle}°)")
+            self._execute_physical_rotation("clockwise", rotation_angle)
+            
         elif direction == "backward":
             target_angle = (current_angle + 180) % 360
             print(f"🎮 TRÁS: {current_angle}° → {target_angle}° (180°)")
+            
+            # NOVO: Executa rotação física de 180° (pode ser horário ou anti-horário)
+            print(f"🔧 Executando rotação física: TRÁS (180°)")
+            self._execute_physical_rotation("clockwise", 180)
+            
         elif direction == "left":
             target_angle = (current_angle - rotation_angle) % 360
             print(f"🎮 ESQUERDA: {current_angle}° → {target_angle}° (-{rotation_angle}°)")
+            
+            # NOVO: Executa rotação física para esquerda (anti-horário)
+            print(f"🔧 Executando rotação física: ESQUERDA (-{rotation_angle}°)")
+            self._execute_physical_rotation("counterclockwise", rotation_angle)
+            
         else:
             print(f"❌ Direção inválida: {direction}")
             return
         
-        # Atualiza o ângulo do robô (simulação ou comando real)
+        # Atualiza o ângulo do robô (simulação)
         self.navigator.current_angle = target_angle
         
         # Atualiza a visualização no mapa
@@ -1018,6 +1036,47 @@ class MainWindow(QMainWindow):
         )
         
         print(f"✅ Rotação manual concluída. Novo ângulo: {target_angle}°")
+
+    def _execute_physical_rotation(self, direction: str, angle_degrees: float):
+        """Executa rotação física real nos motores"""
+        print(f"⚙️ === ROTAÇÃO FÍSICA: {direction.upper()} {angle_degrees}° ===")
+        
+        # Calcula tempo de rotação baseado no ângulo
+        # Assumindo velocidade de rotação de ~30°/segundo
+        rotation_speed = 30.0  # graus por segundo
+        rotation_time = angle_degrees / rotation_speed
+        
+        print(f"⚙️ Tempo de rotação calculado: {rotation_time:.2f}s")
+        
+        try:
+            if direction == "clockwise":
+                # Giro horário: motor esquerdo para frente, direito para trás
+                print("⚙️ Comando: Motor ESQ(+) DIR(-) - Giro HORÁRIO")
+                self.navigator.motors.set_speed(30, -30)  # ESQ+, DIR-
+                
+            elif direction == "counterclockwise":
+                # Giro anti-horário: motor esquerdo para trás, direito para frente  
+                print("⚙️ Comando: Motor ESQ(-) DIR(+) - Giro ANTI-HORÁRIO")
+                self.navigator.motors.set_speed(-30, 30)  # ESQ-, DIR+
+                
+            # Aguarda o tempo de rotação
+            import time
+            print(f"⚙️ Executando rotação por {rotation_time:.2f}s...")
+            time.sleep(rotation_time)
+            
+            # Para os motores
+            print("⚙️ Parando motores após rotação")
+            self.navigator.motors.stop()
+            
+            print(f"✅ Rotação física concluída: {direction} {angle_degrees}°")
+            
+        except Exception as e:
+            print(f"❌ Erro na rotação física: {e}")
+            # Para os motores em caso de erro
+            try:
+                self.navigator.motors.stop()
+            except:
+                pass
 
     def _set_new_starting_position(self):
         """Define a posição atual como nova posição de partida"""
