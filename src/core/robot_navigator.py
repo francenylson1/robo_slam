@@ -561,8 +561,10 @@ class RobotNavigator(QObject):
             print(f"DEBUG: Forward: {forward_value:.2f}, Turn: {turn_value:.2f}")
                 
         # Converte para velocidades das rodas (limitando a -100 a 100)
-        left_speed = max(-100, min(100, forward_value - turn_value))
-        right_speed = max(-100, min(100, forward_value + turn_value))
+        # CORREÇÃO: Aplicando mesma lógica dos botões que funcionam
+        # BOTÕES: DIREITA=set_speed(+ESQ,-DIR) → quando turn_value>0, ESQ>DIR
+        left_speed = max(-100, min(100, forward_value + turn_value))   # CORRIGIDO: era forward_value - turn_value
+        right_speed = max(-100, min(100, forward_value - turn_value))  # CORRIGIDO: era forward_value + turn_value
         
         # Aplica os comandos aos motores
         if hasattr(self, 'motors'):
@@ -667,8 +669,10 @@ class RobotNavigator(QObject):
             return  # Ignora comandos manuais em modo autônomo
             
         # Converte valores do joystick (-1 a 1) para velocidades dos motores
-        left_speed = (forward_value - turn_value) * 100
-        right_speed = (forward_value + turn_value) * 100
+        # CORREÇÃO: Aplicando mesma lógica dos botões que funcionam
+        # Para manter consistência com todas as outras correções
+        left_speed = (forward_value + turn_value) * 100   # CORRIGIDO: era forward_value - turn_value
+        right_speed = (forward_value - turn_value) * 100  # CORRIGIDO: era forward_value + turn_value
         
         self.motors.set_speed(left_speed, right_speed)
         
@@ -843,15 +847,17 @@ class RobotNavigator(QObject):
 
         # --- 3. Converter para Velocidade das Rodas ---
         # Fórmulas de cinemática diferencial:
-        # v_r = (2 * v + w * L) / (2 * R)
-        # v_l = (2 * v - w * L) / (2 * R)
-        # Simplificando, calculamos a velocidade linear de cada roda
+        # CORREÇÃO: Invertendo sinais para alinhar com os botões que funcionam
+        # BOTÕES CORRETOS: DIREITA=set_speed(+ESQ,-DIR), ESQUERDA=set_speed(-ESQ,+DIR)
         v = linear_speed_ms
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         
-        right_wheel_speed_ms = v + (w * L) / 2.0
-        left_wheel_speed_ms = v - (w * L) / 2.0
+        # CORREÇÃO: Aplicando a mesma lógica dos botões
+        # Para giro DIREITA (w>0): ESQ deve ser MAIOR que DIR
+        # Para giro ESQUERDA (w<0): DIR deve ser MAIOR que ESQ
+        right_wheel_speed_ms = v - (w * L) / 2.0  # CORRIGIDO: era v + (w * L) / 2.0
+        left_wheel_speed_ms = v + (w * L) / 2.0   # CORRIGIDO: era v - (w * L) / 2.0
 
         # --- 4. Converter m/s para Ticks por Segundo (TPS) ---
         # TPS = (metros / segundo) / (metros / revolução) * (ticks / revolução)
@@ -955,15 +961,17 @@ class RobotNavigator(QObject):
             # Define a direção do giro baseado na diferença
             if angle_diff > 0:
                 # Precisa girar no sentido horário (ângulo atual < 270°)
-                # CORREÇÃO: Inverte a lógica para corrigir a direção
-                left_speed = -turn_value * 100
-                right_speed = turn_value * 100
+                # CORREÇÃO FINAL: Aplicando lógica dos botões que funcionam
+                # BOTÃO DIREITA (horário): set_speed(+ESQ, -DIR)
+                left_speed = turn_value * 100   # CORRIGIDO: era -turn_value * 100
+                right_speed = -turn_value * 100 # CORRIGIDO: era turn_value * 100
                 direction = "horário"
             else:
                 # Precisa girar no sentido anti-horário (ângulo atual > 270°)
-                # CORREÇÃO: Inverte a lógica para corrigir a direção
-                left_speed = turn_value * 100
-                right_speed = -turn_value * 100
+                # CORREÇÃO FINAL: Aplicando lógica dos botões que funcionam  
+                # BOTÃO ESQUERDA (anti-horário): set_speed(-ESQ, +DIR)
+                left_speed = -turn_value * 100  # CORRIGIDO: era turn_value * 100
+                right_speed = turn_value * 100  # CORRIGIDO: era -turn_value * 100
                 direction = "anti-horário"
                 
             print(f"DEBUG: Comando de giro: {turn_value:.3f}")
