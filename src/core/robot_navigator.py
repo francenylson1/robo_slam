@@ -910,7 +910,12 @@ class RobotNavigator(QObject):
             dict: Estado completo do robô com informações relevantes
         """
         # Estados possíveis: IDLE, NAVIGATING, AT_DESTINATION, RETURNING
-        if not self.navigation_active:
+        
+        # CORREÇÃO: Verifica primeiro estados específicos independente de navigation_active
+        if self.navigation_state == "PAUSED_AT_DESTINATION" or self.is_paused_at_destination:
+            robot_state = "AT_DESTINATION"
+            location = f"Destino ({self.current_position[0]:.1f}, {self.current_position[1]:.1f})"
+        elif not self.navigation_active:
             if self._is_at_base():
                 robot_state = "IDLE"
                 location = "Base"

@@ -816,6 +816,11 @@ class MainWindow(QMainWindow):
             location = robot_state['location']
             is_at_base = robot_state['is_at_base']
             
+            print(f"🔍 DEBUG BOTÃO: state={state}, location={location}, is_at_base={is_at_base}")
+            print(f"🔍 DEBUG BOTÃO: navigation_active={robot_state['navigation_active']}")
+            print(f"🔍 DEBUG BOTÃO: navigation_state={getattr(self.navigator, 'navigation_state', 'UNDEFINED')}")
+            print(f"🔍 DEBUG BOTÃO: is_paused_at_destination={getattr(self.navigator, 'is_paused_at_destination', 'UNDEFINED')}")
+            
             # Atualiza label do estado
             state_colors = {
                 "IDLE": "blue",
@@ -825,32 +830,57 @@ class MainWindow(QMainWindow):
             }
             color = state_colors.get(state, "black")
             
+            print(f"🎨 DEBUG LABEL: Definindo texto='{location}' cor={color}")
             self.robot_state_label.setText(f"Robô: {location}")
             self.robot_state_label.setStyleSheet(f"font-weight: bold; color: {color};")
+            
+            # Verifica se o botão existe
+            if not hasattr(self, 'return_to_base_btn'):
+                print("❌ DEBUG BOTÃO: return_to_base_btn NÃO EXISTE!")
+                return
+            else:
+                print("✅ DEBUG BOTÃO: return_to_base_btn existe")
             
             # Atualiza botões dinamicamente
             if state == "AT_DESTINATION" and not is_at_base:
                 # Robô está em um destino (não na base) - pode voltar
+                print("🟢 DEBUG BOTÃO: Condição AT_DESTINATION + not is_at_base = TRUE")
                 self.return_to_base_btn.setEnabled(True)
                 self.return_to_base_btn.setText("Voltar para Base")
+                self.return_to_base_btn.setVisible(True)  # Força visibilidade
+                print("🟢 DEBUG BOTÃO: Botão ATIVADO e definido como 'Voltar para Base'")
             elif state == "IDLE" and is_at_base:
                 # Robô está na base - pode ir para destino
+                print("🔵 DEBUG BOTÃO: Condição IDLE + is_at_base = TRUE")
                 self.return_to_base_btn.setEnabled(False)
                 self.return_to_base_btn.setText("Na Base")
+                self.return_to_base_btn.setVisible(True)  # Força visibilidade
+                print("🔵 DEBUG BOTÃO: Botão DESATIVADO e definido como 'Na Base'")
             elif state in ["NAVIGATING", "RETURNING"]:
                 # Robô navegando - não pode fazer novos comandos
+                print("🟠 DEBUG BOTÃO: Condição NAVIGATING/RETURNING = TRUE")
                 self.return_to_base_btn.setEnabled(False)
                 self.return_to_base_btn.setText("Navegando...")
+                self.return_to_base_btn.setVisible(True)  # Força visibilidade
+                print("🟠 DEBUG BOTÃO: Botão DESATIVADO e definido como 'Navegando...'")
             else:
                 # Estado desconhecido
+                print(f"❓ DEBUG BOTÃO: Estado DESCONHECIDO: {state}")
                 self.return_to_base_btn.setEnabled(False)
                 self.return_to_base_btn.setText("Indisponível")
+                self.return_to_base_btn.setVisible(True)  # Força visibilidade
+                print("❓ DEBUG BOTÃO: Botão DESATIVADO e definido como 'Indisponível'")
                 
-            # Debug
-            print(f"🔄 Estado atualizado: {state} | Botão ativo: {self.return_to_base_btn.isEnabled()}")
+            # Debug final
+            final_enabled = self.return_to_base_btn.isEnabled()
+            final_text = self.return_to_base_btn.text()
+            final_visible = self.return_to_base_btn.isVisible()
+            print(f"🔄 Estado final: {state} | Botão: enabled={final_enabled}, text='{final_text}', visible={final_visible}")
             
         except Exception as e:
             print(f"❌ ERRO ao atualizar estado do robô: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _mark_unsaved_changes(self):
         """Marca que há alterações não salvas."""
