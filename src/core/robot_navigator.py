@@ -367,19 +367,19 @@ class RobotNavigator(QObject):
         # Calcula a diferença atual
         current_diff = (self.return_target_angle - self.current_angle + 180) % 360 - 180
         
-        # Se chegou próximo do ângulo alvo, inicia o retorno
-        if abs(current_diff) < 5.0:
+        # Se chegou próximo do ângulo alvo, inicia o retorno (tolerância maior para evitar tremor)
+        if abs(current_diff) < 15.0:
             print("DEBUG: Giro de retorno concluído, iniciando navegação de retorno")
             self._start_return_navigation()
             return
             
-        # Executa o giro
-        if abs(current_diff) > 30:
-            turn_value = 0.08  # 8% para diferenças grandes
-        elif abs(current_diff) > 10:
-            turn_value = 0.06  # 6% para diferenças moderadas
+        # Executa o giro (velocidades reduzidas para evitar tremor)
+        if abs(current_diff) > 45:
+            turn_value = 0.05  # 5% para diferenças grandes (era 8%)
+        elif abs(current_diff) > 20:
+            turn_value = 0.04  # 4% para diferenças moderadas (era 6%)
         else:
-            turn_value = 0.04  # 4% para ajustes finos
+            turn_value = 0.03  # 3% para ajustes finos (era 4%)
             
         # CORREÇÃO: Inverte a lógica para alinhar interface com robô físico
         # Interface mostra esquerda = robô físico gira direita
@@ -893,17 +893,17 @@ class RobotNavigator(QObject):
         angle_diff = (ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180
         
         print(f"DEBUG: Diferença calculada: {angle_diff:.2f}°")
-        print(f"DEBUG: Tolerância: 1.0°")
-        print(f"DEBUG: Deve girar? {abs(angle_diff) > 1.0}")
+        print(f"DEBUG: Tolerância: 5.0°")
+        print(f"DEBUG: Deve girar? {abs(angle_diff) > 5.0}")
         
-        if abs(angle_diff) > 1.0:  # Tolerância menor para precisão
-            # Ajusta o ângulo para 270° com velocidade adaptativa
+        if abs(angle_diff) > 5.0:  # Tolerância maior para evitar tremor
+            # Ajusta o ângulo para 270° com velocidade adaptativa (REDUZIDA para evitar tremor)
             if abs(angle_diff) > 30:
-                turn_value = min(0.8, abs(angle_diff) / 25.0)  # Giro mais rápido para diferenças grandes
+                turn_value = min(0.4, abs(angle_diff) / 50.0)  # Giro mais lento para diferenças grandes
             elif abs(angle_diff) > 10:
-                turn_value = min(0.6, abs(angle_diff) / 30.0)  # Giro moderado
+                turn_value = min(0.3, abs(angle_diff) / 60.0)  # Giro moderado mais lento
             else:
-                turn_value = min(0.4, abs(angle_diff) / 35.0)  # Giro suave para ajuste fino
+                turn_value = min(0.2, abs(angle_diff) / 70.0)  # Giro muito suave para ajuste fino
                 
             # Define a direção do giro baseado na diferença
             if angle_diff > 0:
