@@ -1029,6 +1029,20 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
+        print(f"🎯 === _move_towards_target DEBUG ===")
+        print(f"🎯 Target: {self.current_target}")
+        print(f"🎯 Position: {self.current_position}")
+        print(f"🎯 Distance: {distance_to_target:.3f}m")
+        print(f"🎯 Current angle: {self.current_angle:.1f}°")
+        print(f"🎯 Target angle: {target_angle:.1f}°")
+        print(f"🎯 Angle error: {angle_error:.1f}°")
+
+        # --- ZONA MORTA ANGULAR para evitar tremor ---
+        ANGLE_DEADBAND = 3.0  # Zona morta de 3 graus
+        if abs(angle_error) < ANGLE_DEADBAND:
+            angle_error = 0.0
+            print(f"🎯 ZONA MORTA: Erro angular {abs(angle_error):.1f}° < {ANGLE_DEADBAND}° - ignorando")
+
         # --- 2. Calcular Velocidades Desejadas ---
         
         # A velocidade linear (para frente) é proporcional à distância, mas limitada pela velocidade máxima.
@@ -1037,15 +1051,15 @@ class RobotNavigator(QObject):
         linear_speed_ms = MAX_LINEAR_SPEED_MS * angle_factor
         
         # A velocidade angular (giro) é proporcional ao erro de ângulo.
-        # Usamos um fator P-controller simples aqui para o giro.
-        angular_speed_rads = math.radians(angle_error) * 2.0 # O fator 2.0 é um ganho proporcional (P)
+        # CORREÇÃO: Reduzir ganho de 2.0 para 1.0 para evitar oscilação
+        angular_speed_rads = math.radians(angle_error) * 1.0  # Ganho reduzido para estabilidade
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
+
+        print(f"🎯 Linear speed: {linear_speed_ms:.3f}m/s (factor: {angle_factor:.3f})")
+        print(f"🎯 Angular speed: {angular_speed_rads:.3f}rad/s")
 
         # --- 3. Converter para Velocidade das Rodas ---
         # Fórmulas de cinemática diferencial:
-        # v_r = (2 * v + w * L) / (2 * R)
-        # v_l = (2 * v - w * L) / (2 * R)
-        # Simplificando, calculamos a velocidade linear de cada roda
         v = linear_speed_ms
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
@@ -1058,18 +1072,20 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
 
-        # --- NOVA LÓGICA: PISO DE VELOCIDADE MÍNIMA ---
-        # Se qualquer velocidade for solicitada (maior que zero), mas for menor
-        # que nossa velocidade mínima estável (20 tps), use 20 tps.
-        MIN_STABLE_TPS = 20.0
+        print(f"🎯 TPS antes do piso: L:{left_tps:.1f} R:{right_tps:.1f}")
+
+        # --- CORREÇÃO: PISO DE VELOCIDADE MÍNIMA AJUSTADO ---
+        # Reduzir piso de velocidade para permitir movimentos mais suaves
+        MIN_STABLE_TPS = 10.0  # Reduzido de 20.0 para 10.0
         if 0 < abs(left_tps) < MIN_STABLE_TPS:
             left_tps = MIN_STABLE_TPS * (1 if left_tps > 0 else -1)
         if 0 < abs(right_tps) < MIN_STABLE_TPS:
             right_tps = MIN_STABLE_TPS * (1 if right_tps > 0 else -1)
 
         # --- 5. Enviar Comando para o Controlador PID ---
-        # O log agora mostrará a velocidade alvo em TPS
-        print(f"DEBUG PID: Target L:{left_tps:.1f}tps R:{right_tps:.1f}tps | Lin:{linear_speed_ms:.2f}m/s Ang:{angular_speed_rads:.2f}rad/s")
+        print(f"🎯 TPS final: L:{left_tps:.1f} R:{right_tps:.1f}")
+        print(f"🎯 === FIM DEBUG ===")
+        
         self.motors.set_target_speed(left_tps, right_tps)
         
         # A odometria é sempre atualizada no loop principal 'update', não precisamos chamar aqui.
