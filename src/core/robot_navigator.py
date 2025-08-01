@@ -364,6 +364,16 @@ class RobotNavigator(QObject):
             self._start_return_navigation()
             return
             
+        # NOVO: Sistema de debounce para evitar comandos muito frequentes
+        current_time = time.time()
+        if not hasattr(self, 'last_turn_command_time'):
+            self.last_turn_command_time = 0
+        
+        # Só envia comando se passou tempo suficiente (500ms)
+        if current_time - self.last_turn_command_time < 0.5:
+            print(f"DEBUG: DEBOUNCE - Aguardando {0.5 - (current_time - self.last_turn_command_time):.2f}s")
+            return
+            
         # Calcula a diferença atual
         current_diff = (self.return_target_angle - self.current_angle + 180) % 360 - 180
         
@@ -401,6 +411,10 @@ class RobotNavigator(QObject):
         
         # Aplica o comando de giro
         self.motors.set_speed(left_speed, right_speed)
+        
+        # Atualiza timestamp do último comando para debounce
+        self.last_turn_command_time = current_time
+        print(f"DEBUG: Comando enviado - próximo em 0.5s")
         
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
@@ -889,6 +903,16 @@ class RobotNavigator(QObject):
         print(f"DEBUG: Ângulo atual: {self.current_angle:.2f}°")
         print(f"DEBUG: Ângulo desejado: {ROBOT_INITIAL_ANGLE}°")
         
+        # NOVO: Sistema de debounce para ajuste final também
+        current_time = time.time()
+        if not hasattr(self, 'last_final_adjust_time'):
+            self.last_final_adjust_time = 0
+        
+        # Só envia comando se passou tempo suficiente (500ms)
+        if current_time - self.last_final_adjust_time < 0.5:
+            print(f"DEBUG: DEBOUNCE FINAL - Aguardando {0.5 - (current_time - self.last_final_adjust_time):.2f}s")
+            return
+        
         # Calcula a diferença de ângulo para 270°
         angle_diff = (ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180
         
@@ -926,6 +950,10 @@ class RobotNavigator(QObject):
             
             # Aplica o comando de giro
             self.motors.set_speed(left_speed, right_speed)
+            
+            # Atualiza timestamp do último comando para debounce
+            self.last_final_adjust_time = current_time
+            print(f"DEBUG: Comando final enviado - próximo em 0.5s")
             
             # CORREÇÃO: NÃO chama _update_position aqui - deixa a odometria real funcionar
             # self._update_position(0.0, turn_value)  # REMOVIDO
