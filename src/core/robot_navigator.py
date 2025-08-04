@@ -856,8 +856,8 @@ class RobotNavigator(QObject):
         # CORREÇÃO DEFINITIVA: Cinemática diferencial CORRIGIDA
         # PROBLEMA IDENTIFICADO: Fórmula estava invertida!
         # CORREÇÃO: Para w>0 (curva direita), esquerdo deve ser MAIS RÁPIDO
-        left_wheel_speed_ms = v + (w * L) / 2.0   # CORRIGIDO: left SOMA para giro direita correto
-        right_wheel_speed_ms = v - (w * L) / 2.0  # CORRIGIDO: right SUBTRAI para giro direita correto
+        left_wheel_speed_ms = v - (w * L) / 2.0   # CORRIGIDO: left SUBTRAI para giro direita correto
+        right_wheel_speed_ms = v + (w * L) / 2.0  # CORRIGIDO: right SOMA para giro direita correto
         
         print(f"🧮 SYNC_DEBUG: CINEMÁTICA | v={v:.3f}, w={w:.3f} → left_ms={left_wheel_speed_ms:.3f}, right_ms={right_wheel_speed_ms:.3f}")
 
@@ -938,8 +938,8 @@ class RobotNavigator(QObject):
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         # CORREÇÃO: Mesma cinemática corrigida da função principal
-        left_wheel_speed_ms = v + (w * L) / 2.0   # CORRIGIDO: left SOMA para giro direita
-        right_wheel_speed_ms = v - (w * L) / 2.0  # CORRIGIDO: right SUBTRAI para giro direita
+        left_wheel_speed_ms = v - (w * L) / 2.0   # CORRIGIDO: left SUBTRAI para giro direita
+        right_wheel_speed_ms = v + (w * L) / 2.0  # CORRIGIDO: right SOMA para giro direita
 
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
