@@ -235,18 +235,19 @@ class RobotMotorController(QObject):
             if GPIO_AVAILABLE and GPIO:
                 # --- MOTOR ESQUERDO ---
                 if left_power >= 0: # Para frente
-                    GPIO.output(self.dir_E, GPIO.HIGH)
+                    GPIO.output(self.dir_E, GPIO.HIGH)  # ESQUERDO: HIGH = frente
                 else: # Para trás
-                    GPIO.output(self.dir_E, GPIO.LOW)
+                    GPIO.output(self.dir_E, GPIO.LOW)   # ESQUERDO: LOW = trás
                 self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
 
-                # --- MOTOR DIREITO - CORRIGIDO: MESMA LÓGICA DO ESQUERDO ---
-                # PROBLEMA ANTERIOR: Motor direito tinha lógica invertida
-                # SOLUÇÃO: Ambos motores usam HIGH=frente, LOW=trás
+                # --- MOTOR DIREITO - LÓGICA CORRETA CONFORME gpio_test.py ---
+                # IMPORTANTE: Motores têm lógicas DIFERENTES por design físico!
+                # Motor esquerdo: HIGH=frente, LOW=trás
+                # Motor direito:  LOW=frente, HIGH=trás (OPOSTO por design)
                 if right_power >= 0: # Para frente
-                    GPIO.output(self.dir_D, GPIO.HIGH)  # CORRIGIDO: HIGH=frente (igual esquerdo)
+                    GPIO.output(self.dir_D, GPIO.LOW)   # DIREITO: LOW = frente (conforme gpio_test.py)
                 else: # Para trás
-                    GPIO.output(self.dir_D, GPIO.LOW)   # CORRIGIDO: LOW=trás (igual esquerdo)
+                    GPIO.output(self.dir_D, GPIO.HIGH)  # DIREITO: HIGH = trás (conforme gpio_test.py)
                 self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
 
                 # Libera os freios se houver qualquer potência
