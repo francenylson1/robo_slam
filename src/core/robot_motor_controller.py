@@ -218,8 +218,8 @@ class RobotMotorController(QObject):
             if abs(self.pid_right.setpoint) > 0 and abs(right_power) < MIN_POWER_THRESHOLD:
                 right_power = MIN_POWER_FLOOR if self.pid_right.setpoint > 0 else -MIN_POWER_FLOOR
             
-            # --- NOVO: Print detalhado do PID para debug ---
-            print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}%")
+            # --- DESABILITADO: Print do PID para logs limpos ---
+            # print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}%")
             
             # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
             current_time = time.time()
@@ -286,6 +286,7 @@ class RobotMotorController(QObject):
         Define a velocidade alvo para o controle PID em ticks por segundo (tps).
         Ativa o controle PID se ele estiver desativado.
         """
+        print(f"🚀 SYNC_DEBUG: set_target_speed(left={left_tps:.1f}, right={right_tps:.1f})")
         if not self.pid_enabled:
             self.enable_pid_control()
 
@@ -334,6 +335,7 @@ class RobotMotorController(QObject):
         Se as velocidades forem zero, para os motores usando o novo sistema.
         Caso contrário, converte a porcentagem de velocidade para tps e usa o PID.
         """
+        print(f"🎯 SYNC_DEBUG: set_speed(left={left_speed}, right={right_speed})")
         if left_speed == 0 and right_speed == 0:
             self.stop_motors()
         else:
@@ -342,6 +344,7 @@ class RobotMotorController(QObject):
             MAX_TPS = 50 # Exemplo: 50 ticks por segundo na potência máxima
             left_tps = (left_speed / 100.0) * MAX_TPS
             right_tps = (right_speed / 100.0) * MAX_TPS
+            print(f"🎯 SYNC_DEBUG: → Convertido para TPS: left={left_tps:.1f}, right={right_tps:.1f}")
             self.set_target_speed(left_tps, right_tps)
 
     def _set_motor_speed_real(self, motor: str, speed_percent: float):

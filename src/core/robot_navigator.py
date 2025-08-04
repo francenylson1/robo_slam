@@ -857,11 +857,15 @@ class RobotNavigator(QObject):
         # TESTE PROVOU: Para w>0 (esquerda), left deve ser negativo, right positivo
         left_wheel_speed_ms = v - (w * L) / 2.0   # DEFINITIVO: left SUBTRAI para giro esquerda correto
         right_wheel_speed_ms = v + (w * L) / 2.0  # DEFINITIVO: right SOMA para giro esquerda correto
+        
+        print(f"🧮 SYNC_DEBUG: CINEMÁTICA | v={v:.3f}, w={w:.3f} → left_ms={left_wheel_speed_ms:.3f}, right_ms={right_wheel_speed_ms:.3f}")
 
         # --- 4. Converter m/s para Ticks por Segundo (TPS) ---
         # TPS = (metros / segundo) / (metros / revolução) * (ticks / revolução)
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+        
+        print(f"⚙️  SYNC_DEBUG: TPS FINAL | left_tps={left_tps:.1f}, right_tps={right_tps:.1f}")
 
         # --- NOVA LÓGICA: PISO DE VELOCIDADE MÍNIMA ---
         # Se qualquer velocidade for solicitada (maior que zero), mas for menor

@@ -1051,12 +1051,12 @@ class MainWindow(QMainWindow):
         try:
             if direction == "clockwise":
                 # Giro horário: motor esquerdo para frente, direito para trás
-                print("⚙️ Comando: Motor ESQ(+) DIR(-) - Giro HORÁRIO")
+                print("🔴 SYNC_DEBUG: INTERFACE → DIREITA | Comando: set_speed(30, -30)")
                 self.navigator.motors.set_speed(30, -30)  # ESQ+, DIR-
                 
             elif direction == "counterclockwise":
                 # Giro anti-horário: motor esquerdo para trás, direito para frente  
-                print("⚙️ Comando: Motor ESQ(-) DIR(+) - Giro ANTI-HORÁRIO")
+                print("🟢 SYNC_DEBUG: INTERFACE → ESQUERDA | Comando: set_speed(-30, 30)")
                 self.navigator.motors.set_speed(-30, 30)  # ESQ-, DIR+
                 
             # Aguarda o tempo de rotação

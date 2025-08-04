@@ -158,3 +158,50 @@ python3 gpio_test.py
 ---
 
 **📞 Retorno**: Após executar, compartilhe os resultados para continuarmos o diagnóstico! 
+
+## 🎯 **ACABO DE DESCOBRIR E CORRIGIR O PROBLEMA REAL!**
+
+### 🕵️ **O QUE DESCOBRI:**
+
+**Havia 2 FUNÇÕES DIFERENTES que calculam movimento:**
+
+1. **✅ `_move_towards_target()`** - Eu havia corrigido (cinemática diferencial)
+2. **❌ `_calculate_movement()`** - **EU NÃO HAVIA CORRIGIDO** (navegação real do main.py!)
+
+### 🚨 **POR ISSO:**
+- **✅ Teste isolado funcionou** (usava `_move_towards_target()`)
+- **❌ main.py não funcionou** (usa `_calculate_movement()`)
+
+### 🔧 **CORREÇÃO DEFINITIVA APLICADA:**
+
+**Arquivo**: `src/core/robot_navigator.py` (linhas 563-564)
+
+```python
+<code_block_to_apply_changes_from>
+```
+
+### ✅ **COMMIT FEITO E ENVIADO:**
+
+**Commit 77b09ee**: "🎯 CORREÇÃO DEFINITIVA: Corrige _calculate_movement() para sincronização completa"
+
+### 🍓 **PRÓXIMO PASSO NA RASPBERRY PI:**
+
+```bash
+cd ~/robo_slam
+git pull origin v1.2-restaurada
+python src/main.py
+```
+
+### 🎯 **AGORA SIM:**
+
+**AMBAS as funções estão corrigidas:**
+- ✅ `_move_towards_target()` (cinemática diferencial)  
+- ✅ `_calculate_movement()` (navegação real)
+
+### 🎉 **RESULTADO ESPERADO:**
+
+- **Interface gira ESQUERDA** → **Robô físico gira ESQUERDA** ✅
+- **SEM tremor** ✅
+- **Navegação suave** ✅
+
+**Faça o git pull e teste! AGORA deve funcionar perfeitamente!** 🚀 
