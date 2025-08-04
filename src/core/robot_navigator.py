@@ -867,14 +867,15 @@ class RobotNavigator(QObject):
         
         print(f"⚙️  SYNC_DEBUG: TPS FINAL | left_tps={left_tps:.1f}, right_tps={right_tps:.1f}")
 
-        # --- NOVA LÓGICA: PISO DE VELOCIDADE MÍNIMA ---
-        # Se qualquer velocidade for solicitada (maior que zero), mas for menor
-        # que nossa velocidade mínima estável (20 tps), use 20 tps.
-        MIN_STABLE_TPS = 20.0
-        if 0 < abs(left_tps) < MIN_STABLE_TPS:
-            left_tps = MIN_STABLE_TPS * (1 if left_tps > 0 else -1)
-        if 0 < abs(right_tps) < MIN_STABLE_TPS:
-            right_tps = MIN_STABLE_TPS * (1 if right_tps > 0 else -1)
+        # --- REMOVIDO: PISO DE VELOCIDADE MÍNIMA ---
+        # PROBLEMA: Este piso estava destruindo as curvas!
+        # Forçava left=17.1, right=4.3 → ambos=20.0 (sem diferença = sem curva)
+        # 
+        # MIN_STABLE_TPS = 20.0
+        # if 0 < abs(left_tps) < MIN_STABLE_TPS:
+        #     left_tps = MIN_STABLE_TPS * (1 if left_tps > 0 else -1)
+        # if 0 < abs(right_tps) < MIN_STABLE_TPS:
+        #     right_tps = MIN_STABLE_TPS * (1 if right_tps > 0 else -1)
 
         # --- 5. Enviar Comando para o Controlador PID ---
         # SIMPLIFICAÇÃO: Usar valores originais + inversão simples no final
