@@ -559,9 +559,9 @@ class RobotNavigator(QObject):
             print(f"DEBUG: Forward: {forward_value:.2f}, Turn: {turn_value:.2f}")
                 
         # Converte para velocidades das rodas (limitando a -100 a 100)
-        # SIMPLIFICAÇÃO: Usar fórmulas originais + inversão simples no final
-        left_speed = max(-100, min(100, forward_value - turn_value))   # FÓRMULA ORIGINAL
-        right_speed = max(-100, min(100, forward_value + turn_value))  # FÓRMULA ORIGINAL
+        # CORREÇÃO FINAL: Sincroniza com correção da cinemática diferencial
+        left_speed = max(-100, min(100, forward_value + turn_value))   # CORRIGIDO: Inverte para sincronizar
+        right_speed = max(-100, min(100, forward_value - turn_value))  # CORRIGIDO: Inverte para sincronizar
             
         # Aplica os comandos aos motores
         if hasattr(self, 'motors'):
