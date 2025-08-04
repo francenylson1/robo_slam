@@ -853,9 +853,9 @@ class RobotNavigator(QObject):
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         
-        # VOLTA AO ORIGINAL: Cinemática diferencial padrão
-        right_wheel_speed_ms = v + (w * L) / 2.0  # REVERTIDO para original
-        left_wheel_speed_ms = v - (w * L) / 2.0   # REVERTIDO para original
+        # CORREÇÃO CIRÚRGICA: Cinemática diferencial corrigida baseado em teste físico
+        right_wheel_speed_ms = v - (w * L) / 2.0  # CORRIGIDO: Fórmula invertida baseado em teste diagnóstico
+        left_wheel_speed_ms = v + (w * L) / 2.0   # CORRIGIDO: Fórmula invertida baseado em teste diagnóstico
 
         # --- 4. Converter m/s para Ticks por Segundo (TPS) ---
         # TPS = (metros / segundo) / (metros / revolução) * (ticks / revolução)
