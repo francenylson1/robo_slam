@@ -388,27 +388,24 @@ class RobotNavigator(QObject):
         else:
             turn_value = 0.04  # 4% para ajustes finos
             
-        # CORREÇÃO: Inverte a lógica para alinhar interface com robô físico
-        # Interface mostra esquerda = robô físico gira direita
+        # LÓGICA ORIGINAL RESTAURADA - Hardware está correto conforme teste físico
         if current_diff > 0:
-            # Precisa girar no sentido horário (interface mostra direita)
-            # CORREÇÃO: Inverte para alinhar com robô físico
+            # Precisa girar no sentido horário
             left_speed = -turn_value * 100
             right_speed = turn_value * 100
-            direction = "horário (corrigido)"
+            direction = "horário"
         else:
-            # Precisa girar no sentido anti-horário (interface mostra esquerda)
-            # CORREÇÃO: Inverte para alinhar com robô físico
+            # Precisa girar no sentido anti-horário
             left_speed = turn_value * 100
             right_speed = -turn_value * 100
-            direction = "anti-horário (corrigido)"
+            direction = "anti-horário"
             
         print(f"DEBUG: Comando de giro: {turn_value:.3f} - {direction}")
         print(f"DEBUG: Velocidades: L:{left_speed:.1f}% R:{right_speed:.1f}%")
         
-        # Aplica o comando de giro
-        print(f"DEBUG GIRO: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")
-        self.motors.set_speed(right_speed, left_speed)  # INVERTIDO: era (left_speed, right_speed)
+        # Aplica o comando de giro ORIGINAL (sem inversão)
+        print(f"DEBUG GIRO: COMANDO ORIGINAL RESTAURADO - Hardware testado e correto")
+        self.motors.set_speed(left_speed, right_speed)  # RESTAURADO: lógica original
         
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
@@ -568,14 +565,12 @@ class RobotNavigator(QObject):
             
         # Aplica os comandos aos motores
         if hasattr(self, 'motors'):
-            # CORREÇÃO DIRETA: Se interface e robô físico estão invertidos, 
-            # simplesmente trocar os comandos left ↔ right
+            # REVERTENDO: Voltando ao normal para evitar feedback loop
             print(f"DEBUG: Velocidades calculadas - ESQ: {left_speed:.2f}, DIR: {right_speed:.2f}")
-            print(f"DEBUG: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")
             
-            # INVERSÃO SIMPLES: Trocar os comandos
-            self.motors.set_speed(right_speed, left_speed)  # INVERTIDO: era (left_speed, right_speed)
-            print(f"DEBUG: Comandos enviados aos motores - ESQ: {right_speed:.2f}, DIR: {left_speed:.2f}")
+            # VOLTA AO ORIGINAL: sem inversão por enquanto
+            self.motors.set_speed(left_speed, right_speed)  # REVERTIDO para original
+            print(f"DEBUG: Comandos enviados aos motores - ESQ: {left_speed:.2f}, DIR: {right_speed:.2f}")
             
         return forward_value, turn_value
         
@@ -675,12 +670,12 @@ class RobotNavigator(QObject):
             return  # Ignora comandos manuais em modo autônomo
             
         # Converte valores do joystick (-1 a 1) para velocidades dos motores
-        # REVERTIDO: Voltando ao original para manter consistência
-        left_speed = (forward_value - turn_value) * 100   # REVERTIDO para original
-        right_speed = (forward_value + turn_value) * 100  # REVERTIDO para original
+        # LÓGICA ORIGINAL - Hardware testado e funciona corretamente
+        left_speed = (forward_value - turn_value) * 100
+        right_speed = (forward_value + turn_value) * 100
         
-        print(f"DEBUG JOYSTICK: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")
-        self.motors.set_speed(right_speed, left_speed)  # INVERTIDO: era (left_speed, right_speed)
+        print(f"DEBUG JOYSTICK: COMANDO ORIGINAL RESTAURADO - Hardware testado e correto")
+        self.motors.set_speed(left_speed, right_speed)  # RESTAURADO: lógica original
         
     def move_to_point(self, target_point):
         """Move o robô para um ponto específico (modo autônomo)"""
@@ -884,9 +879,9 @@ class RobotNavigator(QObject):
         # O log agora mostrará a velocidade alvo em TPS original
         print(f"DEBUG PID ORIGINAL: Target L:{final_left_tps:.1f}tps R:{final_right_tps:.1f}tps | Lin:{linear_speed_ms:.2f}m/s Ang:{angular_speed_rads:.2f}rad/s")
         
-        # CORREÇÃO DIRETA: Aplicar mesma inversão que no _calculate_movement
-        print(f"DEBUG PID: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")  
-        self.motors.set_target_speed(final_right_tps, final_left_tps)  # INVERTIDO: era (final_left_tps, final_right_tps)
+        # REVERTENDO: Voltando ao original para evitar feedback loop
+        print(f"DEBUG PID: VOLTANDO AO ORIGINAL - sem inversão")  
+        self.motors.set_target_speed(final_left_tps, final_right_tps)  # REVERTIDO para original
         
         # A odometria é sempre atualizada no loop principal 'update', não precisamos chamar aqui.
         # if not GPIO_AVAILABLE: self._update_position(...)
@@ -990,8 +985,8 @@ class RobotNavigator(QObject):
             print(f"DEBUG: Ângulo atual: {self.current_angle:.2f}°, objetivo: {ROBOT_INITIAL_ANGLE}°")
             
             # Aplica o comando de giro
-            print(f"DEBUG ADJUST: APLICANDO INVERSÃO DIRETA - Trocando left ↔ right")
-            self.motors.set_speed(right_speed, left_speed)  # INVERTIDO: era (left_speed, right_speed)
+            print(f"DEBUG ADJUST: VOLTANDO AO ORIGINAL - sem inversão")
+            self.motors.set_speed(left_speed, right_speed)  # REVERTIDO para original
             
             # CORREÇÃO: NÃO chama _update_position aqui - deixa a odometria real funcionar
             # self._update_position(0.0, turn_value)  # REMOVIDO
