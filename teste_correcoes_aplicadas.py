@@ -11,15 +11,13 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 import time
 from src.core.robot_motor_controller import RobotMotorController
-from src.core.robot_navigator import RobotNavigator
 
 def teste_correcoes():
     print("🧪 ===== TESTE DAS CORREÇÕES APLICADAS =====")
     print("🎯 Verificando se problemas de inversão foram resolvidos")
     
-    # Inicializa componentes
+    # Inicializa APENAS o controlador de motores (evita conflito PWM)
     motor_controller = RobotMotorController()
-    navigator = RobotNavigator()
     
     print("\n📊 TESTE 1: PRESERVAÇÃO DE DIFERENÇAS (sem piso)")
     print("   🎯 Simulando curva que antes era destruída pelo piso")
