@@ -242,9 +242,9 @@ class RobotMotorController(QObject):
 
                 # --- MOTOR DIREITO ---
                 if right_power >= 0: # Para frente
-                    GPIO.output(self.dir_D, GPIO.LOW)
+                    GPIO.output(self.dir_D, GPIO.LOW)   # REVERTIDO: Conforme gpio_test.py (motor direito FRENTE = LOW)
                 else: # Para trás
-                    GPIO.output(self.dir_D, GPIO.HIGH)
+                    GPIO.output(self.dir_D, GPIO.HIGH)  # REVERTIDO: Conforme gpio_test.py (motor direito TRÁS = HIGH)
                 self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
 
                 # Libera os freios se houver qualquer potência
