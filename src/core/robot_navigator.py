@@ -853,10 +853,9 @@ class RobotNavigator(QObject):
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         
-        # CORREÇÃO DE SINCRONIZAÇÃO: Invertendo a cinemática para alinhar com o robô físico.
-        # Com base nos testes, esta inversão deve sincronizar o giro da UI e do robô.
-        left_wheel_speed_ms = v + (w * L) / 2.0
-        right_wheel_speed_ms = v - (w * L) / 2.0
+        # Revertendo para a cinemática original para corrigir o feedback loop
+        left_wheel_speed_ms = v - (w * L) / 2.0
+        right_wheel_speed_ms = v + (w * L) / 2.0
         
         print(f"🧮 SYNC_DEBUG: CINEMÁTICA | v={v:.3f}, w={w:.3f} → left_ms={left_wheel_speed_ms:.3f}, right_ms={right_wheel_speed_ms:.3f}")
 
@@ -936,9 +935,9 @@ class RobotNavigator(QObject):
         v = linear_speed_ms
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
-        # CORREÇÃO DE SINCRONIZAÇÃO: Mesma cinemática corrigida da função principal.
-        left_wheel_speed_ms = v + (w * L) / 2.0
-        right_wheel_speed_ms = v - (w * L) / 2.0
+        # Revertendo para a cinemática original
+        left_wheel_speed_ms = v - (w * L) / 2.0
+        right_wheel_speed_ms = v + (w * L) / 2.0
 
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
@@ -1034,8 +1033,9 @@ class RobotNavigator(QObject):
         # Calcula a distância média percorrida pelo robô
         delta_distance = (dist_left + dist_right) / 2.0
 
-        # Calcula a mudança no ângulo
-        delta_angle_rad = (dist_right - dist_left) / ROBOT_WHEEL_BASE_M
+        # CORREÇÃO DE SINCRONIZAÇÃO: Invertendo o cálculo do ângulo para alinhar com a UI e o físico.
+        # A convenção original (dist_right - dist_left) estava invertida em relação à renderização.
+        delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
 
         # Atualiza o ângulo do robô
