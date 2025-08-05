@@ -50,8 +50,8 @@ class RobotMotorController(QObject):
         # --- ATRIBUTOS DO PID ---
         # Movidos para fora do bloco 'if GPIO_AVAILABLE' para que existam
         # tanto em modo real quanto simulado.
-        self.pid_left = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-70, 70))
-        self.pid_right = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-70, 70))
+        self.pid_left = PIDController(Kp=0.11, Ki=0.25, Kd=0.0, setpoint=0, output_limits=(-70, 70))
+        self.pid_right = PIDController(Kp=0.11, Ki=0.25, Kd=0.0, setpoint=0, output_limits=(-70, 70))
         self.pid_enabled = False
 
         # Atributos para feedback de velocidade
@@ -213,14 +213,9 @@ class RobotMotorController(QObject):
             MIN_POWER_THRESHOLD = 4.0  # Se PID gerar menos que 4%, usa piso mínimo
             MIN_POWER_FLOOR = 7.0     # AUMENTADO: Piso de potência mínima (era 6.0)
             
-            # --- PISO DE POTÊNCIA INTELIGENTE ---
-            # Aplica o piso de potência apenas para movimentos em linha reta (não para giros),
-            # o que evita a trepidação e garante a força de arranque.
-            if (self.pid_left.setpoint * self.pid_right.setpoint) > 0:
-                if abs(self.pid_left.setpoint) > 0 and abs(left_power) < MIN_POWER_THRESHOLD:
-                    left_power = MIN_POWER_FLOOR if self.pid_left.setpoint > 0 else -MIN_POWER_FLOOR
-                if abs(self.pid_right.setpoint) > 0 and abs(right_power) < MIN_POWER_THRESHOLD:
-                    right_power = MIN_POWER_FLOOR if self.pid_right.setpoint > 0 else -MIN_POWER_FLOOR
+            # --- REMOVIDO: O piso de potência estava causando oscilação ou travamento.
+            # A abordagem correta é ajustar os ganhos do PID para que ele mesmo
+            # possa superar a inércia inicial de forma suave.
             
             # --- DESABILITADO: Print do PID para logs limpos ---
             # print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}%")
