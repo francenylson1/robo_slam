@@ -213,10 +213,12 @@ class RobotMotorController(QObject):
             MIN_POWER_THRESHOLD = 4.0  # Se PID gerar menos que 4%, usa piso mínimo
             MIN_POWER_FLOOR = 7.0     # AUMENTADO: Piso de potência mínima (era 6.0)
             
-            if abs(self.pid_left.setpoint) > 0 and abs(left_power) < MIN_POWER_THRESHOLD:
-                left_power = MIN_POWER_FLOOR if self.pid_left.setpoint > 0 else -MIN_POWER_FLOOR
-            if abs(self.pid_right.setpoint) > 0 and abs(right_power) < MIN_POWER_THRESHOLD:
-                right_power = MIN_POWER_FLOOR if self.pid_right.setpoint > 0 else -MIN_POWER_FLOOR
+            # --- EXPERIMENTO: Desativando o piso de potência para corrigir a oscilação ---
+            # A hipótese é que este piso está causando a trepidação ao impedir ajustes finos.
+            # if abs(self.pid_left.setpoint) > 0 and abs(left_power) < MIN_POWER_THRESHOLD:
+            #     left_power = MIN_POWER_FLOOR if self.pid_left.setpoint > 0 else -MIN_POWER_FLOOR
+            # if abs(self.pid_right.setpoint) > 0 and abs(right_power) < MIN_POWER_THRESHOLD:
+            #     right_power = MIN_POWER_FLOOR if self.pid_right.setpoint > 0 else -MIN_POWER_FLOOR
             
             # --- DESABILITADO: Print do PID para logs limpos ---
             # print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}%")
