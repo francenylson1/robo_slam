@@ -188,29 +188,29 @@ class MainWindow(QMainWindow):
         direction_grid = QGridLayout()
         
         # Botão FRENTE (↑)
-        self.btn_forward = QPushButton("⬆️\nFRENTE")
-        self.btn_forward.setMinimumSize(40, 30)
+        self.btn_forward = QPushButton("⬆️")
+        self.btn_forward.setMinimumSize(40, 40)
         self.btn_forward.pressed.connect(lambda: self._manual_move_start("forward"))
         self.btn_forward.released.connect(self._manual_move_stop)
         direction_grid.addWidget(self.btn_forward, 0, 1)
         
         # Botão ESQUERDA (←)
-        self.btn_left = QPushButton("⬅️\nESQUERDA")
-        self.btn_left.setMinimumSize(40, 30)
+        self.btn_left = QPushButton("⬅️")
+        self.btn_left.setMinimumSize(40, 40)
         self.btn_left.pressed.connect(lambda: self._manual_move_start("left"))
         self.btn_left.released.connect(self._manual_move_stop)
         direction_grid.addWidget(self.btn_left, 1, 0)
         
         # Botão DIREITA (→)
-        self.btn_right = QPushButton("➡️\nDIREITA")
-        self.btn_right.setMinimumSize(40, 30)
+        self.btn_right = QPushButton("➡️")
+        self.btn_right.setMinimumSize(40, 40)
         self.btn_right.pressed.connect(lambda: self._manual_move_start("right"))
         self.btn_right.released.connect(self._manual_move_stop)
         direction_grid.addWidget(self.btn_right, 1, 2)
         
         # Botão TRÁS (↓)
-        self.btn_backward = QPushButton("⬇️\nTRÁS")
-        self.btn_backward.setMinimumSize(40, 30)
+        self.btn_backward = QPushButton("⬇️")
+        self.btn_backward.setMinimumSize(40, 40)
         self.btn_backward.pressed.connect(lambda: self._manual_move_start("backward"))
         self.btn_backward.released.connect(self._manual_move_stop)
         direction_grid.addWidget(self.btn_backward, 2, 1)
@@ -753,7 +753,7 @@ class MainWindow(QMainWindow):
             return
 
         MANUAL_FORWARD_SPEED = 30
-        MANUAL_TURN_SPEED = 17
+        MANUAL_TURN_SPEED = 12
 
         if direction == "forward":
             self.navigator.motors.set_speed(MANUAL_FORWARD_SPEED, MANUAL_FORWARD_SPEED)
