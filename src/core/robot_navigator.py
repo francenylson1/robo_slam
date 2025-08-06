@@ -834,17 +834,23 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
-        # --- 2. Calcular Velocidades Desejadas ---
+        # --- 2. Lógica de Controle Aprimorada (Girar Primeiro, Depois Mover) ---
+        # Se o erro angular for grande, prioriza o giro no lugar.
+        # Se estiver alinhado, move-se para frente.
         
-        # A velocidade linear (para frente) é proporcional à distância, mas limitada pela velocidade máxima.
-        # Também é reduzida se o robô não estiver alinhado, para priorizar o giro.
-        angle_factor = max(0, 1 - (abs(angle_error) / 90.0)) # Fator de 1 (alinhado) a 0 (90 graus de erro)
-        linear_speed_ms = MAX_LINEAR_SPEED_MS * angle_factor
+        angle_threshold_deg = 20.0  # Limite de 20 graus para considerar "alinhado"
         
-        # A velocidade angular (giro) é proporcional ao erro de ângulo.
-        # Usamos um fator P-controller simples aqui para o giro.
-        angular_speed_rads = math.radians(angle_error) * 2.0 # O fator 2.0 é um ganho proporcional (P)
-        angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
+        if abs(angle_error) > angle_threshold_deg:
+            # Erro angular grande: Foca em girar no lugar.
+            linear_speed_ms = 0  # Não move para frente
+            # A velocidade angular é proporcional ao erro, mas limitada.
+            angular_speed_rads = math.radians(angle_error) * 1.5 # Ganho Proporcional para giro
+            angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
+        else:
+            # Erro angular pequeno: Foca em mover para frente.
+            angular_speed_rads = 0 # Não gira mais
+            # A velocidade linear é proporcional à distância, mas limitada.
+            linear_speed_ms = min(MAX_LINEAR_SPEED_MS, distance_to_target * 0.8) # Ganho Proporcional para distância
 
         # --- 3. Converter para Velocidade das Rodas ---
         # CORREÇÃO CONSERVADORA: Reverter cinemática diferencial para original
@@ -1033,9 +1039,8 @@ class RobotNavigator(QObject):
         # Calcula a distância média percorrida pelo robô
         delta_distance = (dist_left + dist_right) / 2.0
 
-        # CORREÇÃO DE SINCRONIZAÇÃO: Invertendo o cálculo do ângulo para alinhar com a UI e o físico.
-        # A convenção original (dist_right - dist_left) estava invertida em relação à renderização.
-        delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
+        # Revertendo para a convenção padrão de odometria para alinhar com a cinemática.
+        delta_angle_rad = (dist_right - dist_left) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
 
         # Atualiza o ângulo do robô
