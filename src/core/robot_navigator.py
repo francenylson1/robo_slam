@@ -838,7 +838,7 @@ class RobotNavigator(QObject):
         # A velocidade linear (para frente) é reduzida quando o robô não está alinhado,
         # permitindo curvas suaves em vez de movimentos binários (girar ou mover).
         angle_factor = max(0.0, math.cos(math.radians(angle_error))) # 1 se alinhado, 0 se a 90 graus
-        linear_speed_ms = MAX_LINEAR_SPEED_MS * angle_factor
+        linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
         
         # A velocidade angular (giro) é proporcional ao erro de ângulo.
         angular_speed_rads = math.radians(angle_error) * 1.8 # Ganho P para giro
