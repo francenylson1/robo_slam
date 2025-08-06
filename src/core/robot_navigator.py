@@ -852,8 +852,8 @@ class RobotNavigator(QObject):
         
         # Cinemática restaurada para a versão com força e velocidade corretas.
         # A correção da direção será feita na odometria.
-        left_wheel_speed_ms = v - (w * L) / 2.0
-        right_wheel_speed_ms = v + (w * L) / 2.0
+        left_wheel_speed_ms = v + (w * L) / 2.0
+        right_wheel_speed_ms = v - (w * L) / 2.0
         
         print(f"🧮 SYNC_DEBUG: CINEMÁTICA | v={v:.3f}, w={w:.3f} → left_ms={left_wheel_speed_ms:.3f}, right_ms={right_wheel_speed_ms:.3f}")
 
@@ -934,8 +934,8 @@ class RobotNavigator(QObject):
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         # Consistência com a cinemática principal
-        left_wheel_speed_ms = v - (w * L) / 2.0
-        right_wheel_speed_ms = v + (w * L) / 2.0
+        left_wheel_speed_ms = v + (w * L) / 2.0
+        right_wheel_speed_ms = v - (w * L) / 2.0
 
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
