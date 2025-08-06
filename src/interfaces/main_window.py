@@ -175,14 +175,8 @@ class MainWindow(QMainWindow):
         nav_group.setLayout(nav_layout)
         
         # Grupo de Controles Manuais
-        manual_control_group = QGroupBox("Controles Manuais")
+        manual_control_group = QGroupBox("Controles Manuais (Pressione e Segure)")
         manual_layout = QVBoxLayout()
-        
-        # Informação sobre controles manuais
-        manual_info = QLabel("Pressione e segure os botões para mover o robô:")
-        manual_info.setWordWrap(True)
-        manual_info.setStyleSheet("color: #666; font-style: italic;")
-        manual_layout.addWidget(manual_info)
         
         # Grid de botões direcionais
         direction_grid = QGridLayout()
