@@ -847,10 +847,10 @@ class RobotNavigator(QObject):
             angular_speed_rads = math.radians(angle_error) * 1.5 # Ganho Proporcional para giro
             angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
         else:
-            # Erro angular pequeno: Foca em mover para frente.
+            # Erro angular pequeno: Foca em mover para frente com velocidade máxima.
             angular_speed_rads = 0 # Não gira mais
-            # A velocidade linear é proporcional à distância, mas limitada.
-            linear_speed_ms = min(MAX_LINEAR_SPEED_MS, distance_to_target * 0.8) # Ganho Proporcional para distância
+            # A velocidade linear agora é a máxima permitida, garantindo força.
+            linear_speed_ms = MAX_LINEAR_SPEED_MS
 
         # --- 3. Converter para Velocidade das Rodas ---
         # CORREÇÃO CONSERVADORA: Reverter cinemática diferencial para original
