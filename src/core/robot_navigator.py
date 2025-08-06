@@ -834,32 +834,24 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
-        # --- 2. Lógica de Controle Aprimorada (Girar Primeiro, Depois Mover) ---
-        # Se o erro angular for grande, prioriza o giro no lugar.
-        # Se estiver alinhado, move-se para frente.
+        # --- 2. Calcular Velocidades Desejadas (Lógica Restaurada e Corrigida) ---
+        # A velocidade linear (para frente) é reduzida quando o robô não está alinhado,
+        # permitindo curvas suaves em vez de movimentos binários (girar ou mover).
+        angle_factor = max(0.0, math.cos(math.radians(angle_error))) # 1 se alinhado, 0 se a 90 graus
+        linear_speed_ms = MAX_LINEAR_SPEED_MS * angle_factor
         
-        angle_threshold_deg = 20.0  # Limite de 20 graus para considerar "alinhado"
-        
-        if abs(angle_error) > angle_threshold_deg:
-            # Erro angular grande: Foca em girar no lugar.
-            linear_speed_ms = 0  # Não move para frente
-            # A velocidade angular é proporcional ao erro, mas limitada.
-            angular_speed_rads = math.radians(angle_error) * 1.5 # Ganho Proporcional para giro
-            angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
-        else:
-            # Erro angular pequeno: Foca em mover para frente com velocidade máxima.
-            angular_speed_rads = 0 # Não gira mais
-            # A velocidade linear agora é a máxima permitida, garantindo força.
-            linear_speed_ms = MAX_LINEAR_SPEED_MS
+        # A velocidade angular (giro) é proporcional ao erro de ângulo.
+        angular_speed_rads = math.radians(angle_error) * 1.8 # Ganho P para giro
+        angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         # --- 3. Converter para Velocidade das Rodas ---
-        # CORREÇÃO CONSERVADORA: Reverter cinemática diferencial para original
-        # Manter apenas correção no cálculo final de movimento
+        # A cinemática e a odometria agora estão sincronizadas.
         v = linear_speed_ms
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         
-        # Revertendo para a cinemática original para corrigir o feedback loop
+        # Cinemática Diferencial Corrigida:
+        # Para w > 0 (giro anti-horário/esquerda), a roda direita deve ser mais rápida.
         left_wheel_speed_ms = v - (w * L) / 2.0
         right_wheel_speed_ms = v + (w * L) / 2.0
         
@@ -941,7 +933,7 @@ class RobotNavigator(QObject):
         v = linear_speed_ms
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
-        # Revertendo para a cinemática original
+        # Consistência com a cinemática principal
         left_wheel_speed_ms = v - (w * L) / 2.0
         right_wheel_speed_ms = v + (w * L) / 2.0
 
