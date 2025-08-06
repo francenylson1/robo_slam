@@ -382,7 +382,8 @@ class RobotNavigator(QObject):
             self.navigation_state = state_key
             return
 
-        angular_speed_rads = math.radians(angle_error) * 1.8
+        # Aumentado o ganho de 1.8 para 2.8 para dar mais "força" inicial ao giro
+        angular_speed_rads = math.radians(angle_error) * 2.8 
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = 0.0  # Velocidade linear é zero durante a orientação
