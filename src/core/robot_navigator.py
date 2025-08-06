@@ -182,14 +182,13 @@ class RobotNavigator(QObject):
         
     def update(self):
         """Atualiza o estado do robô usando uma máquina de estados clara."""
+        # A odometria deve ser atualizada sempre para refletir a posição real,
+        # mesmo em modo manual. A chamada do método emite o sinal position_updated.
+        self._update_pose_with_odometry()
+
+        # A máquina de estados de navegação só é processada se a navegação estiver ativa.
         if not self.navigation_active:
             return
-
-        # --- CORREÇÃO DEFINITIVA ---
-        # A odometria baseada em ticks agora funciona para hardware real E para simulação.
-        # Removemos a condição `if GPIO_AVAILABLE` para que a posição seja sempre
-        # atualizada com base nos ticks (reais ou simulados).
-        self._update_pose_with_odometry()
 
         # --- Máquina de Estados de Navegação ---
 
