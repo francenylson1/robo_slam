@@ -157,7 +157,7 @@ class MainWindow(QMainWindow):
         
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.speed_slider.setMinimum(100)
-        self.speed_slider.setMaximum(200)
+        self.speed_slider.setMaximum(120)
         self.speed_slider.setValue(100)
         self.speed_slider.valueChanged.connect(self._on_speed_slider_changed)
         speed_control_layout.addWidget(self.speed_slider)
