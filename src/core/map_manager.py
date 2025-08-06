@@ -219,6 +219,18 @@ class MapManager:
                 self.conn.rollback()
         return {}, [], "", None
 
+    def get_pid_gains(self):
+        """Busca os últimos ganhos de PID salvos no banco de dados."""
+        try:
+            self.cursor.execute("SELECT gains_json FROM pid_gains ORDER BY id DESC LIMIT 1")
+            result = self.cursor.fetchone()
+            if result:
+                return json.loads(result[0])
+            return None
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar ganhos do PID: {e}")
+            return None
+
     def close(self):
         """Fecha a conexão com o banco de dados."""
         if self.conn:

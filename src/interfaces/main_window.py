@@ -270,6 +270,23 @@ class MainWindow(QMainWindow):
         self.diag_timer = QTimer()
         self.diag_timer.timeout.connect(self._update_speed_feedback)
 
+        # Carrega e aplica os ganhos do PID salvos
+        self._load_and_apply_pid_gains()
+
+    def _load_and_apply_pid_gains(self):
+        """Carrega os ganhos do PID do banco de dados e os aplica ao controlador."""
+        print("DEBUG: Carregando e aplicando ganhos PID salvos...")
+        saved_gains = self.map_manager.get_pid_gains()
+        if saved_gains:
+            print(f"DEBUG: Ganhos encontrados no DB: {saved_gains}")
+            motor_controller = self.navigator.get_motor_controller()
+            if motor_controller:
+                motor_controller.set_pid_gains('left', saved_gains['left']['kp'], saved_gains['left']['ki'], saved_gains['left']['kd'])
+                motor_controller.set_pid_gains('right', saved_gains['right']['kp'], saved_gains['right']['ki'], saved_gains['right']['kd'])
+                print("DEBUG: Ganhos do PID aplicados com sucesso ao controlador.")
+        else:
+            print("DEBUG: Nenhum ganho PID salvo encontrado. Usando valores padrão do código.")
+
     def _update_robot_position_on_map(self, x: float, y: float, angle: float):
         """
         Slot para receber a atualização de posição do navegador e atualizar o widget do mapa.
