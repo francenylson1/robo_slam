@@ -382,8 +382,8 @@ class RobotNavigator(QObject):
             self.navigation_state = state_key
             return
 
-        # Aumentado o ganho de 4.0 para 6.0 para dar mais "força" inicial ao giro
-        angular_speed_rads = math.radians(angle_error) * 6.0 
+        # Aumentado o ganho de 6.0 para 8.0 para dar mais "força" inicial ao giro
+        angular_speed_rads = math.radians(angle_error) * 8.0 
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = 0.0  # Velocidade linear é zero durante a orientação
@@ -397,7 +397,7 @@ class RobotNavigator(QObject):
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
         # Aplica força mínima se a velocidade calculada for muito baixa (empurrão inicial)
-        MIN_TURN_TPS = 15.0  # Baseado na velocidade dos botões manuais (12) + margem
+        MIN_TURN_TPS = 20.0  # Aumentado de 15.0 para 20.0 para mais força
         if 0 < abs(left_tps) < MIN_TURN_TPS:
             left_tps = MIN_TURN_TPS * (1 if left_tps > 0 else -1)
         if 0 < abs(right_tps) < MIN_TURN_TPS:
