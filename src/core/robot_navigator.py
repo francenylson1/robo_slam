@@ -383,15 +383,15 @@ class RobotNavigator(QObject):
             return
 
         # Estratégia híbrida: comando direto para erros grandes, PID para ajustes finos
-        if abs(angle_error) > 15.0:  # Se o erro for grande, usa comando direto (como botões manuais)
-            # Usa a mesma lógica dos botões manuais para força máxima
-            DIRECT_TURN_SPEED = 25  # Baseado nos botões manuais (12) + margem extra
+        if abs(angle_error) > 20.0:  # Aumentado threshold para 20° para usar PID mais cedo
+            # Usa a mesma lógica dos botões manuais, mas com velocidade mais moderada
+            DIRECT_TURN_SPEED = 18  # Reduzido de 25 para 18 (mais suave)
             if angle_error > 0:  # Gira para esquerda
                 self.motors.set_speed(-DIRECT_TURN_SPEED, DIRECT_TURN_SPEED)
             else:  # Gira para direita
                 self.motors.set_speed(DIRECT_TURN_SPEED, -DIRECT_TURN_SPEED)
         else:  # Para ajustes finos, usa PID com ganho moderado
-            angular_speed_rads = math.radians(angle_error) * 3.0 
+            angular_speed_rads = math.radians(angle_error) * 2.5  # Reduzido de 3.0 para 2.5
             angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
             v = 0.0  # Velocidade linear é zero durante a orientação
