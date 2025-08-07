@@ -382,8 +382,8 @@ class RobotNavigator(QObject):
             self.navigation_state = state_key
             return
 
-        # Aumentado o ganho de 1.8 para 2.8 para dar mais "força" inicial ao giro
-        angular_speed_rads = math.radians(angle_error) * 2.8 
+        # Aumentado o ganho de 2.8 para 4.0 para dar mais "força" inicial ao giro
+        angular_speed_rads = math.radians(angle_error) * 4.0 
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = 0.0  # Velocidade linear é zero durante a orientação
@@ -446,12 +446,12 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
 
-        if total_distance <= 0.15:
+        if total_distance <= 0.25:  # Aumentado de 0.15 para 0.25 metros (25cm)
             self.motors.stop()
             self.final_approach_start_time = None
             return True
 
-        linear_speed_ms = 0.0 if abs(angle_diff) > 5.0 else min(MAX_LINEAR_SPEED_MS * 0.7, total_distance / 1.5)
+        linear_speed_ms = 0.0 if abs(angle_diff) > 5.0 else min(MAX_LINEAR_SPEED_MS * 0.85, total_distance / 1.5)  # Aumentado de 0.7 para 0.85
         
         angular_speed_rads = math.radians(angle_diff) * 2.5
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
