@@ -382,29 +382,28 @@ class RobotNavigator(QObject):
             self.navigation_state = state_key
             return
 
-        # Estratégia híbrida: comando direto para erros grandes, PID para ajustes finos
-        if abs(angle_error) > 20.0:  # Aumentado threshold para 20° para usar PID mais cedo
-            # Usa a mesma lógica dos botões manuais, mas com velocidade mais moderada
-            DIRECT_TURN_SPEED = 18  # Reduzido de 25 para 18 (mais suave)
-            if angle_error > 0:  # Gira para esquerda
-                self.motors.set_speed(-DIRECT_TURN_SPEED, DIRECT_TURN_SPEED)
-            else:  # Gira para direita
-                self.motors.set_speed(DIRECT_TURN_SPEED, -DIRECT_TURN_SPEED)
-        else:  # Para ajustes finos, usa PID com ganho moderado
-            angular_speed_rads = math.radians(angle_error) * 2.5  # Reduzido de 3.0 para 2.5
-            angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
+        # Volta para PID tradicional com força mínima garantida
+        angular_speed_rads = math.radians(angle_error) * 4.0 
+        angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
-            v = 0.0  # Velocidade linear é zero durante a orientação
-            w = angular_speed_rads
-            L = ROBOT_WHEEL_BASE_M
-            
-            left_wheel_speed_ms = v + (w * L) / 2.0
-            right_wheel_speed_ms = v - (w * L) / 2.0
-            
-            left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
-            right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
-            
-            self.motors.set_target_speed(left_tps, right_tps)
+        v = 0.0  # Velocidade linear é zero durante a orientação
+        w = angular_speed_rads
+        L = ROBOT_WHEEL_BASE_M
+        
+        left_wheel_speed_ms = v + (w * L) / 2.0
+        right_wheel_speed_ms = v - (w * L) / 2.0
+        
+        left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+        right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+        
+        # Aplica força mínima se a velocidade calculada for muito baixa
+        MIN_TURN_TPS = 20.0
+        if 0 < abs(left_tps) < MIN_TURN_TPS:
+            left_tps = MIN_TURN_TPS * (1 if left_tps > 0 else -1)
+        if 0 < abs(right_tps) < MIN_TURN_TPS:
+            right_tps = MIN_TURN_TPS * (1 if right_tps > 0 else -1)
+        
+        self.motors.set_target_speed(left_tps, right_tps)
 
     def _move_towards_target(self):
         if self.current_target is None:
