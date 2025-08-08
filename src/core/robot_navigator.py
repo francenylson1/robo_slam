@@ -397,7 +397,7 @@ class RobotNavigator(QObject):
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
         # Aplica força mínima se a velocidade calculada for muito baixa
-        MIN_TURN_TPS = 30.0
+        MIN_TURN_TPS = 45.0
         if 0 < abs(left_tps) < MIN_TURN_TPS:
             left_tps = MIN_TURN_TPS * (1 if left_tps > 0 else -1)
         if 0 < abs(right_tps) < MIN_TURN_TPS:
