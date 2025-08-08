@@ -38,7 +38,7 @@ FORBIDDEN_AREA_INFLATION_RADIUS = 0.35 # 35cm de margem de segurança
 
 # Configurações do robô
 ROBOT_WIDTH = 0.6                # Largura/Diâmetro do robô em metros (60cm)
-ROBOT_SPEED = 0.25               # AUMENTADO para compensar atrito (era 0.15).
+ROBOT_SPEED = 0.08               # Velocidade base segura (m/s), aprox. 15% da capacidade.
 ROBOT_MAX_SPEED = 0.25           # Alinhado com ROBOT_SPEED.
 SIMULATION_SPEED_FACTOR = 8.0    # Fator de multiplicação para a velocidade na simulação
 ROBOT_TURN_SPEED = 27.0          # REDUZIDO para 30% do valor anterior (era 90.0). Velocidade de giro (graus/s).
