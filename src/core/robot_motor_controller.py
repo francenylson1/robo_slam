@@ -51,8 +51,8 @@ class RobotMotorController(QObject):
         # Movidos para fora do bloco 'if GPIO_AVAILABLE' para que existam
         # tanto em modo real quanto simulado.
         # Aumentando o limite de saída para 90% para dar ao PID mais autoridade para vencer a inércia.
-        self.pid_left = PIDController(Kp=0.08, Ki=0.07, Kd=0.0, setpoint=0, output_limits=(-90, 90))
-        self.pid_right = PIDController(Kp=0.08, Ki=0.07, Kd=0.0, setpoint=0, output_limits=(-90, 90))
+        self.pid_left = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-90, 90))
+        self.pid_right = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-90, 90))
         self.pid_enabled = False
 
         # Atributos para feedback de velocidade
