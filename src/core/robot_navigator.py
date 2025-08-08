@@ -511,15 +511,18 @@ class RobotNavigator(QObject):
         delta_angle_deg = math.degrees(delta_angle_rad)
 
         self.current_angle += delta_angle_deg
-        if self.current_angle > 180: self.current_angle -= 360
-        elif self.current_angle < -180: self.current_angle += 360
 
+        # A normalização do self.current_angle foi removida para manter a continuidade
+        # e evitar problemas de "wraparound" em -180/180 graus.
+        # As funções trigonométricas (cos, sin) lidam com ângulos > 360 graus.
         angle_rad = math.radians(self.current_angle)
         delta_x = delta_distance * math.cos(angle_rad)
         delta_y = delta_distance * math.sin(angle_rad)
 
         self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
         self.last_position_update = time.time()
+        
+        # Emitimos o ângulo contínuo para a UI, que saberá como interpretá-lo
         self.position_updated.emit(self.current_position[0], self.current_position[1], self.current_angle)
 
     def get_motor_controller(self):
