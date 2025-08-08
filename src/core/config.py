@@ -119,10 +119,10 @@ WINDOW_HEIGHT = 600
 WINDOW_TITLE = "Robô Garçom Autônomo"
 
 # Configuracoes do PID e caracteristicas fisicas do robo
-ROBOT_WHEEL_BASE_M = 0.15  # Distancia entre as rodas em metros (ex: 15cm)
-ROBOT_WHEEL_CIRCUMFERENCE_M = 0.53 # Circunferencia da roda em metros (medida em 53cm)
+ROBOT_WHEEL_BASE_M = 0.36  # Distancia real entre rodas: 36cm
+ROBOT_WHEEL_CIRCUMFERENCE_M = 0.525 # Circunferencia real da roda: 52.5cm
 ROBOT_WHEEL_RADIUS_M = ROBOT_WHEEL_CIRCUMFERENCE_M / (2 * 3.1415926535) # Raio calculado a partir da circunferencia
-TICKS_PER_REVOLUTION = 180 # CORREÇÃO FUNDAMENTAL: Dobrado para 180 para corrigir a escala do giro.
+TICKS_PER_REVOLUTION = 180 # Valor corrigido para refletir o dobro da distancia observada
 
 # Limites de velocidade para o PID
 # A linha abaixo foi MODIFICADA para usar ROBOT_SPEED como fonte única de verdade.
