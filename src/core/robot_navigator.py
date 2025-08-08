@@ -383,7 +383,7 @@ class RobotNavigator(QObject):
             return
 
         # Volta para PID tradicional com força mínima garantida
-        angular_speed_rads = math.radians(angle_error) * 1.0 
+        angular_speed_rads = math.radians(angle_error) * 2.0 
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = 0.0  # Velocidade linear é zero durante a orientação
@@ -418,7 +418,7 @@ class RobotNavigator(QObject):
         angle_factor = max(0.0, math.cos(math.radians(angle_error)))
         linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
         
-        angular_speed_rads = math.radians(angle_error) * 0.4
+        angular_speed_rads = math.radians(angle_error) * 0.8
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = linear_speed_ms
@@ -460,7 +460,7 @@ class RobotNavigator(QObject):
 
         linear_speed_ms = 0.0 if abs(angle_diff) > 5.0 else min(MAX_LINEAR_SPEED_MS * 0.85, total_distance / 1.5)  # Aumentado de 0.7 para 0.85
         
-        angular_speed_rads = math.radians(angle_diff) * 0.5
+        angular_speed_rads = math.radians(angle_diff) * 1.0
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = linear_speed_ms
