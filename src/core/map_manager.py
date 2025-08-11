@@ -70,6 +70,14 @@ class MapManager:
                     FOREIGN KEY (mapa_id) REFERENCES mapas(id) ON DELETE CASCADE
                 )
             """)
+            # Tabela pid_gains (NOVO)
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pid_gains (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    gains_json TEXT NOT NULL
+                )
+            """)
             self.conn.commit()
             print("Tabelas verificadas/criadas com sucesso.")
         except sqlite3.Error as e:
