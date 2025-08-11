@@ -208,15 +208,15 @@ class RobotMotorController(QObject):
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
             
-            # --- SOLUÇÃO DEFINITIVA: Piso de potência mínima ---
+            # --- TESTE: Lógica de piso de potência DESATIVADA para diagnosticar a instabilidade ---
             # Se o PID gerar potência muito baixa mas há setpoint, aplica potência mínima
-            MIN_POWER_THRESHOLD = 4.0  # Se PID gerar menos que 4%, usa piso mínimo
-            MIN_POWER_FLOOR = 7.0     # AUMENTADO: Piso de potência mínima (era 6.0)
+            # MIN_POWER_THRESHOLD = 4.0  # Se PID gerar menos que 4%, usa piso mínimo
+            # MIN_POWER_FLOOR = 7.0     # AUMENTADO: Piso de potência mínima (era 6.0)
             
-            if abs(self.pid_left.setpoint) > 0 and abs(left_power) < MIN_POWER_THRESHOLD:
-                left_power = MIN_POWER_FLOOR if self.pid_left.setpoint > 0 else -MIN_POWER_FLOOR
-            if abs(self.pid_right.setpoint) > 0 and abs(right_power) < MIN_POWER_THRESHOLD:
-                right_power = MIN_POWER_FLOOR if self.pid_right.setpoint > 0 else -MIN_POWER_FLOOR
+            # if abs(self.pid_left.setpoint) > 0 and abs(left_power) < MIN_POWER_THRESHOLD:
+            #     left_power = MIN_POWER_FLOOR if self.pid_left.setpoint > 0 else -MIN_POWER_FLOOR
+            # if abs(self.pid_right.setpoint) > 0 and abs(right_power) < MIN_POWER_THRESHOLD:
+            #     right_power = MIN_POWER_FLOOR if self.pid_right.setpoint > 0 else -MIN_POWER_FLOOR
             
             # --- NOVO: Print detalhado do PID para debug ---
             print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}%")
