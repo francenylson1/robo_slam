@@ -50,8 +50,9 @@ class RobotMotorController(QObject):
         # --- ATRIBUTOS DO PID ---
         # Movidos para fora do bloco 'if GPIO_AVAILABLE' para que existam
         # tanto em modo real quanto simulado.
-        self.pid_left = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-70, 70))
-        self.pid_right = PIDController(Kp=0.11, Ki=0.05, Kd=0.0, setpoint=0, output_limits=(-70, 70))
+        # Aumentando o limite de saída para 90% para dar ao PID mais autoridade para vencer a inércia.
+        self.pid_left = PIDController(Kp=0.26, Ki=0.23, Kd=0.0, setpoint=0, output_limits=(-90, 90))
+        self.pid_right = PIDController(Kp=0.26, Ki=0.23, Kd=0.0, setpoint=0, output_limits=(-90, 90))
         self.pid_enabled = False
 
         # Atributos para feedback de velocidade
@@ -213,13 +214,12 @@ class RobotMotorController(QObject):
             MIN_POWER_THRESHOLD = 4.0  # Se PID gerar menos que 4%, usa piso mínimo
             MIN_POWER_FLOOR = 7.0     # AUMENTADO: Piso de potência mínima (era 6.0)
             
-            if abs(self.pid_left.setpoint) > 0 and abs(left_power) < MIN_POWER_THRESHOLD:
-                left_power = MIN_POWER_FLOOR if self.pid_left.setpoint > 0 else -MIN_POWER_FLOOR
-            if abs(self.pid_right.setpoint) > 0 and abs(right_power) < MIN_POWER_THRESHOLD:
-                right_power = MIN_POWER_FLOOR if self.pid_right.setpoint > 0 else -MIN_POWER_FLOOR
+            # --- REMOVIDO: O piso de potência estava causando oscilação ou travamento.
+            # A abordagem correta é ajustar os ganhos do PID para que ele mesmo
+            # possa superar a inércia inicial de forma suave.
             
-            # --- NOVO: Print detalhado do PID para debug ---
-            print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}%")
+            # --- DESABILITADO: Print do PID para logs limpos ---
+            # print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}%")
             
             # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
             current_time = time.time()
@@ -235,16 +235,19 @@ class RobotMotorController(QObject):
             if GPIO_AVAILABLE and GPIO:
                 # --- MOTOR ESQUERDO ---
                 if left_power >= 0: # Para frente
-                    GPIO.output(self.dir_E, GPIO.HIGH)
+                    GPIO.output(self.dir_E, GPIO.HIGH)  # ESQUERDO: HIGH = frente
                 else: # Para trás
-                    GPIO.output(self.dir_E, GPIO.LOW)
+                    GPIO.output(self.dir_E, GPIO.LOW)   # ESQUERDO: LOW = trás
                 self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
 
-                # --- MOTOR DIREITO ---
+                # --- MOTOR DIREITO - LÓGICA CORRETA CONFORME gpio_test.py ---
+                # IMPORTANTE: Motores têm lógicas DIFERENTES por design físico!
+                # Motor esquerdo: HIGH=frente, LOW=trás
+                # Motor direito:  LOW=frente, HIGH=trás (OPOSTO por design)
                 if right_power >= 0: # Para frente
-                    GPIO.output(self.dir_D, GPIO.LOW)
+                    GPIO.output(self.dir_D, GPIO.LOW)   # DIREITO: LOW = frente (conforme gpio_test.py)
                 else: # Para trás
-                    GPIO.output(self.dir_D, GPIO.HIGH)
+                    GPIO.output(self.dir_D, GPIO.HIGH)  # DIREITO: HIGH = trás (conforme gpio_test.py)
                 self.pwm_D.ChangeDutyCycle(min(abs(right_power), 100))
 
                 # Libera os freios se houver qualquer potência
@@ -286,6 +289,7 @@ class RobotMotorController(QObject):
         Define a velocidade alvo para o controle PID em ticks por segundo (tps).
         Ativa o controle PID se ele estiver desativado.
         """
+        print(f"🚀 SYNC_DEBUG: set_target_speed(left={left_tps:.1f}, right={right_tps:.1f})")
         if not self.pid_enabled:
             self.enable_pid_control()
 
@@ -334,6 +338,7 @@ class RobotMotorController(QObject):
         Se as velocidades forem zero, para os motores usando o novo sistema.
         Caso contrário, converte a porcentagem de velocidade para tps e usa o PID.
         """
+        print(f"🎯 SYNC_DEBUG: set_speed(left={left_speed}, right={right_speed})")
         if left_speed == 0 and right_speed == 0:
             self.stop_motors()
         else:
@@ -342,6 +347,7 @@ class RobotMotorController(QObject):
             MAX_TPS = 50 # Exemplo: 50 ticks por segundo na potência máxima
             left_tps = (left_speed / 100.0) * MAX_TPS
             right_tps = (right_speed / 100.0) * MAX_TPS
+            print(f"🎯 SYNC_DEBUG: → Convertido para TPS: left={left_tps:.1f}, right={right_tps:.1f}")
             self.set_target_speed(left_tps, right_tps)
 
     def _set_motor_speed_real(self, motor: str, speed_percent: float):

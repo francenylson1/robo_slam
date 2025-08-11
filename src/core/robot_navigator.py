@@ -967,7 +967,7 @@ class RobotNavigator(QObject):
         delta_distance = (dist_left + dist_right) / 2.0
 
         # Calcula a mudança no ângulo
-        delta_angle_rad = (dist_right - dist_left) / ROBOT_WHEEL_BASE_M
+        delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
 
         # Atualiza o ângulo do robô
