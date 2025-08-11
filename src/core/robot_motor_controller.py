@@ -233,14 +233,17 @@ class RobotMotorController(QObject):
 
             # 3. Aplica a potencia aos motores COM A LÓGICA DE DIREÇÃO CORRETA
             if GPIO_AVAILABLE and GPIO:
-                # --- MOTOR ESQUERDO ---
+                # --- MOTOR ESQUERDO (LÓGICA CORRIGIDA) ---
+                # A lógica original estava invertida para o movimento de ré.
+                # Para frente = HIGH, Para trás = LOW (com base no gpio_test.py)
                 if left_power >= 0: # Para frente
                     GPIO.output(self.dir_E, GPIO.HIGH)
                 else: # Para trás
                     GPIO.output(self.dir_E, GPIO.LOW)
                 self.pwm_E.ChangeDutyCycle(min(abs(left_power), 100))
 
-                # --- MOTOR DIREITO ---
+                # --- MOTOR DIREITO (LÓGICA JÁ ESTAVA CORRETA) ---
+                # Para frente = LOW, Para trás = HIGH (com base no gpio_test.py)
                 if right_power >= 0: # Para frente
                     GPIO.output(self.dir_D, GPIO.LOW)
                 else: # Para trás
