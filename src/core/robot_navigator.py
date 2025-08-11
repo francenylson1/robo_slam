@@ -973,11 +973,8 @@ class RobotNavigator(QObject):
         # Atualiza o ângulo do robô
         self.current_angle += delta_angle_deg
 
-        # Garante que o ângulo permaneça no intervalo [-180, 180]
-        if self.current_angle > 180:
-            self.current_angle -= 360
-        elif self.current_angle < -180:
-            self.current_angle += 360
+        # Garante que o ângulo permaneça no intervalo [-180, 180] de forma consistente
+        self.current_angle = (self.current_angle + 180) % 360 - 180
 
         # Calcula a nova posição (x, y)
         angle_rad = math.radians(self.current_angle)
