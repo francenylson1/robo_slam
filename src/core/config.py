@@ -122,7 +122,7 @@ WINDOW_TITLE = "Robô Garçom Autônomo"
 ROBOT_WHEEL_BASE_M = 0.36  # Distancia entre as rodas em metros (medida real: 36cm)
 ROBOT_WHEEL_CIRCUMFERENCE_M = 0.525 # Circunferencia da roda em metros (medida em 52.5cm)
 ROBOT_WHEEL_RADIUS_M = ROBOT_WHEEL_CIRCUMFERENCE_M / (2 * 3.1415926535) # Raio calculado a partir da circunferencia
-TICKS_PER_REVOLUTION = 2160 # CALIBRAÇÃO: Aumentado (90 * 24) para corrigir subestimação do giro.
+TICKS_PER_REVOLUTION = 90 # REVERTIDO para valor original seguro. A calibração será feita por observação.
 
 # Limites de velocidade para o PID
 # A linha abaixo foi MODIFICADA para usar ROBOT_SPEED como fonte única de verdade.
