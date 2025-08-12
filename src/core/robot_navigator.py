@@ -521,6 +521,32 @@ class RobotNavigator(QObject):
         self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
         self.last_position_update = time.time()
         self.position_updated.emit(self.current_position[0], self.current_position[1], self.current_angle)
+        # print(f"ODOM_UPDATE -> Pos: ({self.current_position[0]:.2f}, {self.current_position[1]:.2f}), Angle: {self.current_angle:.1f}") # DEBUG
+
+    def manual_move(self, direction: str):
+        """
+        Inicia um movimento manual contínuo de forma isolada,
+        garantindo que o estado atual da odometria seja a referência.
+        """
+        # Log para diagnóstico de estado
+        print(f"MANUAL_MOVE -> Direção: {direction}, Posição de Referência: ({self.current_position[0]:.2f}, {self.current_position[1]:.2f}), Ângulo: {self.current_angle:.1f}°")
+
+        MANUAL_FORWARD_SPEED = 30
+        MANUAL_TURN_SPEED = 12
+
+        if direction == "forward":
+            self.motors.set_speed(MANUAL_FORWARD_SPEED, MANUAL_FORWARD_SPEED)
+        elif direction == "backward":
+            self.motors.set_speed(-MANUAL_FORWARD_SPEED, -MANUAL_FORWARD_SPEED)
+        elif direction == "left":
+            self.motors.set_speed(-MANUAL_TURN_SPEED, MANUAL_TURN_SPEED)
+        elif direction == "right":
+            self.motors.set_speed(MANUAL_TURN_SPEED, -MANUAL_TURN_SPEED)
+
+    def manual_stop(self):
+        """Para o movimento manual."""
+        print(f"MANUAL_STOP -> Posição Final: ({self.current_position[0]:.2f}, {self.current_position[1]:.2f}), Ângulo: {self.current_angle:.1f}°")
+        self.motors.stop()
 
     def get_motor_controller(self):
         return self.motors

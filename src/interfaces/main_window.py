@@ -746,22 +746,13 @@ class MainWindow(QMainWindow):
         if self.navigation_active:
             QMessageBox.warning(self, "Aviso", "Não é possível usar controles manuais durante a navegação automática.")
             return
-
-        MANUAL_FORWARD_SPEED = 30
-        MANUAL_TURN_SPEED = 12
-
-        if direction == "forward":
-            self.navigator.motors.set_speed(MANUAL_FORWARD_SPEED, MANUAL_FORWARD_SPEED)
-        elif direction == "backward":
-            self.navigator.motors.set_speed(-MANUAL_FORWARD_SPEED, -MANUAL_FORWARD_SPEED)
-        elif direction == "left":
-            self.navigator.motors.set_speed(-MANUAL_TURN_SPEED, MANUAL_TURN_SPEED)
-        elif direction == "right":
-            self.navigator.motors.set_speed(MANUAL_TURN_SPEED, -MANUAL_TURN_SPEED)
+        
+        # A lógica agora é delegada ao navigator para garantir o estado correto
+        self.navigator.manual_move(direction)
 
     def _manual_move_stop(self):
         """Para o movimento manual."""
-        self.navigator.motors.stop()
+        self.navigator.manual_stop()
 
     def _set_new_starting_position(self):
         """Define a posição atual como nova posição de partida"""
