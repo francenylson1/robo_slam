@@ -343,8 +343,9 @@ class RobotMotorController(QObject):
             self.stop_motors()
         else:
             # Assumindo que a velocidade máxima (100%) corresponde a um valor de tps
-            # Este valor pode precisar de calibração
-            MAX_TPS = 50 # Exemplo: 50 ticks por segundo na potência máxima
+            # que reflete a capacidade física do robô.
+            # Uma velocidade máxima razoável seria meia revolução por segundo.
+            MAX_TPS = TICKS_PER_REVOLUTION / 2 
             left_tps = (left_speed / 100.0) * MAX_TPS
             right_tps = (right_speed / 100.0) * MAX_TPS
             print(f"🎯 SYNC_DEBUG: → Convertido para TPS: left={left_tps:.1f}, right={right_tps:.1f}")
