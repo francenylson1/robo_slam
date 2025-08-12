@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from src.core.environment import GPIO_AVAILABLE
 from src.core.pid_controller import PIDController
-from src.core.config import TICKS_PER_REVOLUTION # Importa a constante necessária
+from src.core.config import TICKS_PER_REVOLUTION, MANUAL_CONTROL_MAX_TPS # Importa as constantes necessárias
 
 if GPIO_AVAILABLE:
     try:
@@ -344,12 +344,9 @@ class RobotMotorController(QObject):
         if left_speed == 0 and right_speed == 0:
             self.stop_motors()
         else:
-            # Assumindo que a velocidade máxima (100%) corresponde a um valor de tps
-            # que reflete a capacidade física do robô.
-            # Uma velocidade máxima razoável seria meia revolução por segundo.
-            MAX_TPS = TICKS_PER_REVOLUTION / 2 
-            left_tps = (left_speed / 100.0) * MAX_TPS
-            right_tps = (right_speed / 100.0) * MAX_TPS
+            # Usa a constante dedicada para a velocidade do modo manual
+            left_tps = (left_speed / 100.0) * MANUAL_CONTROL_MAX_TPS
+            right_tps = (right_speed / 100.0) * MANUAL_CONTROL_MAX_TPS
             print(f"🎯 SYNC_DEBUG: → Convertido para TPS: left={left_tps:.1f}, right={right_tps:.1f}")
             self.set_target_speed(left_tps, right_tps)
 
