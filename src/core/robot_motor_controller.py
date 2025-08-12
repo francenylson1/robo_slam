@@ -184,6 +184,8 @@ class RobotMotorController(QObject):
                 if current_time - last_debug_time > 5.0:  # A cada 5 segundos
                     with self.ticks_lock:
                         print(f"DEBUG ENCODER: L:{self.left_hall_ticks} ticks, R:{self.right_hall_ticks} ticks | Estados: L:{current_state_E}, R:{current_state_D}")
+                        # NOVO DEBUG: Mostrar ticks totais para calibração
+                        print(f"CALIBRATION_TICKS - Total Acumulado - Esquerda: {self.left_ticks_for_odometry}, Direita: {self.right_ticks_for_odometry}")
                     last_debug_time = current_time
                 debug_counter = 0
             
