@@ -344,7 +344,7 @@ class MainWindow(QMainWindow):
         """
         Loop principal que roda continuamente para atualizar o estado do robô e da UI.
         """
-        # self.navigator.update() # TEMPORARIAMENTE DESABILITADO PARA CALIBRAÇÃO DE TICKS
+        self.navigator.update()
 
         if not self.navigation_active:
             return
