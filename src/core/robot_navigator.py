@@ -544,9 +544,10 @@ class RobotNavigator(QObject):
             self.motors.set_speed(MANUAL_TURN_SPEED, -MANUAL_TURN_SPEED)
 
     def manual_stop(self):
-        """Para o movimento manual."""
+        """Para o movimento manual enviando um setpoint de velocidade zero."""
         print(f"MANUAL_STOP -> Posição Final: ({self.current_position[0]:.2f}, {self.current_position[1]:.2f}), Ângulo: {self.current_angle:.1f}°")
-        self.motors.stop()
+        # Em vez de um stop(), que desliga o PID, dizemos ao PID para mirar em velocidade zero.
+        self.motors.set_speed(0, 0)
 
     def get_motor_controller(self):
         return self.motors

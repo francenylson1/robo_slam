@@ -341,14 +341,14 @@ class RobotMotorController(QObject):
         Caso contrário, converte a porcentagem de velocidade para tps e usa o PID.
         """
         print(f"🎯 SYNC_DEBUG: set_speed(left={left_speed}, right={right_speed})")
-        if left_speed == 0 and right_speed == 0:
-            self.stop_motors()
-        else:
-            # Usa a constante dedicada para a velocidade do modo manual
-            left_tps = (left_speed / 100.0) * MANUAL_CONTROL_MAX_TPS
-            right_tps = (right_speed / 100.0) * MANUAL_CONTROL_MAX_TPS
-            print(f"🎯 SYNC_DEBUG: → Convertido para TPS: left={left_tps:.1f}, right={right_tps:.1f}")
-            self.set_target_speed(left_tps, right_tps)
+        # if left_speed == 0 and right_speed == 0:
+        #     self.stop_motors() # REMOVIDO: Agora, velocidade zero é um setpoint válido para o PID.
+        # else:
+        # Usa a constante dedicada para a velocidade do modo manual
+        left_tps = (left_speed / 100.0) * MANUAL_CONTROL_MAX_TPS
+        right_tps = (right_speed / 100.0) * MANUAL_CONTROL_MAX_TPS
+        print(f"🎯 SYNC_DEBUG: → Convertido para TPS: left={left_tps:.1f}, right={right_tps:.1f}")
+        self.set_target_speed(left_tps, right_tps)
 
     def _set_motor_speed_real(self, motor: str, speed_percent: float):
         """Controla um motor específico via GPIO."""
