@@ -273,9 +273,18 @@ class RobotMotorController(QObject):
         # AUMENTADO: Intervalo de atualização de 0.01s para 0.1s (10Hz em vez de 100Hz)
         # Isso permite que os ticks se acumulem adequadamente
         if delta_time > 0.1: # Atualiza a cada 100ms em vez de 10ms
+            # Determina a direção pretendida a partir do setpoint do PID
+            left_direction = 1 if self.pid_left.setpoint >= 0 else -1
+            right_direction = 1 if self.pid_right.setpoint >= 0 else -1
+
             with self.ticks_lock:
-                self.current_left_tps = self.left_hall_ticks / delta_time
-                self.current_right_tps = self.right_hall_ticks / delta_time
+                # Calcula a velocidade bruta (sempre positiva)
+                left_tps_raw = self.left_hall_ticks / delta_time
+                right_tps_raw = self.right_hall_ticks / delta_time
+
+                # Aplica o sinal correto para o feedback do PID
+                self.current_left_tps = left_tps_raw * left_direction
+                self.current_right_tps = right_tps_raw * right_direction
 
                 # Debug: Mostra quando há ticks sendo processados
                 if self.left_hall_ticks > 0 or self.right_hall_ticks > 0:
