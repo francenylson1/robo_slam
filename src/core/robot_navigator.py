@@ -306,6 +306,9 @@ class RobotNavigator(QObject):
         print(f"DEBUG: Destino: {destination}")
         print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
         
+        # Limpa a "memória" do PID para garantir que a nova navegação não seja afetada por movimentos anteriores.
+        self.motors.clear_pid_integral()
+        
         self.reset_to_initial_state()
         
         self.navigation_active = True

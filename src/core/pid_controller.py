@@ -80,7 +80,10 @@ class PIDController:
     def set_setpoint(self, setpoint):
         """Atualiza o valor desejado."""
         self.setpoint = setpoint
-        self.reset()
+        # A LINHA ABAIXO FOI REMOVIDA. Resetar o PID a cada mudança de setpoint
+        # apaga o termo integral e causa a "perda de força". A memória deve ser
+        # preservada para que o robô responda rapidamente.
+        # self.reset()
 
     def set_gains(self, Kp, Ki, Kd):
         """
@@ -98,4 +101,8 @@ class PIDController:
         self.derivative_term = 0.0
         self.last_error = 0.0
         self.last_time = time.time()
-        self.last_output = 0.0 
+        self.last_output = 0.0
+
+    def clear_integral(self):
+        """Limpa apenas o termo integral para evitar 'memória' acumulada de movimentos passados."""
+        self.integral_term = 0.0 

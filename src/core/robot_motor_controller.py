@@ -343,6 +343,12 @@ class RobotMotorController(QObject):
         self.pid_left.reset()
         self.pid_right.reset()
 
+    def clear_pid_integral(self):
+        """Limpa apenas o termo integral (memória) do PID para evitar 'vícios' de movimentos anteriores."""
+        print("DEBUG: Limpando termo integral (memória) do PID.")
+        self.pid_left.clear_integral()
+        self.pid_right.clear_integral()
+
     def set_speed(self, left_speed: float, right_speed: float):
         """
         Método de compatibilidade para definir a velocidade dos motores.
