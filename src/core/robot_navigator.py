@@ -546,7 +546,10 @@ class RobotNavigator(QObject):
     def manual_stop(self):
         """Para o movimento manual enviando um setpoint de velocidade zero."""
         print(f"MANUAL_STOP -> Posição Final: ({self.current_position[0]:.2f}, {self.current_position[1]:.2f}), Ângulo: {self.current_angle:.1f}°")
-        # Em vez de um stop(), que desliga o PID, dizemos ao PID para mirar em velocidade zero.
+        # ETAPA 1: Garante que a última odometria seja processada ANTES de parar.
+        # Isso resolve a dessincronização ao capturar o estado final enquanto a direção ainda é conhecida.
+        self._update_pose_with_odometry()
+        # ETAPA 2: Agora, com a pose atualizada, manda parar os motores.
         self.motors.set_speed(0, 0)
 
     def get_motor_controller(self):
