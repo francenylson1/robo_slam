@@ -85,7 +85,6 @@ LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 # Configurações de desenvolvimento
 DEBUG = True
 SIMULATION_MODE = True
-
 # Configurações da interface
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
@@ -119,7 +118,7 @@ WINDOW_HEIGHT = 600
 WINDOW_TITLE = "Robô Garçom Autônomo"
 
 # Configuracoes do PID e caracteristicas fisicas do robo
-ROBOT_WHEEL_BASE_M = 0.36  # Distancia entre as rodas em metros (medida real: 36cm)
+ROBOT_WHEEL_BASE_M = 0.1075  # CALIBRADO: Ajuste final baseado no fator de erro de super-rotação (0.086 * 1.25).
 ROBOT_WHEEL_CIRCUMFERENCE_M = 0.525 # Circunferencia da roda em metros (medida em 52.5cm)
 ROBOT_WHEEL_RADIUS_M = ROBOT_WHEEL_CIRCUMFERENCE_M / (2 * 3.1415926535) # Raio calculado a partir da circunferencia
 TICKS_PER_REVOLUTION = 45 # VALOR CALIBRADO: Medido experimentalmente em 45 ticks por volta completa da roda.
