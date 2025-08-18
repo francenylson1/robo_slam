@@ -142,11 +142,11 @@ class RobotNavigator(QObject):
         Args:
             multiplier: Fator a ser multiplicado pela velocidade base (ex: 1.0, 1.5, 2.0).
         """
-        if 1.0 <= multiplier <= 2.0:
+        if 1.0 <= multiplier <= 1.3:  # MÁXIMO SEGURO: reduzido de 2.0 para 1.3 (130%) para evitar quebrar navegação
             self.speed_multiplier = multiplier
             print(f"Velocidade ajustada para {self.speed_multiplier * 100:.0f}%")
         else:
-            print(f"AVISO: Tentativa de definir multiplicador de velocidade inválido: {multiplier}. Deve ser entre 1.0 e 2.0.")
+            print(f"AVISO: Tentativa de definir multiplicador de velocidade inválido: {multiplier}. Deve ser entre 1.0 e 1.3.")
 
     def set_path(self, path: List[Tuple[float, float]]):
         """

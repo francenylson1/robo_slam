@@ -157,7 +157,7 @@ class MainWindow(QMainWindow):
         
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.speed_slider.setMinimum(100)
-        self.speed_slider.setMaximum(140)  # EXTENDIDO: de 120% para 140%
+        self.speed_slider.setMaximum(120)  # MÁXIMO SEGURO: reduzido de 140% para 120% para evitar quebrar navegação
         self.speed_slider.setValue(100)
         self.speed_slider.valueChanged.connect(self._on_speed_slider_changed)
         speed_control_layout.addWidget(self.speed_slider)
@@ -781,12 +781,13 @@ class MainWindow(QMainWindow):
             return
 
         MANUAL_FORWARD_SPEED = 36  # AUMENTADO 20% para teste (era 30)
+        MANUAL_BACKWARD_SPEED = 28  # CORRIGIDO: 20% menor que frente para evitar velocidade reversa muito alta
         MANUAL_TURN_SPEED = 14     # AUMENTADO 20% para teste (era 12)
 
         if direction == "forward":
             self.navigator.motors.set_speed(MANUAL_FORWARD_SPEED, MANUAL_FORWARD_SPEED)
         elif direction == "backward":
-            self.navigator.motors.set_speed(-MANUAL_FORWARD_SPEED, -MANUAL_FORWARD_SPEED)
+            self.navigator.motors.set_speed(-MANUAL_BACKWARD_SPEED, -MANUAL_BACKWARD_SPEED)
         elif direction == "left":
             self.navigator.motors.set_speed(-MANUAL_TURN_SPEED, MANUAL_TURN_SPEED)
         elif direction == "right":
