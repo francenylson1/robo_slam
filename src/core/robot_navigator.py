@@ -67,6 +67,11 @@ class RobotNavigator(QObject):
         # NOVO: Controle para giros precisos
         self.precise_rotation_active = False
         
+        # NOVO: Sistema de boost para giros grandes durante navegação
+        self.boost_rotation_active = False
+        self.boost_start_time = None
+        self.boost_initial_angle_error = 0
+        
         # Atributos para precisão na chegada
         self.arrival_pause_time = 2.0  # segundos de pausa ao chegar no destino
         self.arrival_time = None
@@ -127,7 +132,8 @@ class RobotNavigator(QObject):
         self.forbidden_areas = preserved_forbidden_areas
         self.path_finder.set_forbidden_areas(preserved_forbidden_areas)
         
-        # Para os motores
+        # Para os motores e boost se ativo
+        self._stop_boost_rotation()  # 🛡️ SEGURANÇA: Para boost
         self.motors.stop()
         
         print("✅ ===== RESET CONCLUÍDO =====")
@@ -379,13 +385,37 @@ class RobotNavigator(QObject):
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
         if abs(angle_error) < 5.0:  # Tolerância de 5 graus
+            self._stop_boost_rotation()  # Para o boost se estiver ativo
             self.motors.stop()
             state_key = "RETURNING_TO_BASE" if self.is_returning_to_base else "NAVIGATING_TO_DESTINATION"
             print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key}")
             self.navigation_state = state_key
             return
 
-        # Volta para PID tradicional com força mínima garantida
+        # 🛡️ MODO BOOST ULTRA-CONSERVADOR para giros grandes
+        current_time = time.time()
+        
+        # Verifica se deve ativar boost (giros > 60°)
+        if not self.boost_rotation_active and abs(angle_error) > 60.0:
+            self._start_boost_rotation(angle_error, current_time)
+            return
+        
+        # Se boost está ativo, verifica timeout de segurança
+        if self.boost_rotation_active:
+            if current_time - self.boost_start_time > 1.0:  # Timeout 1s
+                print("🛡️ BOOST_TIMEOUT: Timeout de segurança atingido")
+                self._stop_boost_rotation()
+                # Continua com PID normal
+            else:
+                # Continua com boost se ainda há erro significativo
+                if abs(angle_error) > 15.0:
+                    self._execute_boost_rotation(angle_error)
+                    return
+                else:
+                    # Erro pequeno suficiente, para o boost
+                    self._stop_boost_rotation()
+
+        # PID tradicional (quando boost não está ativo ou foi desativado)
         angular_speed_rads = math.radians(angle_error) * 5.0 
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
@@ -550,8 +580,65 @@ class RobotNavigator(QObject):
         print("🔄 PRECISE_ROTATION: Modo desativado - posição volta a ser atualizada")
         self.precise_rotation_active = False
 
+    def _start_boost_rotation(self, angle_error: float, current_time: float):
+        """
+        Inicia modo boost ultra-conservador para giros grandes.
+        PARÂMETROS DE SEGURANÇA: 12% potência, 1s timeout, apenas > 60°
+        """
+        self.boost_rotation_active = True
+        self.boost_start_time = current_time
+        self.boost_initial_angle_error = abs(angle_error)
+        
+        print(f"🛡️ BOOST_START: Ativado para erro {abs(angle_error):.1f}° (>60°)")
+        print(f"🛡️ BOOST_SAFETY: 12% potência, timeout 1s")
+        
+        # Executa o primeiro giro boost
+        self._execute_boost_rotation(angle_error)
+
+    def _execute_boost_rotation(self, angle_error: float):
+        """
+        Executa giro boost com controle direto ultra-conservador.
+        SEGURANÇA MÁXIMA: 12% potência (apenas +2% do manual atual)
+        """
+        # 🛡️ PARÂMETROS ULTRA-CONSERVADORES
+        BOOST_POWER_PERCENT = 12  # Apenas 12% - ultra seguro
+        
+        # 🛡️ VALIDAÇÃO DE SEGURANÇA ABSOLUTA
+        MAX_SAFE_POWER = 15  # Limite absoluto de segurança
+        if BOOST_POWER_PERCENT > MAX_SAFE_POWER:
+            print(f"🚨 BOOST_SAFETY_ERROR: {BOOST_POWER_PERCENT}% > {MAX_SAFE_POWER}% - ABORTANDO")
+            self._stop_boost_rotation()
+            return
+        
+        # Determina direção baseada no erro
+        if angle_error > 0:
+            # Giro para direita
+            self.motors._set_motor_speed_real("left", BOOST_POWER_PERCENT)
+            self.motors._set_motor_speed_real("right", -BOOST_POWER_PERCENT)
+        else:
+            # Giro para esquerda
+            self.motors._set_motor_speed_real("left", -BOOST_POWER_PERCENT)
+            self.motors._set_motor_speed_real("right", BOOST_POWER_PERCENT)
+
+    def _stop_boost_rotation(self):
+        """Para o modo boost e retorna ao controle normal."""
+        if self.boost_rotation_active:
+            elapsed_time = time.time() - self.boost_start_time if self.boost_start_time else 0
+            progress = self.boost_initial_angle_error - abs(self.boost_initial_angle_error)
+            
+            print(f"🛡️ BOOST_STOP: Finalizado após {elapsed_time:.2f}s")
+            
+            self.boost_rotation_active = False
+            self.boost_start_time = None
+            self.boost_initial_angle_error = 0
+            
+            # Para os motores de forma segura
+            self.motors.stop()
+
     def stop(self):
         print("INFO: Comando de parada recebido pelo navegador.")
+        # 🛡️ SEGURANÇA: Para boost se estiver ativo
+        self._stop_boost_rotation()
         self._finalize_navigation()
         
     def _handle_navigation_to_destination(self):
