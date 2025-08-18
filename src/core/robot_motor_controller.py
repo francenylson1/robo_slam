@@ -41,6 +41,10 @@ class RobotMotorController(QObject):
         # --- NOVO: Controle de frequência de emissão de sinal ---
         self.last_emit_time = 0
         self.emit_interval = 0.2  # segundos (200ms)
+        
+        # --- NOVO: Controle manual da direção para giros precisos ---
+        self.precise_rotation_left_direction = None
+        self.precise_rotation_right_direction = None
 
         # --- NOVO: Atributos para o modo de simulação ---
         self.simulated_left_tps = 0.0
@@ -400,13 +404,19 @@ class RobotMotorController(QObject):
         """
         Retorna os ticks acumulados e os zera. Este é o coração da odometria.
         - Em modo real, aplica o sinal (+/-) baseado na direção do setpoint do PID.
+        - Durante giros precisos, usa direção forçada manualmente.
         - Em modo simulado, calcula os ticks com base na velocidade alvo e no tempo.
         """
         if GPIO_AVAILABLE:
             with self.ticks_lock:
-                # Determina a direção com base no setpoint do PID para o robô real
-                left_direction = 1 if self.pid_left.setpoint >= 0 else -1
-                right_direction = 1 if self.pid_right.setpoint >= 0 else -1
+                # NOVO: Durante giros precisos, usa direção forçada
+                if self.precise_rotation_left_direction is not None and self.precise_rotation_right_direction is not None:
+                    left_direction = self.precise_rotation_left_direction
+                    right_direction = self.precise_rotation_right_direction
+                else:
+                    # Navegação normal: determina direção com base no setpoint do PID
+                    left_direction = 1 if self.pid_left.setpoint >= 0 else -1
+                    right_direction = 1 if self.pid_right.setpoint >= 0 else -1
 
                 ticks_to_return = {
                     "left": self.left_ticks_for_odometry * left_direction,
@@ -443,6 +453,21 @@ class RobotMotorController(QObject):
         """Para ambos os motores e o controle PID de forma segura."""
         self.set_target_speed(0, 0)
         self.disable_pid_control()
+
+    def set_precise_rotation_direction(self, left_direction: int, right_direction: int):
+        """
+        Define a direção dos ticks durante giros precisos.
+        Args:
+            left_direction: -1 (trás) ou +1 (frente) para motor esquerdo
+            right_direction: -1 (trás) ou +1 (frente) para motor direito
+        """
+        self.precise_rotation_left_direction = left_direction
+        self.precise_rotation_right_direction = right_direction
+
+    def clear_precise_rotation_direction(self):
+        """Limpa a direção forçada, voltando ao modo normal (PID setpoint)."""
+        self.precise_rotation_left_direction = None
+        self.precise_rotation_right_direction = None
 
     def cleanup(self):
         """Limpa os recursos do GPIO de forma segura."""

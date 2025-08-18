@@ -814,11 +814,15 @@ class MainWindow(QMainWindow):
         
         print(f"🔄 SYNC_FIX: Giro preciso {direction} com {TURN_SPEED_PERCENT}% - modo sincronização ativado")
         
-        # Usa controle direto via _set_motor_speed_real (sem PID) - igual ao gpio_test.py
+        # 🔧 NOVO: Define direção correta dos ticks para odometria
         if direction == "left":
+            # Giro à esquerda: motor esquerdo trás (-1), motor direito frente (+1)
+            self.navigator.motors.set_precise_rotation_direction(-1, +1)
             self.navigator.motors._set_motor_speed_real("left", -TURN_SPEED_PERCENT)
             self.navigator.motors._set_motor_speed_real("right", TURN_SPEED_PERCENT)
         else: # direction == "right"
+            # Giro à direita: motor esquerdo frente (+1), motor direito trás (-1)
+            self.navigator.motors.set_precise_rotation_direction(+1, -1)
             self.navigator.motors._set_motor_speed_real("left", TURN_SPEED_PERCENT)
             self.navigator.motors._set_motor_speed_real("right", -TURN_SPEED_PERCENT)
 
@@ -829,6 +833,9 @@ class MainWindow(QMainWindow):
         """Para a rotação precisa."""
         # Para os motores
         self.navigator.motors.stop()
+        
+        # 🔧 NOVO: Limpa direção forçada dos ticks
+        self.navigator.motors.clear_precise_rotation_direction()
         
         # 🔄 NOVA FUNCIONALIDADE: Desativa modo de giro preciso no navegador
         self.navigator.stop_precise_rotation()
