@@ -789,7 +789,7 @@ class MainWindow(QMainWindow):
         elif angle_per_click <= 30:
             rotation_time = 0.4  # 30° em 0.4s
         elif angle_per_click <= 45:
-            rotation_time = 0.6  # 45° em 0.6s
+            rotation_time = 0.8  # CORRIGIDO: 45° em 0.8s (aumentado de 0.6s) para mais força
         elif angle_per_click <= 60:
             rotation_time = 0.8  # 60° em 0.8s
         elif angle_per_click <= 90:
@@ -799,9 +799,9 @@ class MainWindow(QMainWindow):
 
         # Executa rotação
         if direction == "left":
-            self.navigator.motors.set_speed(-12, 12)  # Gira para esquerda
+            self.navigator.motors.set_speed(-16, 16)  # CORRIGIDO: Aumentado de 12 para 16 TPS para mais força
         else:  # direction == "right"
-            self.navigator.motors.set_speed(12, -12)  # Gira para direita
+            self.navigator.motors.set_speed(16, -16)  # CORRIGIDO: Aumentado de 12 para 16 TPS para mais força
 
         # Para automaticamente após o tempo calculado
         QTimer.singleShot(int(rotation_time * 1000), self._stop_precise_rotation)
