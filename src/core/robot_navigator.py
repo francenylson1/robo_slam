@@ -71,6 +71,8 @@ class RobotNavigator(QObject):
         self.boost_rotation_active = False
         self.boost_start_time = None
         self.boost_initial_angle_error = 0
+        self.boost_cooldown_until = 0  # Tempo até quando boost está em cooldown
+        self.boost_last_angle_check = 0  # Para verificar progresso
         
         # Atributos para precisão na chegada
         self.arrival_pause_time = 2.0  # segundos de pausa ao chegar no destino
@@ -395,8 +397,12 @@ class RobotNavigator(QObject):
         # 🛡️ MODO BOOST ULTRA-CONSERVADOR para giros grandes
         current_time = time.time()
         
-        # Verifica se deve ativar boost (giros > 60°)
-        if not self.boost_rotation_active and abs(angle_error) > 60.0:
+        # 🛡️ ANTI-OSCILAÇÃO: Verifica cooldown antes de ativar boost
+        if current_time < self.boost_cooldown_until:
+            # Em cooldown - usar apenas PID normal
+            pass
+        elif not self.boost_rotation_active and abs(angle_error) > 60.0:
+            # Ativa boost apenas se não está em cooldown
             self._start_boost_rotation(angle_error, current_time)
             return
         
@@ -407,13 +413,14 @@ class RobotNavigator(QObject):
                 self._stop_boost_rotation()
                 # Continua com PID normal
             else:
-                # Continua com boost se ainda há erro significativo
-                if abs(angle_error) > 15.0:
+                # 🛡️ ANTI-OSCILAÇÃO: Para se erro ficou pequeno suficiente
+                if abs(angle_error) < 30.0:  # Mudado de 15° para 30° para dar mais margem
+                    print(f"🛡️ BOOST_SUCCESS: Erro reduzido para {abs(angle_error):.1f}°")
+                    self._stop_boost_rotation()
+                else:
+                    # Continua com boost - erro ainda é grande
                     self._execute_boost_rotation(angle_error)
                     return
-                else:
-                    # Erro pequeno suficiente, para o boost
-                    self._stop_boost_rotation()
 
         # PID tradicional (quando boost não está ativo ou foi desativado)
         angular_speed_rads = math.radians(angle_error) * 5.0 
@@ -588,9 +595,10 @@ class RobotNavigator(QObject):
         self.boost_rotation_active = True
         self.boost_start_time = current_time
         self.boost_initial_angle_error = abs(angle_error)
+        self.boost_last_angle_check = abs(angle_error)  # Para monitorar progresso
         
         print(f"🛡️ BOOST_START: Ativado para erro {abs(angle_error):.1f}° (>60°)")
-        print(f"🛡️ BOOST_SAFETY: 12% potência, timeout 1s")
+        print(f"🛡️ BOOST_SAFETY: 12% potência, timeout 1s, cooldown 2s")
         
         # Executa o primeiro giro boost
         self._execute_boost_rotation(angle_error)
@@ -624,9 +632,12 @@ class RobotNavigator(QObject):
         """Para o modo boost e retorna ao controle normal."""
         if self.boost_rotation_active:
             elapsed_time = time.time() - self.boost_start_time if self.boost_start_time else 0
-            progress = self.boost_initial_angle_error - abs(self.boost_initial_angle_error)
             
             print(f"🛡️ BOOST_STOP: Finalizado após {elapsed_time:.2f}s")
+            
+            # 🛡️ ANTI-OSCILAÇÃO: Define cooldown de 2 segundos
+            self.boost_cooldown_until = time.time() + 2.0
+            print("🛡️ BOOST_COOLDOWN: 2s para evitar oscilação")
             
             self.boost_rotation_active = False
             self.boost_start_time = None
