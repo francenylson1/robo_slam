@@ -64,6 +64,9 @@ class RobotNavigator(QObject):
         self.navigation_start_time = None
         self.estimated_completion_time = None
         
+        # NOVO: Controle para giros precisos
+        self.precise_rotation_active = False
+        
         # Atributos para precisão na chegada
         self.arrival_pause_time = 2.0  # segundos de pausa ao chegar no destino
         self.arrival_time = None
@@ -499,6 +502,10 @@ class RobotNavigator(QObject):
         return self.path_index, self.current_target, len(self.path)
 
     def _update_pose_with_odometry(self):
+        """
+        Atualiza a posição e ângulo do robô baseado na odometria.
+        Durante giros precisos, atualiza apenas o ângulo para manter sincronização correta.
+        """
         ticks_data = self.motors.get_and_reset_ticks()
         if not ticks_data:
             return
@@ -510,20 +517,38 @@ class RobotNavigator(QObject):
         delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
 
+        # SEMPRE atualiza o ângulo (necessário para giros precisos)
         self.current_angle += delta_angle_deg
         if self.current_angle > 180: self.current_angle -= 360
         elif self.current_angle < -180: self.current_angle += 360
 
-        angle_rad = math.radians(self.current_angle)
-        delta_x = delta_distance * math.cos(angle_rad)
-        delta_y = delta_distance * math.sin(angle_rad)
+        # CONDICIONALMENTE atualiza a posição
+        if not self.precise_rotation_active:
+            # NAVEGAÇÃO NORMAL: Atualiza posição E ângulo
+            angle_rad = math.radians(self.current_angle)
+            delta_x = delta_distance * math.cos(angle_rad)
+            delta_y = delta_distance * math.sin(angle_rad)
+            self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
+        else:
+            # GIRO PRECISO: Atualiza APENAS o ângulo (posição permanece fixa)
+            # Durante giros precisos, a posição não é modificada para manter sincronização correta
+            pass
 
-        self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
         self.last_position_update = time.time()
         self.position_updated.emit(self.current_position[0], self.current_position[1], self.current_angle)
 
     def get_motor_controller(self):
         return self.motors
+
+    def start_precise_rotation(self):
+        """Inicia modo de giro preciso - desabilita atualização de posição."""
+        print("🔄 PRECISE_ROTATION: Modo ativado - posição será fixa durante giros")
+        self.precise_rotation_active = True
+
+    def stop_precise_rotation(self):
+        """Para modo de giro preciso - reabilita atualização de posição."""
+        print("🔄 PRECISE_ROTATION: Modo desativado - posição volta a ser atualizada")
+        self.precise_rotation_active = False
 
     def stop(self):
         print("INFO: Comando de parada recebido pelo navegador.")

@@ -781,6 +781,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Aviso", "Não é possível usar controles manuais durante a navegação automática.")
             return
 
+        # 🔄 NOVA FUNCIONALIDADE: Ativa modo de giro preciso no navegador
+        self.navigator.start_precise_rotation()
+
         angle_per_click = self.angle_slider.value()
         
         # Tempos calibrados para precisão (baseado em testes anteriores)
@@ -806,9 +809,10 @@ class MainWindow(QMainWindow):
         if TURN_SPEED_PERCENT > MAX_SAFE_POWER:
             print(f"🚨 ERRO: Potência {TURN_SPEED_PERCENT}% excede limite seguro de {MAX_SAFE_POWER}%")
             QMessageBox.critical(self, "Erro de Segurança", f"Potência {TURN_SPEED_PERCENT}% excede limite seguro!")
+            self.navigator.stop_precise_rotation()  # Restaura modo normal
             return
         
-        print(f"🔄 SYNC_DEBUG: Giro preciso {direction} com {TURN_SPEED_PERCENT}% da potência (BYPASS PID)")
+        print(f"🔄 SYNC_FIX: Giro preciso {direction} com {TURN_SPEED_PERCENT}% - modo sincronização ativado")
         
         # Usa controle direto via _set_motor_speed_real (sem PID) - igual ao gpio_test.py
         if direction == "left":
@@ -818,12 +822,6 @@ class MainWindow(QMainWindow):
             self.navigator.motors._set_motor_speed_real("left", TURN_SPEED_PERCENT)
             self.navigator.motors._set_motor_speed_real("right", -TURN_SPEED_PERCENT)
 
-        # 🚨 TEMPORARIAMENTE DESABILITADO: Sincronização com problemas
-        # Atualiza a posição do robô na interface a cada 100ms
-        # self.sync_timer = QTimer()
-        # self.sync_timer.timeout.connect(lambda: self._sync_robot_position_during_rotation())
-        # self.sync_timer.start(100)  # 10Hz para sincronização suave
-
         # Para automaticamente após o tempo calculado
         QTimer.singleShot(int(rotation_time * 1000), self._stop_precise_rotation)
 
@@ -832,8 +830,10 @@ class MainWindow(QMainWindow):
         # Para os motores
         self.navigator.motors.stop()
         
-        # 🚨 TEMPORARIAMENTE DESABILITADO: Sincronização com problemas
-        # self._sync_robot_position_during_rotation()
+        # 🔄 NOVA FUNCIONALIDADE: Desativa modo de giro preciso no navegador
+        self.navigator.stop_precise_rotation()
+        
+        print("🔄 SYNC_FIX: Giro preciso finalizado - modo normal restaurado")
 
     # 🚨 COMPLETAMENTE DESABILITADO: Método de sincronização com problemas
     # def _sync_robot_position_during_rotation(self):
