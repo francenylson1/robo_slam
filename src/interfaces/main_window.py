@@ -835,22 +835,23 @@ class MainWindow(QMainWindow):
         # 🚨 TEMPORARIAMENTE DESABILITADO: Sincronização com problemas
         # self._sync_robot_position_during_rotation()
 
-    def _sync_robot_position_during_rotation(self):
-        """Sincroniza a posição do robô na interface durante rotações precisas."""
-        try:
-            # Obtém a posição atual do robô físico (se disponível)
-            if hasattr(self.navigator, 'current_position') and hasattr(self.navigator, 'current_angle'):
-                current_pos = self.navigator.current_position
-                current_angle = self.navigator.current_angle
-                
-                # Atualiza a interface com a posição real
-                self.map_widget.update_robot_position(current_pos[0], current_pos[1], current_angle)
-                
-                # Debug da sincronização
-                print(f"🔄 SYNC_DEBUG: Posição sincronizada - ({current_pos[0]:.2f}, {current_pos[1]:.2f}) @ {current_angle:.1f}°")
-                
-        except Exception as e:
-            print(f"⚠️ SYNC_DEBUG: Erro na sincronização: {e}")
+    # 🚨 COMPLETAMENTE DESABILITADO: Método de sincronização com problemas
+    # def _sync_robot_position_during_rotation(self):
+    #     """Sincroniza a posição do robô na interface durante rotações precisas."""
+    #     try:
+    #         # Obtém a posição atual do robô físico (se disponível)
+    #         if hasattr(self.navigator, 'current_position') and hasattr(self.navigator, 'current_angle'):
+    #             current_pos = self.navigator.current_position
+    #             current_angle = self.navigator.current_angle
+    #             
+    #             # Atualiza a interface com a posição real
+    #             self.map_widget.update_robot_position(current_pos[0], current_pos[1], current_angle)
+    #             
+    #             # Debug da sincronização
+    #             print(f"🔄 SYNC_DEBUG: Posição sincronizada - ({current_pos[0]:.2f}, {current_pos[1]:.2f}) @ {current_angle:.1f}°")
+    #             
+    #     except Exception as e:
+    #         print(f"⚠️ SYNC_DEBUG: Erro na sincronização: {e}")
 
     def _on_angle_slider_changed(self, value: int):
         """Atualiza o ângulo de rotação por clique."""
