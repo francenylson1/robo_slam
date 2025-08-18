@@ -783,6 +783,9 @@ class MainWindow(QMainWindow):
 
         # 🔄 NOVA FUNCIONALIDADE: Ativa modo de giro preciso no navegador
         self.navigator.start_precise_rotation()
+        
+        # 🔧 NOVO: Salva o ângulo inicial para sincronização por tempo
+        self.initial_angle_for_sync = self.navigator.current_angle
 
         angle_per_click = self.angle_slider.value()
         
@@ -826,6 +829,10 @@ class MainWindow(QMainWindow):
             self.navigator.motors._set_motor_speed_real("left", TURN_SPEED_PERCENT)
             self.navigator.motors._set_motor_speed_real("right", -TURN_SPEED_PERCENT)
 
+        # 🔧 NOVO: Salva dados para sincronização por tempo
+        self.precise_rotation_target_angle = angle_per_click if direction == "right" else -angle_per_click
+        self.precise_rotation_start_time = time.time()
+        
         # Para automaticamente após o tempo calculado
         QTimer.singleShot(int(rotation_time * 1000), self._stop_precise_rotation)
 
@@ -833,6 +840,21 @@ class MainWindow(QMainWindow):
         """Para a rotação precisa."""
         # Para os motores
         self.navigator.motors.stop()
+        
+        # 🔧 NOVO: Sincronização por tempo como backup
+        if hasattr(self, 'precise_rotation_target_angle') and hasattr(self, 'initial_angle_for_sync'):
+            # Calcula o ângulo final baseado no tempo e direção
+            final_angle = self.initial_angle_for_sync + self.precise_rotation_target_angle
+            
+            # Normaliza o ângulo (-180 a +180)
+            while final_angle > 180:
+                final_angle -= 360
+            while final_angle < -180:
+                final_angle += 360
+            
+            # Força a sincronização exata
+            self.navigator.current_angle = final_angle
+            print(f"🔧 SYNC_TIME: Ângulo corrigido por tempo - {self.initial_angle_for_sync:.1f}° → {final_angle:.1f}°")
         
         # 🔧 NOVO: Limpa direção forçada dos ticks
         self.navigator.motors.clear_precise_rotation_direction()

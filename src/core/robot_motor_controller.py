@@ -45,6 +45,7 @@ class RobotMotorController(QObject):
         # --- NOVO: Controle manual da direção para giros precisos ---
         self.precise_rotation_left_direction = None
         self.precise_rotation_right_direction = None
+        self.precise_rotation_mode = False  # Flag para debounce condicional
 
         # --- NOVO: Atributos para o modo de simulação ---
         self.simulated_left_tps = 0.0
@@ -158,8 +159,11 @@ class RobotMotorController(QObject):
             try:
                 current_state_E = GPIO.input(self.hall_E)
                 if current_state_E == 1 and self.last_hall_E_state == 0:
-                    # --- FILTRO DEBOUNCE AGRESSIVO ---
-                    time.sleep(0.01) # Pausa por 10ms
+                    # --- FILTRO DEBOUNCE CONDICIONAL ---
+                    # Durante giros precisos: 2ms (máxima precisão)
+                    # Durante navegação: 10ms (máxima estabilidade)
+                    debounce_time = 0.002 if self.precise_rotation_mode else 0.01
+                    time.sleep(debounce_time)
                     if GPIO.input(self.hall_E) == 1:
                         with self.ticks_lock:
                             self.left_hall_ticks += 1
@@ -169,8 +173,11 @@ class RobotMotorController(QObject):
                 # Leitura do sensor direito
                 current_state_D = GPIO.input(self.hall_D)
                 if current_state_D == 1 and self.last_hall_D_state == 0:
-                    # --- FILTRO DEBOUNCE AGRESSIVO ---
-                    time.sleep(0.01) # Pausa por 10ms
+                    # --- FILTRO DEBOUNCE CONDICIONAL ---
+                    # Durante giros precisos: 2ms (máxima precisão)
+                    # Durante navegação: 10ms (máxima estabilidade)
+                    debounce_time = 0.002 if self.precise_rotation_mode else 0.01
+                    time.sleep(debounce_time)
                     if GPIO.input(self.hall_D) == 1:
                         with self.ticks_lock:
                             self.right_hall_ticks += 1
@@ -463,11 +470,13 @@ class RobotMotorController(QObject):
         """
         self.precise_rotation_left_direction = left_direction
         self.precise_rotation_right_direction = right_direction
+        self.precise_rotation_mode = True  # Ativa debounce rápido
 
     def clear_precise_rotation_direction(self):
         """Limpa a direção forçada, voltando ao modo normal (PID setpoint)."""
         self.precise_rotation_left_direction = None
         self.precise_rotation_right_direction = None
+        self.precise_rotation_mode = False  # Volta para debounce estável
 
     def cleanup(self):
         """Limpa os recursos do GPIO de forma segura."""
