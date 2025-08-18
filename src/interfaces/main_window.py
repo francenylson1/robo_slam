@@ -797,11 +797,26 @@ class MainWindow(QMainWindow):
         else:
             rotation_time = 1.5  # Fallback para ângulos maiores
 
-        # Executa rotação
+        # 🚀 NOVO: Bypass do PID com proteção de segurança
+        # 15% da potência total do motor (SEGURANÇA MÁXIMA)
+        TURN_SPEED_PERCENT = 15  # 15% da potência máxima (SEGURANÇA MÁXIMA)
+        
+        # 🛡️ VALIDAÇÃO DE SEGURANÇA BÁSICA
+        MAX_SAFE_POWER = 20  # Limite máximo seguro (seu teste)
+        if TURN_SPEED_PERCENT > MAX_SAFE_POWER:
+            print(f"🚨 ERRO: Potência {TURN_SPEED_PERCENT}% excede limite seguro de {MAX_SAFE_POWER}%")
+            QMessageBox.critical(self, "Erro de Segurança", f"Potência {TURN_SPEED_PERCENT}% excede limite seguro!")
+            return
+        
+        print(f"🔄 SYNC_DEBUG: Giro preciso {direction} com {TURN_SPEED_PERCENT}% da potência (BYPASS PID)")
+        
+        # Usa controle direto via _set_motor_speed_real (sem PID) - igual ao gpio_test.py
         if direction == "left":
-            self.navigator.motors.set_speed(-16, 16)  # CORRIGIDO: Aumentado de 12 para 16 TPS para mais força
-        else:  # direction == "right"
-            self.navigator.motors.set_speed(16, -16)  # CORRIGIDO: Aumentado de 12 para 16 TPS para mais força
+            self.navigator.motors._set_motor_speed_real("left", -TURN_SPEED_PERCENT)
+            self.navigator.motors._set_motor_speed_real("right", TURN_SPEED_PERCENT)
+        else: # direction == "right"
+            self.navigator.motors._set_motor_speed_real("left", TURN_SPEED_PERCENT)
+            self.navigator.motors._set_motor_speed_real("right", -TURN_SPEED_PERCENT)
 
         # Para automaticamente após o tempo calculado
         QTimer.singleShot(int(rotation_time * 1000), self._stop_precise_rotation)
