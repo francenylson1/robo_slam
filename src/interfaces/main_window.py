@@ -798,8 +798,8 @@ class MainWindow(QMainWindow):
             rotation_time = 1.5  # Fallback para ângulos maiores
 
         # 🚀 NOVO: Bypass do PID com proteção de segurança
-        # 12% da potência total do motor (SEGURANÇA MÁXIMA)
-        TURN_SPEED_PERCENT = 12  # 12% da potência máxima (SEGURANÇA MÁXIMA)
+        # 10% da potência total do motor (SEGURANÇA MÁXIMA)
+        TURN_SPEED_PERCENT = 10  # 10% da potência máxima (SEGURANÇA MÁXIMA)
         
         # 🛡️ VALIDAÇÃO DE SEGURANÇA BÁSICA
         MAX_SAFE_POWER = 20  # Limite máximo seguro (seu teste)
@@ -818,27 +818,22 @@ class MainWindow(QMainWindow):
             self.navigator.motors._set_motor_speed_real("left", TURN_SPEED_PERCENT)
             self.navigator.motors._set_motor_speed_real("right", -TURN_SPEED_PERCENT)
 
-        # 🚀 NOVO: Sincronização em tempo real durante o giro
+        # 🚨 TEMPORARIAMENTE DESABILITADO: Sincronização com problemas
         # Atualiza a posição do robô na interface a cada 100ms
-        self.sync_timer = QTimer()
-        self.sync_timer.timeout.connect(lambda: self._sync_robot_position_during_rotation())
-        self.sync_timer.start(100)  # 10Hz para sincronização suave
+        # self.sync_timer = QTimer()
+        # self.sync_timer.timeout.connect(lambda: self._sync_robot_position_during_rotation())
+        # self.sync_timer.start(100)  # 10Hz para sincronização suave
 
         # Para automaticamente após o tempo calculado
         QTimer.singleShot(int(rotation_time * 1000), self._stop_precise_rotation)
 
     def _stop_precise_rotation(self):
         """Para a rotação precisa."""
-        # Para o timer de sincronização
-        if hasattr(self, 'sync_timer'):
-            self.sync_timer.stop()
-            self.sync_timer.deleteLater()
-        
         # Para os motores
         self.navigator.motors.stop()
         
-        # 🚀 NOVO: Sincronização final após parar
-        self._sync_robot_position_during_rotation()
+        # 🚨 TEMPORARIAMENTE DESABILITADO: Sincronização com problemas
+        # self._sync_robot_position_during_rotation()
 
     def _sync_robot_position_during_rotation(self):
         """Sincroniza a posição do robô na interface durante rotações precisas."""
