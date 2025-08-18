@@ -188,19 +188,17 @@ class MainWindow(QMainWindow):
         self.btn_forward.released.connect(self._manual_move_stop)
         direction_grid.addWidget(self.btn_forward, 0, 1)
         
-        # Botão ESQUERDA (⬅️)
-        self.btn_left = QPushButton("⬅️")
-        self.btn_left.setMinimumSize(40, 40)
-        self.btn_left.pressed.connect(lambda: self._manual_move_start("left"))
-        self.btn_left.released.connect(self._manual_move_stop)
-        direction_grid.addWidget(self.btn_left, 1, 0)
+        # Botão GIRO PRECISO ESQUERDA (substitui seta esquerda)
+        self.btn_rotate_precise_left = QPushButton("↺ 45° ESQ")
+        self.btn_rotate_precise_left.setMinimumSize(80, 40)
+        self.btn_rotate_precise_left.clicked.connect(lambda: self._execute_precise_rotation("left"))
+        direction_grid.addWidget(self.btn_rotate_precise_left, 1, 0)
         
-        # Botão DIREITA (➡️)
-        self.btn_right = QPushButton("➡️")
-        self.btn_right.setMinimumSize(40, 40)
-        self.btn_right.pressed.connect(lambda: self._manual_move_start("right"))
-        self.btn_right.released.connect(self._manual_move_stop)
-        direction_grid.addWidget(self.btn_right, 1, 2)
+        # Botão GIRO PRECISO DIREITA (substitui seta direita)
+        self.btn_rotate_precise_right = QPushButton("↻ 45° DIR")
+        self.btn_rotate_precise_right.setMinimumSize(80, 40)
+        self.btn_rotate_precise_right.clicked.connect(lambda: self._execute_precise_rotation("right"))
+        direction_grid.addWidget(self.btn_rotate_precise_right, 1, 2)
         
         # Botão TRÁS (⬇️)
         self.btn_backward = QPushButton("⬇️")
@@ -211,6 +209,18 @@ class MainWindow(QMainWindow):
 
         # Adiciona o grid ao layout manual
         manual_layout.addLayout(direction_grid)
+
+        # Slider para ângulo customizável (integrado ao layout principal)
+        angle_layout = QHBoxLayout()
+        angle_layout.addWidget(QLabel("Ângulo por clique:"))
+        self.angle_slider = QSlider(Qt.Orientation.Horizontal)
+        self.angle_slider.setRange(15, 90)  # 15° a 90° por clique
+        self.angle_slider.setValue(45)      # Padrão: 45°
+        self.angle_slider.valueChanged.connect(self._on_angle_slider_changed)
+        angle_layout.addWidget(self.angle_slider)
+        self.angle_label = QLabel("45°")
+        angle_layout.addWidget(self.angle_label)
+        manual_layout.addLayout(angle_layout)
 
         # Botões de ação
         action_buttons = QHBoxLayout()
@@ -224,38 +234,6 @@ class MainWindow(QMainWindow):
         action_buttons.addWidget(self.btn_return_base)
         
         manual_layout.addLayout(action_buttons)
-        
-        # NOVOS BOTÕES DE GIRO PRECISO (ADICIONADOS SEM INTERFERIR NO EXISTENTE)
-        precise_rotation_group = QGroupBox("Giro Preciso (45° por clique)")
-        precise_rotation_layout = QVBoxLayout()
-        
-        # Slider para ângulo customizável
-        angle_layout = QHBoxLayout()
-        angle_layout.addWidget(QLabel("Ângulo por clique:"))
-        self.angle_slider = QSlider(Qt.Orientation.Horizontal)
-        self.angle_slider.setRange(15, 90)  # 15° a 90° por clique
-        self.angle_slider.setValue(45)      # Padrão: 45°
-        self.angle_slider.valueChanged.connect(self._on_angle_slider_changed)
-        angle_layout.addWidget(self.angle_slider)
-        self.angle_label = QLabel("45°")
-        angle_layout.addWidget(self.angle_label)
-        precise_rotation_layout.addLayout(angle_layout)
-        
-        # Botões de giro preciso
-        rotation_buttons = QHBoxLayout()
-        self.btn_rotate_precise_left = QPushButton("↺ 45° ESQUERDA")
-        self.btn_rotate_precise_left.setMinimumSize(80, 40)
-        self.btn_rotate_precise_left.clicked.connect(lambda: self._execute_precise_rotation("left"))
-        rotation_buttons.addWidget(self.btn_rotate_precise_left)
-        
-        self.btn_rotate_precise_right = QPushButton("↻ 45° DIREITA")
-        self.btn_rotate_precise_right.setMinimumSize(80, 40)
-        self.btn_rotate_precise_right.clicked.connect(lambda: self._execute_precise_rotation("right"))
-        rotation_buttons.addWidget(self.btn_rotate_precise_right)
-        precise_rotation_layout.addLayout(rotation_buttons)
-        
-        precise_rotation_group.setLayout(precise_rotation_layout)
-        manual_layout.addWidget(precise_rotation_group)
         
         manual_control_group.setLayout(manual_layout)
         
@@ -797,6 +775,49 @@ class MainWindow(QMainWindow):
         """Para o movimento manual."""
         self.navigator.motors.stop()
 
+    def _execute_precise_rotation(self, direction: str):
+        """Executa rotação precisa baseada no ângulo configurado."""
+        if self.navigation_active:
+            QMessageBox.warning(self, "Aviso", "Não é possível usar controles manuais durante a navegação automática.")
+            return
+
+        angle_per_click = self.angle_slider.value()
+        
+        # Tempos calibrados para precisão (baseado em testes anteriores)
+        if angle_per_click <= 15:
+            rotation_time = 0.2  # 15° em 0.2s
+        elif angle_per_click <= 30:
+            rotation_time = 0.4  # 30° em 0.4s
+        elif angle_per_click <= 45:
+            rotation_time = 0.6  # 45° em 0.6s
+        elif angle_per_click <= 60:
+            rotation_time = 0.8  # 60° em 0.8s
+        elif angle_per_click <= 90:
+            rotation_time = 1.2  # 90° em 1.2s
+        else:
+            rotation_time = 1.5  # Fallback para ângulos maiores
+
+        # Executa rotação
+        if direction == "left":
+            self.navigator.motors.set_speed(-12, 12)  # Gira para esquerda
+        else:  # direction == "right"
+            self.navigator.motors.set_speed(12, -12)  # Gira para direita
+
+        # Para automaticamente após o tempo calculado
+        QTimer.singleShot(int(rotation_time * 1000), self._stop_precise_rotation)
+
+    def _stop_precise_rotation(self):
+        """Para a rotação precisa."""
+        self.navigator.motors.stop()
+
+    def _on_angle_slider_changed(self, value: int):
+        """Atualiza o ângulo de rotação por clique."""
+        self.angle_label.setText(f"Ângulo por clique: {value}°")
+        
+        # Atualiza textos dos botões
+        self.btn_rotate_precise_left.setText(f"↺ {value}° ESQUERDA")
+        self.btn_rotate_precise_right.setText(f"↻ {value}° DIREITA")
+
     def _set_new_starting_position(self):
         """Define a posição atual como nova posição de partida"""
         current_pos = self.navigator.current_position
@@ -878,114 +899,3 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.warning(self, "Erro", f"Erro ao iniciar retorno à base:\n{e}")
                 self.navigation_active = False
-                self.nav_status_label.setText("Status: Erro")
-                self.nav_progress_bar.setVisible(False)
-                self.nav_info_label.setVisible(False)
-
-    def _stop_precise_rotation(self):
-        """TEMPORARIAMENTE DESABILITADO para restaurar navegação"""
-        # TEMPORARIAMENTE DESABILITADO - CAUSANDO CONFLITO NA NAVEGAÇÃO
-        print("⚠️  _stop_precise_rotation DESABILITADO TEMPORARIAMENTE")
-        return
-        
-        # CÓDIGO ORIGINAL COMENTADO:
-        """
-        try:
-            # Parar motores
-            self.navigator.motors.stop()
-            
-            # Atualizar ângulo na interface (sem modificar odometria existente)
-            # O sistema de odometria existente continuará funcionando normalmente
-            print("✅ Giro preciso concluído - motores parados")
-            
-        except Exception as e:
-            print(f"❌ ERRO ao parar giro preciso: {e}")
-        """
-
-    def _on_angle_slider_changed(self, value: int):
-        """Atualiza o ângulo por clique quando o slider é movido."""
-        try:
-            # Atualizar label
-            self.angle_label.setText(f"{value}°")
-            
-            # Atualizar texto dos botões
-            self.btn_rotate_precise_left.setText(f"↺ {value}° ESQUERDA")
-            self.btn_rotate_precise_right.setText(f"↻ {value}° DIREITA")
-            
-            print(f"🔄 Ângulo por clique atualizado: {value}°")
-            
-        except Exception as e:
-            print(f"❌ ERRO ao atualizar slider de ângulo: {e}")
-
-    def _execute_precise_rotation(self, direction: str):
-        """
-        TEMPORARIAMENTE DESABILITADO para restaurar navegação
-        Executa rotação precisa baseada no ângulo configurado.
-        NÃO INTERFERE na navegação existente - apenas adiciona funcionalidade.
-        """
-        # TEMPORARIAMENTE DESABILITADO - CAUSANDO CONFLITO NA NAVEGAÇÃO
-        print(f"⚠️  GIRO PRECISO DESABILITADO TEMPORARIAMENTE - Direção: {direction}")
-        QMessageBox.information(self, "Giro Preciso", "Funcionalidade temporariamente desabilitada para restaurar navegação.")
-        return
-        
-        # CÓDIGO ORIGINAL COMENTADO:
-        """
-        if self.navigation_active:
-            QMessageBox.warning(self, "Aviso", "Não é possível usar giro preciso durante a navegação automática.")
-            return
-
-        # Obter ângulo do slider (customizável pelo usuário)
-        angle_per_click = self.angle_slider.value()
-        
-        # Obter ângulo atual
-        current_angle = self.navigator.current_angle
-        
-        # Calcular ângulo alvo
-        if direction == "left":
-            target_angle = current_angle - angle_per_click
-            print(f"🔄 GIRO PRECISO: {current_angle:.1f}° → {target_angle:.1f}° (ESQUERDA)")
-        elif direction == "right":
-            target_angle = current_angle + angle_per_click
-            print(f"🔄 GIRO PRECISO: {current_angle:.1f}° → {target_angle:.1f}° (DIREITA)")
-        else:
-            print(f"❌ ERRO: Direção inválida para giro preciso: {direction}")
-            return
-
-        # Executar rotação usando o sistema existente (SEM MODIFICAR)
-        try:
-            # Usar o sistema de motores existente para rotação
-            if direction == "left":
-                # Giro para esquerda: motor esquerdo para trás, direito para frente
-                self.navigator.motors.set_speed(-12, 12)  # Velocidade baixa para precisão
-            else:  # direction == "right"
-                # Giro para direita: motor esquerdo para frente, direito para trás
-                self.navigator.motors.set_speed(12, -12)  # Velocidade baixa para precisão
-
-            # Calcular tempo de rotação baseado na velocidade angular e ângulo
-            # CORREÇÃO URGENTE: Tempos muito longos causando giro excessivo
-            # Observação: 45° configurado para 3s → girou 235° (5x mais!)
-            # Solução: Reduzir drasticamente os tempos
-            
-            # Tempos corrigidos (muito mais curtos)
-            if angle_per_click <= 15:
-                rotation_time = 0.2  # 15° em 0.2s (reduzido de 1.0s)
-            elif angle_per_click <= 30:
-                rotation_time = 0.4  # 30° em 0.4s (reduzido de 2.0s)
-            elif angle_per_click <= 45:
-                rotation_time = 0.6  # 45° em 0.6s (reduzido de 3.0s)
-            elif angle_per_click <= 60:
-                rotation_time = 0.8  # 60° em 0.8s (reduzido de 4.0s)
-            elif angle_per_click <= 90:
-                rotation_time = 1.2  # 90° em 1.2s (reduzido de 6.0s)
-            
-            print(f"🔄 TEMPO CORRIGIDO: {angle_per_click}° em {rotation_time:.1f}s (reduzido drasticamente)")
-            
-            # Timer para parar a rotação após o tempo calculado
-            QTimer.singleShot(int(rotation_time * 1000), self._stop_precise_rotation)
-            
-            print(f"✅ Giro preciso iniciado: {angle_per_click}° em {rotation_time:.2f}s")
-            
-        except Exception as e:
-            print(f"❌ ERRO no giro preciso: {e}")
-            QMessageBox.warning(self, "Erro", f"Erro ao executar giro preciso:\n{e}")
-        """
