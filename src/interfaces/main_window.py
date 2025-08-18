@@ -157,7 +157,7 @@ class MainWindow(QMainWindow):
         
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.speed_slider.setMinimum(100)
-        self.speed_slider.setMaximum(120)
+        self.speed_slider.setMaximum(140)  # EXTENDIDO: de 120% para 140%
         self.speed_slider.setValue(100)
         self.speed_slider.valueChanged.connect(self._on_speed_slider_changed)
         speed_control_layout.addWidget(self.speed_slider)
@@ -780,8 +780,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Aviso", "Não é possível usar controles manuais durante a navegação automática.")
             return
 
-        MANUAL_FORWARD_SPEED = 30
-        MANUAL_TURN_SPEED = 12
+        MANUAL_FORWARD_SPEED = 36  # AUMENTADO 20% para teste (era 30)
+        MANUAL_TURN_SPEED = 14     # AUMENTADO 20% para teste (era 12)
 
         if direction == "forward":
             self.navigator.motors.set_speed(MANUAL_FORWARD_SPEED, MANUAL_FORWARD_SPEED)
@@ -882,7 +882,13 @@ class MainWindow(QMainWindow):
                 self.nav_info_label.setVisible(False)
 
     def _stop_precise_rotation(self):
-        """Para a rotação precisa e atualiza a posição."""
+        """TEMPORARIAMENTE DESABILITADO para restaurar navegação"""
+        # TEMPORARIAMENTE DESABILITADO - CAUSANDO CONFLITO NA NAVEGAÇÃO
+        print("⚠️  _stop_precise_rotation DESABILITADO TEMPORARIAMENTE")
+        return
+        
+        # CÓDIGO ORIGINAL COMENTADO:
+        """
         try:
             # Parar motores
             self.navigator.motors.stop()
@@ -893,6 +899,7 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"❌ ERRO ao parar giro preciso: {e}")
+        """
 
     def _on_angle_slider_changed(self, value: int):
         """Atualiza o ângulo por clique quando o slider é movido."""
@@ -911,8 +918,16 @@ class MainWindow(QMainWindow):
 
     def _execute_precise_rotation(self, direction: str):
         """
+        TEMPORARIAMENTE DESABILITADO para restaurar navegação
         Executa rotação precisa baseada no ângulo configurado.
         NÃO INTERFERE na navegação existente - apenas adiciona funcionalidade.
+        """
+        # TEMPORARIAMENTE DESABILITADO - CAUSANDO CONFLITO NA NAVEGAÇÃO
+        print(f"⚠️  GIRO PRECISO DESABILITADO TEMPORARIAMENTE - Direção: {direction}")
+        QMessageBox.information(self, "Giro Preciso", "Funcionalidade temporariamente desabilitada para restaurar navegação.")
+        return
+        
+        # CÓDIGO ORIGINAL COMENTADO:
         """
         if self.navigation_active:
             QMessageBox.warning(self, "Aviso", "Não é possível usar giro preciso durante a navegação automática.")
@@ -972,3 +987,4 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"❌ ERRO no giro preciso: {e}")
             QMessageBox.warning(self, "Erro", f"Erro ao executar giro preciso:\n{e}")
+        """
