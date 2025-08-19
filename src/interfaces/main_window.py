@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QComboBox, QMessageBox,
-                             QGroupBox, QGridLayout, QInputDialog, QProgressBar, QSlider)
+                             QGroupBox, QGridLayout, QInputDialog, QProgressBar, QSlider,
+                             QScrollArea, QFrame, QSizePolicy, QApplication)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QCursor
 import sys
@@ -20,6 +21,69 @@ import math
 from src.interfaces.edit_point_dialog import EditPointDialog
 from src.interfaces.calibration_window import CalibrationWindow # <-- 1. IMPORTAR
 
+class CollapsibleGroupBox(QGroupBox):
+    """
+    Grupo colapsável que permite expandir/colapsar conteúdo para otimizar espaço em tela.
+    """
+    def __init__(self, title, icon="", collapsed=True):
+        super().__init__()
+        self.collapsed = collapsed
+        self.title_text = title
+        self.icon = icon
+        
+        # Layout principal
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(4, 4, 4, 4)
+        self.main_layout.setSpacing(2)
+        
+        # Cabeçalho clicável
+        self.header_btn = QPushButton()
+        self.header_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                border: 1px solid #ccc;
+                padding: 5px;
+                background-color: #f0f0f0;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+        """)
+        self.header_btn.clicked.connect(self.toggle_collapsed)
+        self.main_layout.addWidget(self.header_btn)
+        
+        # Container para conteúdo
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(5, 5, 5, 5)
+        self.main_layout.addWidget(self.content_widget)
+        
+        # Atualiza o visual
+        self.update_header()
+        self.content_widget.setVisible(not collapsed)
+    
+    def update_header(self):
+        """Atualiza o texto do cabeçalho com ícone de estado."""
+        state_icon = "▼" if not self.collapsed else "▶"
+        self.header_btn.setText(f"{state_icon} {self.icon} {self.title_text}")
+    
+    def toggle_collapsed(self):
+        """Alterna entre expandido e colapsado."""
+        self.collapsed = not self.collapsed
+        self.content_widget.setVisible(not self.collapsed)
+        self.update_header()
+    
+    def set_collapsed(self, collapsed):
+        """Define o estado colapsado programaticamente."""
+        self.collapsed = collapsed
+        self.content_widget.setVisible(not collapsed)
+        self.update_header()
+    
+    def get_content_layout(self):
+        """Retorna o layout onde deve ser adicionado o conteúdo."""
+        return self.content_layout
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -37,9 +101,26 @@ class MainWindow(QMainWindow):
         # Inicializa o MapManager
         self.map_manager = MapManager()
 
-        # Configuração da janela
+        # Configuração da janela com detecção automática de resolução
         self.setWindowTitle("Robô Garçom Autônomo")
-        self.setGeometry(100, 100, 1200, 800)
+        
+        # Detecta resolução da tela para otimizar interface
+        screen = QApplication.primaryScreen().geometry()
+        screen_width = screen.width()
+        screen_height = screen.height()
+        
+        # Adapta tamanho da janela baseado na resolução
+        if screen_width <= 800 or screen_height <= 600:
+            # Tela pequena (Raspberry Pi) - maximiza e otimiza espaço
+            self.setGeometry(0, 0, screen_width, screen_height)
+            self.is_small_screen = True
+            self.showMaximized()
+        else:
+            # Tela grande (desenvolvimento) - janela padrão
+            self.setGeometry(100, 100, 1200, 800)
+            self.is_small_screen = False
+            
+        print(f"🖥️  Resolução detectada: {screen_width}x{screen_height} | Modo: {'Compacto' if self.is_small_screen else 'Desktop'}")
         
         # Layout principal
         main_layout = QHBoxLayout()
@@ -58,13 +139,27 @@ class MainWindow(QMainWindow):
         map_status_layout.addWidget(self.mode_button)
         map_layout.addLayout(map_status_layout)
         
-        # Painel de controle (lado direito)
-        control_panel = QGroupBox("Controles")
-        control_layout = QVBoxLayout()
+        # === PAINEL DE CONTROLE OTIMIZADO ===
+        # Cria scroll area para adaptar a telas pequenas
+        control_scroll = QScrollArea()
+        control_scroll.setWidgetResizable(True)
+        control_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        control_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         
-        # Grupo de Pontos de Interesse
-        poi_group = QGroupBox("Pontos de Interesse")
-        poi_layout = QVBoxLayout()
+        # Widget principal dos controles
+        control_widget = QWidget()
+        control_layout = QVBoxLayout(control_widget)
+        control_layout.setSpacing(5)
+        control_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Configura o scroll area
+        control_scroll.setWidget(control_widget)
+        control_scroll.setMinimumWidth(280 if self.is_small_screen else 350)
+        control_scroll.setMaximumWidth(300 if self.is_small_screen else 400)
+        
+        # === 📍 PONTOS DE INTERESSE (Colapsável) ===
+        poi_group = CollapsibleGroupBox("Pontos de Interesse", "📍", collapsed=True)
+        poi_layout = poi_group.get_content_layout()
         
         # Lista de pontos
         self.poi_combo = QComboBox()
@@ -73,19 +168,23 @@ class MainWindow(QMainWindow):
         
         # Botões de pontos
         poi_buttons = QGridLayout()
-        add_poi_btn = QPushButton("Adicionar Ponto")
+        add_poi_btn = QPushButton("➕ Adicionar")
         add_poi_btn.clicked.connect(self._add_point_of_interest)
-        delete_poi_btn = QPushButton("Excluir Ponto")
+        delete_poi_btn = QPushButton("🗑️ Excluir")
         delete_poi_btn.clicked.connect(self._delete_point_of_interest)
+        
+        # Botões menores para tela pequena
+        if self.is_small_screen:
+            add_poi_btn.setMaximumHeight(30)
+            delete_poi_btn.setMaximumHeight(30)
         
         poi_buttons.addWidget(add_poi_btn, 0, 0)
         poi_buttons.addWidget(delete_poi_btn, 0, 1)
         poi_layout.addLayout(poi_buttons)
-        poi_group.setLayout(poi_layout)
         
-        # Grupo de Áreas Proibidas
-        forbidden_group = QGroupBox("Áreas Proibidas")
-        forbidden_layout = QVBoxLayout()
+        # === 🚫 ÁREAS PROIBIDAS (Colapsável) ===
+        forbidden_group = CollapsibleGroupBox("Áreas Proibidas", "🚫", collapsed=True)
+        forbidden_layout = forbidden_group.get_content_layout()
         
         # Lista de áreas proibidas
         self.forbidden_areas_combo = QComboBox()
@@ -93,41 +192,53 @@ class MainWindow(QMainWindow):
         forbidden_layout.addWidget(self.forbidden_areas_combo)
         
         forbidden_buttons = QGridLayout()
-        add_forbidden_btn = QPushButton("Adicionar Área")
+        add_forbidden_btn = QPushButton("➕ Adicionar")
         add_forbidden_btn.clicked.connect(self._add_forbidden_area)
-        delete_forbidden_btn = QPushButton("Excluir Área")
+        delete_forbidden_btn = QPushButton("🗑️ Excluir")
         delete_forbidden_btn.clicked.connect(self._delete_forbidden_area)
+        
+        # Botões menores para tela pequena
+        if self.is_small_screen:
+            add_forbidden_btn.setMaximumHeight(30)
+            delete_forbidden_btn.setMaximumHeight(30)
         
         forbidden_buttons.addWidget(add_forbidden_btn, 0, 0)
         forbidden_buttons.addWidget(delete_forbidden_btn, 0, 1)
         forbidden_layout.addLayout(forbidden_buttons)
-        forbidden_group.setLayout(forbidden_layout)
 
-        # Grupo de Gerenciamento de Mapas
-        map_management_group = QGroupBox("Gerenciar Mapas")
-        map_management_layout = QGridLayout()
+        # === 🗺️ GERENCIAMENTO DE MAPAS (Colapsável) ===
+        map_management_group = CollapsibleGroupBox("Gerenciar Mapas", "🗺️", collapsed=True)
+        map_management_layout = map_management_group.get_content_layout()
 
-        save_map_btn = QPushButton("Salvar Mapa")
+        # Grid de botões de mapa
+        map_buttons_grid = QGridLayout()
+        
+        save_map_btn = QPushButton("💾 Salvar")
         save_map_btn.clicked.connect(self._save_map)
-        load_map_btn = QPushButton("Carregar Último Mapa")
+        load_map_btn = QPushButton("📂 Carregar")
         load_map_btn.clicked.connect(self._load_active_map)
-        autosave_btn = QPushButton("Autosave: ON")
+        autosave_btn = QPushButton("🔄 Autosave: ON")
         autosave_btn.clicked.connect(self._toggle_autosave)
         self.autosave_button = autosave_btn  # Referência para atualizar o texto
 
-        # --- 2. ADICIONAR O BOTÃO ---
-        calibrate_btn = QPushButton("Calibrar PID")
+        calibrate_btn = QPushButton("⚙️ Calibrar PID")
         calibrate_btn.clicked.connect(self._open_calibration_window)
 
-        map_management_layout.addWidget(save_map_btn, 0, 0)
-        map_management_layout.addWidget(load_map_btn, 0, 1)
-        map_management_layout.addWidget(autosave_btn, 1, 0)
-        map_management_layout.addWidget(calibrate_btn, 1, 1) # <-- Adiciona o botão ao layout
-        map_management_group.setLayout(map_management_layout)
+        # Botões menores para tela pequena
+        map_buttons = [save_map_btn, load_map_btn, autosave_btn, calibrate_btn]
+        if self.is_small_screen:
+            for btn in map_buttons:
+                btn.setMaximumHeight(30)
+
+        map_buttons_grid.addWidget(save_map_btn, 0, 0)
+        map_buttons_grid.addWidget(load_map_btn, 0, 1)
+        map_buttons_grid.addWidget(autosave_btn, 1, 0)
+        map_buttons_grid.addWidget(calibrate_btn, 1, 1)
+        map_management_layout.addLayout(map_buttons_grid)
         
-        # Grupo de Navegação Melhorado
-        nav_group = QGroupBox("Navegação")
-        nav_layout = QVBoxLayout()
+        # === 🎯 NAVEGAÇÃO (Expansível, inicialmente aberto) ===
+        nav_group = CollapsibleGroupBox("Navegação", "🎯", collapsed=False)
+        nav_layout = nav_group.get_content_layout()
         
         # Campo de seleção de destino
         destination_layout = QHBoxLayout()
@@ -196,47 +307,67 @@ class MainWindow(QMainWindow):
         nav_layout.addWidget(speed_group)
 
         nav_buttons = QGridLayout()
-        start_nav_btn = QPushButton("Iniciar Navegação")
+        start_nav_btn = QPushButton("🚀 Iniciar" if self.is_small_screen else "🚀 Iniciar Navegação")
         start_nav_btn.clicked.connect(self._start_navigation)
-        stop_nav_btn = QPushButton("Parar")
+        stop_nav_btn = QPushButton("🛑 Parar")
         stop_nav_btn.clicked.connect(self._stop_robot)
+        
+        # Botões menores para tela pequena
+        if self.is_small_screen:
+            start_nav_btn.setMaximumHeight(35)
+            stop_nav_btn.setMaximumHeight(35)
+            start_nav_btn.setStyleSheet("font-weight: bold; background-color: #4CAF50; color: white;")
+            stop_nav_btn.setStyleSheet("font-weight: bold; background-color: #f44336; color: white;")
         
         nav_buttons.addWidget(start_nav_btn, 0, 0)
         nav_buttons.addWidget(stop_nav_btn, 0, 1)
         nav_layout.addLayout(nav_buttons)
-        nav_group.setLayout(nav_layout)
         
-        # Grupo de Controles Manuais
-        manual_control_group = QGroupBox("Controles Manuais")
-        manual_layout = QVBoxLayout()
+        # === 🕹️ CONTROLES MANUAIS (Expansível, inicialmente aberto) ===
+        manual_control_group = CollapsibleGroupBox("Controles Manuais", "🕹️", collapsed=False)
+        manual_layout = manual_control_group.get_content_layout()
 
-        # Grid de botões direcionais
+        # Grid de botões direcionais otimizado para tela pequena
         direction_grid = QGridLayout()
+        direction_grid.setSpacing(3 if self.is_small_screen else 5)
+        
+        # Tamanhos adaptativos
+        btn_size = 35 if self.is_small_screen else 40
+        rotate_width = 60 if self.is_small_screen else 80
+        rotate_height = 25 if self.is_small_screen else 40
         
         # Botão FRENTE (⬆️)
         self.btn_forward = QPushButton("⬆️")
-        self.btn_forward.setMinimumSize(40, 40)
+        self.btn_forward.setFixedSize(btn_size, btn_size)
         self.btn_forward.pressed.connect(lambda: self._manual_move_start("forward"))
         self.btn_forward.released.connect(self._manual_move_stop)
+        if self.is_small_screen:
+            self.btn_forward.setStyleSheet("font-size: 14px; font-weight: bold;")
         direction_grid.addWidget(self.btn_forward, 0, 1)
         
-        # Botão GIRO PRECISO ESQUERDA (substitui seta esquerda)
-        self.btn_rotate_precise_left = QPushButton("↺ 45° ESQ")
-        self.btn_rotate_precise_left.setMinimumSize(80, 40)
+        # Botão GIRO PRECISO ESQUERDA
+        self.btn_rotate_precise_left = QPushButton("↺ ESQ" if self.is_small_screen else "↺ 45° ESQ")
+        self.btn_rotate_precise_left.setFixedSize(rotate_width, rotate_height)
         self.btn_rotate_precise_left.clicked.connect(lambda: self._execute_precise_rotation("left"))
+        if self.is_small_screen:
+            self.btn_rotate_precise_left.setStyleSheet("font-size: 9px; font-weight: bold;")
         direction_grid.addWidget(self.btn_rotate_precise_left, 1, 0)
         
-        # Botão GIRO PRECISO DIREITA (substitui seta direita)
-        self.btn_rotate_precise_right = QPushButton("↻ 45° DIR")
-        self.btn_rotate_precise_right.setMinimumSize(80, 40)
+        # Botão GIRO PRECISO DIREITA
+        self.btn_rotate_precise_right = QPushButton("↻ DIR" if self.is_small_screen else "↻ 45° DIR")
+        self.btn_rotate_precise_right.setFixedSize(rotate_width, rotate_height)
         self.btn_rotate_precise_right.clicked.connect(lambda: self._execute_precise_rotation("right"))
+        if self.is_small_screen:
+            self.btn_rotate_precise_right.setStyleSheet("font-size: 9px; font-weight: bold;")
         direction_grid.addWidget(self.btn_rotate_precise_right, 1, 2)
         
         # Botão TRÁS (⬇️)
         self.btn_backward = QPushButton("⬇️")
-        self.btn_backward.setMinimumSize(40, 40)
+        self.btn_backward.setFixedSize(btn_size, btn_size)
         self.btn_backward.pressed.connect(lambda: self._manual_move_start("backward"))
         self.btn_backward.released.connect(self._manual_move_stop)
+        if self.is_small_screen:
+            self.btn_backward.setStyleSheet("font-size: 14px; font-weight: bold;")
         direction_grid.addWidget(self.btn_backward, 2, 1)
 
         # Adiciona o grid ao layout manual
@@ -269,18 +400,21 @@ class MainWindow(QMainWindow):
         
         manual_control_group.setLayout(manual_layout)
         
-        # Adiciona todos os grupos ao painel de controle
+        # === ORDEM OTIMIZADA PARA TELAS PEQUENAS ===
+        # Prioritários (sempre visíveis) primeiro
+        control_layout.addWidget(nav_group)
+        control_layout.addWidget(manual_control_group)
+        
+        # Secundários (colapsáveis) depois
         control_layout.addWidget(poi_group)
         control_layout.addWidget(forbidden_group)
         control_layout.addWidget(map_management_group)
-        control_layout.addWidget(nav_group)
-        control_layout.addWidget(manual_control_group)
-        control_layout.addStretch()
-        control_panel.setLayout(control_layout)
+        
+        control_layout.addStretch()  # Empurra tudo para o topo
         
         # Adiciona os painéis ao layout principal
         main_layout.addLayout(map_layout, stretch=2)
-        main_layout.addWidget(control_panel, stretch=1)
+        main_layout.addWidget(control_scroll, stretch=1)
         
         # Define o layout
         central_widget = QWidget()
