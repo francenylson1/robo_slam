@@ -150,18 +150,50 @@ class MainWindow(QMainWindow):
         self.nav_info_label.setVisible(False)
         nav_layout.addWidget(self.nav_info_label)
 
-        # Controle de velocidade
-        speed_control_layout = QHBoxLayout()
-        self.speed_label = QLabel("Velocidade: 100%")
-        speed_control_layout.addWidget(self.speed_label)
+        # === NOVO SISTEMA DE CONTROLE DE VELOCIDADE ===
+        speed_group = QGroupBox("Controle de Velocidade")
+        speed_group_layout = QVBoxLayout()
+        
+        # Seletor de perfil de velocidade
+        profile_layout = QHBoxLayout()
+        profile_layout.addWidget(QLabel("Modo:"))
+        
+        self.speed_profile_combo = QComboBox()
+        self.speed_profile_combo.addItem("🐌 Lenta (Precisão)", "slow")
+        self.speed_profile_combo.addItem("⚡ Normal (Balanceado)", "normal") 
+        self.speed_profile_combo.addItem("🚀 Rápida (Velocidade)", "fast")
+        self.speed_profile_combo.setCurrentIndex(1)  # Normal como padrão
+        self.speed_profile_combo.currentTextChanged.connect(self._on_speed_profile_changed)
+        profile_layout.addWidget(self.speed_profile_combo)
+        speed_group_layout.addLayout(profile_layout)
+        
+        # Informações do perfil atual
+        self.speed_info_label = QLabel("Normal: Navegação balanceada - uso geral")
+        self.speed_info_label.setStyleSheet("color: #666; font-size: 10px;")
+        speed_group_layout.addWidget(self.speed_info_label)
+        
+        # Slider de ajuste fino (multiplicador)
+        fine_tune_layout = QHBoxLayout()
+        fine_tune_layout.addWidget(QLabel("Ajuste:"))
         
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
-        self.speed_slider.setMinimum(100)
-        self.speed_slider.setMaximum(120)  # MÁXIMO SEGURO: reduzido de 140% para 120% para evitar quebrar navegação
-        self.speed_slider.setValue(100)
+        self.speed_slider.setMinimum(80)   # 80% do perfil selecionado
+        self.speed_slider.setMaximum(120)  # 120% do perfil selecionado (com validação de segurança)
+        self.speed_slider.setValue(100)    # 100% = valor padrão do perfil
         self.speed_slider.valueChanged.connect(self._on_speed_slider_changed)
-        speed_control_layout.addWidget(self.speed_slider)
-        nav_layout.addLayout(speed_control_layout)
+        fine_tune_layout.addWidget(self.speed_slider)
+        
+        self.speed_percent_label = QLabel("100%")
+        fine_tune_layout.addWidget(self.speed_percent_label)
+        speed_group_layout.addLayout(fine_tune_layout)
+        
+        # Status de segurança
+        self.safety_status_label = QLabel("🟢 Sistema Seguro")
+        self.safety_status_label.setStyleSheet("color: green; font-weight: bold;")
+        speed_group_layout.addWidget(self.safety_status_label)
+        
+        speed_group.setLayout(speed_group_layout)
+        nav_layout.addWidget(speed_group)
 
         nav_buttons = QGridLayout()
         start_nav_btn = QPushButton("Iniciar Navegação")
@@ -279,6 +311,11 @@ class MainWindow(QMainWindow):
 
         # Carrega e aplica os ganhos do PID salvos
         self._load_and_apply_pid_gains()
+        
+        # Timer para atualizar status de segurança
+        self.safety_timer = QTimer()
+        self.safety_timer.timeout.connect(self._update_safety_status)
+        self.safety_timer.start(1000)  # Atualiza a cada 1 segundo
 
     def _load_and_apply_pid_gains(self):
         """Carrega os ganhos do PID do banco de dados e os aplica ao controlador."""
@@ -717,13 +754,59 @@ class MainWindow(QMainWindow):
         """Callback para quando uma área proibida é clicada."""
         pass
 
+    def _on_speed_profile_changed(self):
+        """Chamado quando o perfil de velocidade é alterado."""
+        profile_data = self.speed_profile_combo.currentData()
+        if profile_data and self.navigator and self.navigator.motors:
+            # Aplica o novo perfil no controlador de motores
+            success = self.navigator.motors.set_speed_profile(profile_data)
+            
+            if success:
+                # Atualiza informações na interface
+                profile_info = self.navigator.motors.get_current_speed_profile()
+                self.speed_info_label.setText(f"{profile_info['description']}")
+                
+                # Reseta o slider para 100% do novo perfil
+                self.speed_slider.setValue(100)
+                self.speed_percent_label.setText("100%")
+                
+                # Aplica o novo multiplicador
+                self.navigator.set_speed_multiplier(1.0)
+                
+                print(f"✅ Perfil de velocidade alterado: {profile_info['name']} - {profile_info['tps']} TPS")
+
     def _on_speed_slider_changed(self, value):
-        """Atualiza a velocidade do robô quando o slider é movido."""
-        speed_percentage = value
-        self.speed_label.setText(f"Velocidade: {speed_percentage}%")
+        """Atualiza o ajuste fino da velocidade quando o slider é movido."""
+        self.speed_percent_label.setText(f"{value}%")
         
-        multiplier = speed_percentage / 100.0
-        self.navigator.set_speed_multiplier(multiplier)
+        # Calcula o multiplicador baseado no slider (80% a 120% do perfil atual)
+        multiplier = value / 100.0
+        
+        if self.navigator:
+            self.navigator.set_speed_multiplier(multiplier)
+            
+            # Atualiza status de segurança se necessário
+            self._update_safety_status()
+
+    def _update_safety_status(self):
+        """Atualiza o status do sistema de segurança na interface."""
+        if self.navigator and self.navigator.motors:
+            safety_status = self.navigator.motors.get_safety_status()
+            
+            if safety_status['violation_active']:
+                # Sistema em violação
+                duration = safety_status['violation_duration']
+                self.safety_status_label.setText(f"🔴 AVISO: Excesso potência ({duration:.1f}s)")
+                self.safety_status_label.setStyleSheet("color: red; font-weight: bold;")
+            elif safety_status['monitor_enabled']:
+                # Sistema funcionando normalmente
+                profile = safety_status['current_profile']
+                self.safety_status_label.setText(f"🟢 Sistema Seguro ({profile})")
+                self.safety_status_label.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                # Monitor desabilitado
+                self.safety_status_label.setText("🟡 Monitor Desabilitado")
+                self.safety_status_label.setStyleSheet("color: orange; font-weight: bold;")
 
     def _complete_navigation_and_reset(self):
         """Completa a navegação e faz reset completo da interface para permitir nova navegação"""

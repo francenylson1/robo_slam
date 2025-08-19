@@ -122,7 +122,44 @@ ROBOT_WHEEL_BASE_M = 0.1075  # CALIBRADO: Ajuste final baseado no fator de erro 
 ROBOT_WHEEL_CIRCUMFERENCE_M = 0.525 # Circunferencia da roda em metros (medida em 52.5cm)
 ROBOT_WHEEL_RADIUS_M = ROBOT_WHEEL_CIRCUMFERENCE_M / (2 * 3.1415926535) # Raio calculado a partir da circunferencia
 TICKS_PER_REVOLUTION = 45 # VALOR CALIBRADO: Medido experimentalmente em 45 ticks por volta completa da roda.
-MANUAL_CONTROL_MAX_TPS = 50 # Velocidade alvo (em ticks/seg) para o modo manual, para garantir boa resposta.
+
+# === SISTEMA DE VELOCIDADES SEGURAS ===
+# Baseado no protocolo de segurança: máximo 12-15% potência direta dos motores
+
+# Velocidades escalonadas (TPS) respeitando limites de segurança
+SPEED_SLOW_TPS = 20      # Lenta - até 8% potência máxima  (precisão máxima)
+SPEED_NORMAL_TPS = 35    # Média - até 12% potência máxima (navegação normal)  
+SPEED_FAST_TPS = 50      # Alta - até 15% potência máxima  (trajetos longos)
+
+# Velocidade padrão (compatibilidade com código legado)
+MANUAL_CONTROL_MAX_TPS = SPEED_NORMAL_TPS  # Usa velocidade média como padrão
+
+# Perfis PID otimizados para cada velocidade
+PID_PROFILES = {
+    'slow': {
+        'Kp': 0.40, 'Ki': 0.30, 'Kd': 0.05, 
+        'output_limits': (-8, 8),    # 8% potência máxima
+        'tps': SPEED_SLOW_TPS,
+        'description': 'Precisão máxima - aproximação final'
+    },
+    'normal': {
+        'Kp': 0.35, 'Ki': 0.25, 'Kd': 0.03,
+        'output_limits': (-12, 12),  # 12% potência máxima
+        'tps': SPEED_NORMAL_TPS,
+        'description': 'Navegação balanceada - uso geral'
+    },
+    'fast': {
+        'Kp': 0.30, 'Ki': 0.20, 'Kd': 0.01,
+        'output_limits': (-15, 15),  # 15% potência máxima (LIMITE SEGURANÇA)
+        'tps': SPEED_FAST_TPS,
+        'description': 'Velocidade máxima - trajetos longos'
+    }
+}
+
+# Configurações de segurança para validação automática
+SAFETY_MAX_MOTOR_POWER_PERCENT = 15.0  # NUNCA exceder 15% da potência total
+SAFETY_POWER_MONITOR_INTERVAL = 0.1    # Verificar a cada 100ms
+SAFETY_POWER_VIOLATION_TIMEOUT = 0.2   # Máximo 200ms acima do limite antes de parada de emergência
 
 # Limites de velocidade para o PID
 # A linha abaixo foi MODIFICADA para usar ROBOT_SPEED como fonte única de verdade.

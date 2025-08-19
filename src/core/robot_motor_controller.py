@@ -10,7 +10,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from src.core.environment import GPIO_AVAILABLE
 from src.core.pid_controller import PIDController
-from src.core.config import TICKS_PER_REVOLUTION, MANUAL_CONTROL_MAX_TPS # Importa as constantes necessárias
+from src.core.config import (TICKS_PER_REVOLUTION, MANUAL_CONTROL_MAX_TPS, 
+                            PID_PROFILES, SAFETY_MAX_MOTOR_POWER_PERCENT,
+                            SAFETY_POWER_MONITOR_INTERVAL, SAFETY_POWER_VIOLATION_TIMEOUT) # Importa as constantes necessárias
 
 if GPIO_AVAILABLE:
     try:
@@ -52,13 +54,16 @@ class RobotMotorController(QObject):
         self.simulated_right_tps = 0.0
         self.last_sim_time = time.time()
         
-        # --- ATRIBUTOS DO PID ---
-        # Movidos para fora do bloco 'if GPIO_AVAILABLE' para que existam
-        # tanto em modo real quanto simulado.
-        # Aumentando o limite de saída para 90% para dar ao PID mais autoridade para vencer a inércia.
-        self.pid_left = PIDController(Kp=0.26, Ki=0.23, Kd=0.0, setpoint=0, output_limits=(-90, 90))
-        self.pid_right = PIDController(Kp=0.26, Ki=0.23, Kd=0.0, setpoint=0, output_limits=(-90, 90))
+        # --- SISTEMA DE PERFIS PID SEGURO ---
+        # Inicializa com perfil 'normal' (velocidade média segura)
+        self.current_speed_profile = 'normal'
+        self._initialize_pid_controllers()
         self.pid_enabled = False
+        
+        # --- SISTEMA DE MONITORAMENTO DE SEGURANÇA ---
+        self.safety_monitor_enabled = True
+        self.last_safety_check = time.time()
+        self.power_violation_start_time = None
 
         # Atributos para feedback de velocidade
         self.left_hall_ticks = 0
@@ -222,17 +227,9 @@ class RobotMotorController(QObject):
             left_power = self.pid_left.update(self.current_left_tps)
             right_power = self.pid_right.update(self.current_right_tps)
             
-            # --- SOLUÇÃO DEFINITIVA: Piso de potência mínima ---
-            # Se o PID gerar potência muito baixa mas há setpoint, aplica potência mínima
-            MIN_POWER_THRESHOLD = 4.0  # Se PID gerar menos que 4%, usa piso mínimo
-            MIN_POWER_FLOOR = 7.0     # AUMENTADO: Piso de potência mínima (era 6.0)
-            
-            # --- REMOVIDO: O piso de potência estava causando oscilação ou travamento.
-            # A abordagem correta é ajustar os ganhos do PID para que ele mesmo
-            # possa superar a inércia inicial de forma suave.
-            
-            # --- DESABILITADO: Print do PID para logs limpos ---
-            # print(f"DEBUG PID: Target L:{self.pid_left.setpoint:.1f}tps R:{self.pid_right.setpoint:.1f}tps | Real L:{self.current_left_tps:.1f}tps R:{self.current_right_tps:.1f}tps | Output L:{left_power:.1f}% R:{right_power:.1f}%")
+            # 3. SISTEMA DE SEGURANÇA: Validação automática da potência
+            if self.safety_monitor_enabled:
+                self._safety_power_check(left_power, right_power)
             
             # --- Emite o sinal em uma frequência controlada para não sobrecarregar a GUI ---
             current_time = time.time()
@@ -315,9 +312,63 @@ class RobotMotorController(QObject):
             self.simulated_left_tps = left_tps
             self.simulated_right_tps = right_tps
 
+    def _initialize_pid_controllers(self):
+        """Inicializa os controladores PID com o perfil atual."""
+        profile = PID_PROFILES[self.current_speed_profile]
+        
+        self.pid_left = PIDController(
+            Kp=profile['Kp'], 
+            Ki=profile['Ki'], 
+            Kd=profile['Kd'], 
+            setpoint=0, 
+            output_limits=profile['output_limits']
+        )
+        self.pid_right = PIDController(
+            Kp=profile['Kp'], 
+            Ki=profile['Ki'], 
+            Kd=profile['Kd'], 
+            setpoint=0, 
+            output_limits=profile['output_limits']
+        )
+        
+        print(f"🎯 PID Profile '{self.current_speed_profile}' aplicado: "
+              f"Kp={profile['Kp']}, Ki={profile['Ki']}, Kd={profile['Kd']}, "
+              f"Limits={profile['output_limits']}, TPS={profile['tps']}")
+
+    def set_speed_profile(self, profile_name: str):
+        """
+        Altera o perfil de velocidade (slow/normal/fast) com PID otimizado.
+        
+        Args:
+            profile_name: 'slow', 'normal', ou 'fast'
+        """
+        if profile_name not in PID_PROFILES:
+            print(f"❌ ERRO: Perfil '{profile_name}' não existe. Usando 'normal'.")
+            profile_name = 'normal'
+            
+        if profile_name != self.current_speed_profile:
+            self.current_speed_profile = profile_name
+            self._initialize_pid_controllers()
+            
+            profile = PID_PROFILES[profile_name]
+            print(f"✅ Perfil de velocidade alterado para '{profile_name}': {profile['description']}")
+            return True
+        return False
+
+    def get_current_speed_profile(self) -> dict:
+        """Retorna informações do perfil de velocidade atual."""
+        profile = PID_PROFILES[self.current_speed_profile]
+        return {
+            'name': self.current_speed_profile,
+            'tps': profile['tps'],
+            'description': profile['description'],
+            'gains': {'Kp': profile['Kp'], 'Ki': profile['Ki'], 'Kd': profile['Kd']},
+            'limits': profile['output_limits']
+        }
+
     def set_pid_gains(self, side, Kp, Ki, Kd):
         """
-        Atualiza os ganhos do PID para um dos motores.
+        Atualiza os ganhos do PID para um dos motores (método legado mantido para compatibilidade).
         """
         if side == 'left':
             self.pid_left.set_gains(Kp, Ki, Kd)
@@ -477,6 +528,57 @@ class RobotMotorController(QObject):
         self.precise_rotation_left_direction = None
         self.precise_rotation_right_direction = None
         self.precise_rotation_mode = False  # Volta para debounce estável
+
+    def _safety_power_check(self, left_power: float, right_power: float):
+        """
+        Sistema de monitoramento de segurança que verifica se a potência 
+        está dentro dos limites seguros (≤15%).
+        """
+        current_time = time.time()
+        
+        # Verifica se está na frequência correta de monitoramento
+        if current_time - self.last_safety_check < SAFETY_POWER_MONITOR_INTERVAL:
+            return
+            
+        self.last_safety_check = current_time
+        max_power = max(abs(left_power), abs(right_power))
+        
+        # Se a potência excede o limite de segurança
+        if max_power > SAFETY_MAX_MOTOR_POWER_PERCENT:
+            
+            # Primeira violação - inicia contagem
+            if self.power_violation_start_time is None:
+                self.power_violation_start_time = current_time
+                print(f"⚠️  AVISO SEGURANÇA: Potência {max_power:.1f}% excede limite de {SAFETY_MAX_MOTOR_POWER_PERCENT}%")
+            
+            # Violação prolongada - PARADA DE EMERGÊNCIA
+            elif (current_time - self.power_violation_start_time) > SAFETY_POWER_VIOLATION_TIMEOUT:
+                print(f"🚨 PARADA DE EMERGÊNCIA: Potência {max_power:.1f}% acima do limite por {SAFETY_POWER_VIOLATION_TIMEOUT}s!")
+                print("🚨 Reduzindo automaticamente para perfil 'slow' por segurança.")
+                
+                # Para os motores imediatamente
+                self.stop_motors()
+                
+                # Reduz automaticamente para perfil mais lento
+                self.set_speed_profile('slow')
+                
+                # Reseta o timer de violação
+                self.power_violation_start_time = None
+                
+        else:
+            # Potência dentro do limite - reseta o timer
+            if self.power_violation_start_time is not None:
+                self.power_violation_start_time = None
+
+    def get_safety_status(self) -> dict:
+        """Retorna o status atual do sistema de segurança."""
+        return {
+            'monitor_enabled': self.safety_monitor_enabled,
+            'max_power_limit': SAFETY_MAX_MOTOR_POWER_PERCENT,
+            'current_profile': self.current_speed_profile,
+            'violation_active': self.power_violation_start_time is not None,
+            'violation_duration': (time.time() - self.power_violation_start_time) if self.power_violation_start_time else 0
+        }
 
     def cleanup(self):
         """Limpa os recursos do GPIO de forma segura."""
