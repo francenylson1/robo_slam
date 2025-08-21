@@ -339,8 +339,9 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
         
-        # Se o robô já está bem alinhado (tolerância de 15°), pula a orientação
-        if angle_error < 15.0:
+        # 🎯 CORREÇÃO APRIMORADA: Tolerância ainda mais permissiva para evitar loops
+        # Se o robô já está bem alinhado (tolerância de 20°), pula a orientação
+        if angle_error < 20.0:
             print(f"🎯 PULO INTELIGENTE: Destino já alinhado (erro: {angle_error:.1f}°), iniciando navegação direta")
             self.navigation_state = "NAVIGATING_TO_DESTINATION"
         else:
@@ -390,18 +391,19 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
-        # 🎯 CORREÇÃO CIRÚRGICA: Tolerância expandida para reduzir ajustes desnecessários
-        if abs(angle_error) < 10.0:  # Aumentado de 5.0 para 10.0 graus
+        # 🎯 CORREÇÃO APRIMORADA: Tolerância ainda mais expandida para evitar loops
+        if abs(angle_error) < 15.0:  # Aumentado de 10.0 para 15.0 graus para evitar loops
             self.motors.stop()
             state_key = "RETURNING_TO_BASE" if self.is_returning_to_base else "NAVIGATING_TO_DESTINATION"
             print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key} (ângulo OK: {abs(angle_error):.1f}°)")
             self.navigation_state = state_key
             return
 
-        # 🎯 CORREÇÃO CIRÚRGICA: Força drasticamente reduzida para orientação suave
+        # 🎯 CORREÇÃO APRIMORADA: Força ainda mais reduzida para máxima suavidade
         # ANTES: angular_speed_rads = math.radians(angle_error) * 5.0  ← Era muito forte!
-        # AGORA: Força reduzida para 1.5 (70% menos força)
-        angular_speed_rads = math.radians(angle_error) * 1.5 
+        # V1: angular_speed_rads = math.radians(angle_error) * 1.5  ← Ainda causava 1 loop
+        # V2: Força reduzida para 1.0 (80% menos força que o original)
+        angular_speed_rads = math.radians(angle_error) * 1.0 
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = 0.0  # Velocidade linear é zero durante a orientação
@@ -414,10 +416,11 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
-        # 🎯 CORREÇÃO CIRÚRGICA: Força mínima reduzida para movimentos mais suaves
+        # 🎯 CORREÇÃO APRIMORADA: Força mínima ainda mais reduzida para máxima suavidade
         # ANTES: MIN_TURN_TPS = 20.0  ← Era muito forte para ajustes sutis!
-        # AGORA: Força mínima reduzida para 12.0 (40% menos força)
-        MIN_TURN_TPS = 12.0
+        # V1: MIN_TURN_TPS = 12.0  ← Ainda causava 1 loop em 7 testes
+        # V2: Força mínima reduzida para 8.0 (60% menos força que original)
+        MIN_TURN_TPS = 8.0
         if 0 < abs(left_tps) < MIN_TURN_TPS:
             left_tps = MIN_TURN_TPS * (1 if left_tps > 0 else -1)
         if 0 < abs(right_tps) < MIN_TURN_TPS:
