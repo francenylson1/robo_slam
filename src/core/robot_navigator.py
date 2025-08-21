@@ -332,8 +332,20 @@ class RobotNavigator(QObject):
         self.current_target = self.path[0]
         
         print(f"DEBUG: Caminho calculado com {len(self.path)} pontos.")
-        print("🔄 MUDANÇA DE FASE: IDLE → ORIENTING_TO_TARGET")
-        self.navigation_state = "ORIENTING_TO_TARGET"
+        
+        # 🎯 CORREÇÃO CIRÚRGICA: Verificação inteligente para pular orientação desnecessária
+        dx = self.current_target[0] - self.current_position[0]
+        dy = self.current_target[1] - self.current_position[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
+        
+        # Se o robô já está bem alinhado (tolerância de 15°), pula a orientação
+        if angle_error < 15.0:
+            print(f"🎯 PULO INTELIGENTE: Destino já alinhado (erro: {angle_error:.1f}°), iniciando navegação direta")
+            self.navigation_state = "NAVIGATING_TO_DESTINATION"
+        else:
+            print(f"🔄 MUDANÇA DE FASE: IDLE → ORIENTING_TO_TARGET (erro: {angle_error:.1f}°)")
+            self.navigation_state = "ORIENTING_TO_TARGET"
 
     def get_navigation_status(self) -> dict:
         """Retorna o status atual da navegação"""
@@ -378,15 +390,18 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
-        if abs(angle_error) < 5.0:  # Tolerância de 5 graus
+        # 🎯 CORREÇÃO CIRÚRGICA: Tolerância expandida para reduzir ajustes desnecessários
+        if abs(angle_error) < 10.0:  # Aumentado de 5.0 para 10.0 graus
             self.motors.stop()
             state_key = "RETURNING_TO_BASE" if self.is_returning_to_base else "NAVIGATING_TO_DESTINATION"
-            print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key}")
+            print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key} (ângulo OK: {abs(angle_error):.1f}°)")
             self.navigation_state = state_key
             return
 
-        # Volta para PID tradicional com força mínima garantida
-        angular_speed_rads = math.radians(angle_error) * 5.0 
+        # 🎯 CORREÇÃO CIRÚRGICA: Força drasticamente reduzida para orientação suave
+        # ANTES: angular_speed_rads = math.radians(angle_error) * 5.0  ← Era muito forte!
+        # AGORA: Força reduzida para 1.5 (70% menos força)
+        angular_speed_rads = math.radians(angle_error) * 1.5 
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = 0.0  # Velocidade linear é zero durante a orientação
@@ -399,13 +414,16 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
-        # Aplica força mínima se a velocidade calculada for muito baixa
-        MIN_TURN_TPS = 20.0
+        # 🎯 CORREÇÃO CIRÚRGICA: Força mínima reduzida para movimentos mais suaves
+        # ANTES: MIN_TURN_TPS = 20.0  ← Era muito forte para ajustes sutis!
+        # AGORA: Força mínima reduzida para 12.0 (40% menos força)
+        MIN_TURN_TPS = 12.0
         if 0 < abs(left_tps) < MIN_TURN_TPS:
             left_tps = MIN_TURN_TPS * (1 if left_tps > 0 else -1)
         if 0 < abs(right_tps) < MIN_TURN_TPS:
             right_tps = MIN_TURN_TPS * (1 if right_tps > 0 else -1)
         
+        print(f"🔄 ORIENTAÇÃO SUAVE: erro={angle_error:.1f}°, left_tps={left_tps:.1f}, right_tps={right_tps:.1f}")
         self.motors.set_target_speed(left_tps, right_tps)
 
     def _move_towards_target(self):
