@@ -769,17 +769,18 @@ class MainWindow(QMainWindow):
             return
             
         try:
-            self.navigator.navigate_to_destination_only(destination)
+            # 🚀 NOVA FASE: Navegação automática completa (ida + volta)
+            self.navigator.navigate_to_and_return(destination)
             self.navigation_active = True
             
             if hasattr(self.navigator, 'path') and self.navigator.path:
                 self.map_widget.set_current_path(self.navigator.path)
             
-            self.nav_status_label.setText("Status: Navegando...")
+            self.nav_status_label.setText("Status: Navegação automática (ida + volta)...")
             self.nav_progress_bar.setVisible(True)
             self.nav_progress_bar.setValue(0)
             self.nav_info_label.setVisible(True)
-            self.status_label.setText("Navegando...")
+            self.status_label.setText("Navegação automática ativa...")
             
         except Exception as e:
             QMessageBox.warning(self, "Erro", f"Erro ao iniciar navegação:\n{e}")
