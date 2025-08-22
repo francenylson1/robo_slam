@@ -348,6 +348,51 @@ class RobotNavigator(QObject):
             print(f"🔄 MUDANÇA DE FASE: IDLE → ORIENTING_TO_TARGET (erro: {angle_error:.1f}°)")
             self.navigation_state = "ORIENTING_TO_TARGET"
 
+    def navigate_to_and_return(self, destination: Tuple[float, float]) -> None:
+        """Navega até o destino e retorna automaticamente à base (ida + volta)"""
+        print(f"DEBUG: ===== NAVEGAÇÃO COMPLETA (IDA + VOLTA) =====")
+        print(f"DEBUG: Destino: {destination}")
+        print(f"DEBUG: Base: {ROBOT_INITIAL_POSITION}")
+        print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
+        
+        self.reset_to_initial_state()
+        
+        self.navigation_active = True
+        self.start_time = time.time()
+        self.is_returning_to_base = False
+        self.should_return_to_base = True  # 🎯 DIFERENÇA: Ativa retorno automático
+        self.final_approach_start_time = None
+        
+        path_to_destination = self.path_finder.find_path(self.current_position, destination)
+        if not path_to_destination or len(path_to_destination) < 2:
+            print("DEBUG: ERRO - Não foi possível encontrar caminho para o destino")
+            self.navigation_active = False
+            return
+
+        self.path = path_to_destination
+        self.path_index = 0
+        
+        self.original_destination = destination
+        self.destination_index = len(path_to_destination) - 1
+        
+        self.current_target = self.path[0]
+        
+        print(f"DEBUG: Caminho calculado com {len(self.path)} pontos.")
+        
+        # 🎯 REUTILIZA TODAS AS CORREÇÕES DE PRECISÃO JÁ TESTADAS
+        dx = self.current_target[0] - self.current_position[0]
+        dy = self.current_target[1] - self.current_position[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
+        
+        # 🎯 MESMAS CORREÇÕES FINAIS que deram 83% de precisão
+        if angle_error < 25.0:
+            print(f"🎯 PULO INTELIGENTE: Destino já alinhado (erro: {angle_error:.1f}°), iniciando navegação direta")
+            self.navigation_state = "NAVIGATING_TO_DESTINATION"
+        else:
+            print(f"🔄 MUDANÇA DE FASE: IDLE → ORIENTING_TO_TARGET (erro: {angle_error:.1f}°)")
+            self.navigation_state = "ORIENTING_TO_TARGET"
+
     def get_navigation_status(self) -> dict:
         """Retorna o status atual da navegação"""
         if not self.navigation_active:
