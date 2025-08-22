@@ -233,35 +233,29 @@ class RobotNavigator(QObject):
         self.path_index = 0
         print("DEBUG: === NAVEGAÇÃO FINALIZADA ===")
         
-    def _calculate_and_execute_return_angle(self):
-        """Calcula o ângulo necessário para retornar à base e inicia o giro"""
-        print("DEBUG: === CALCULANDO ÂNGULO DE RETORNO ===")
+    def _return_to_base_direct(self):
+        """🎯 SOLUÇÃO GENIAL: Retorno direto à base usando coordenadas conhecidas"""
+        print("DEBUG: === RETORNO DIRETO À BASE ===")
+        print(f"DEBUG: Posição atual: {self.current_position}")
+        print(f"DEBUG: Base conhecida: {ROBOT_INITIAL_POSITION}")
+        print(f"DEBUG: Ângulo final desejado: {ROBOT_INITIAL_ANGLE}°")
         
-        # Calcula o caminho de volta para a base
-        path_to_base = self.path_finder.find_path(self.current_position, self.base_position)
-        if not path_to_base or len(path_to_base) < 2:
-            print("ERRO: Não foi possível calcular o caminho de volta para a base.")
-            self._finalize_navigation()
-            return
-            
-        self.path = path_to_base
-        self.path_index = 0
-        self.current_target = self.path[0]
-        self.is_returning_to_base = True
-        
-        # 🎯 APLICAR MESMAS CORREÇÕES DE PRECISÃO DA IDA
-        dx = self.current_target[0] - self.current_position[0]
-        dy = self.current_target[1] - self.current_position[1]
+        # 🎯 FASE 1: Calcular ângulo direto para a base (sem PathFinder!)
+        dx = ROBOT_INITIAL_POSITION[0] - self.current_position[0]
+        dy = ROBOT_INITIAL_POSITION[1] - self.current_position[1]
         target_angle = math.degrees(math.atan2(dy, dx))
-        angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
         
-        # 🎯 CORREÇÃO DEFINITIVA: Tolerância ULTRA-EXPANDIDA para retorno
-        if angle_error < 45.0:  # MASSIVAMENTE expandido de 25° para 45° para eliminar loops totalmente
-            print(f"🎯 PULO INTELIGENTE DEFINITIVO (RETORNO): Base já alinhada (erro: {angle_error:.1f}° < 45°), iniciando navegação direta")
-            self.navigation_state = "NAVIGATING_TO_DESTINATION"
-        else:
-            print(f"🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → ORIENTING_TO_TARGET (retorno - erro: {angle_error:.1f}° > 45°)")
-            self.navigation_state = "ORIENTING_TO_TARGET"
+        print(f"🧭 CÁLCULO DIRETO: Ângulo para base = {target_angle:.1f}°")
+        
+        # 🎯 FASE 2: Configurar navegação direta (sem waypoints intermediários!)
+        self.is_returning_to_base = True
+        self.current_target = ROBOT_INITIAL_POSITION
+        self.path = [self.current_position, ROBOT_INITIAL_POSITION]  # Caminho direto!
+        self.path_index = 0
+        
+        # 🎯 FASE 3: Ir diretamente para navegação (pular orientação problemática!)
+        print("🚀 NAVEGAÇÃO DIRETA: Indo direto à base SEM orientação prévia!")
+        self.navigation_state = "NAVIGATING_TO_DESTINATION"
 
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
@@ -708,6 +702,6 @@ class RobotNavigator(QObject):
         if self.arrival_time is not None and (time.time() - self.arrival_time > self.arrival_pause_time):
             self.is_paused_at_destination = False
             if self.should_return_to_base:
-                self._calculate_and_execute_return_angle()
+                self._return_to_base_direct()  # 🎯 SUA SOLUÇÃO GENIAL: Retorno direto!
             else:
                 self._finalize_navigation()
