@@ -255,12 +255,12 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
         
-        # 🎯 CORREÇÃO FINAL: Mesmo critério que eliminou os loops na ida
-        if angle_error < 25.0:
-            print(f"🎯 PULO INTELIGENTE (RETORNO): Base já alinhada (erro: {angle_error:.1f}°), iniciando navegação direta")
+        # 🎯 CORREÇÃO DEFINITIVA: Tolerância ULTRA-EXPANDIDA para retorno
+        if angle_error < 45.0:  # MASSIVAMENTE expandido de 25° para 45° para eliminar loops totalmente
+            print(f"🎯 PULO INTELIGENTE DEFINITIVO (RETORNO): Base já alinhada (erro: {angle_error:.1f}° < 45°), iniciando navegação direta")
             self.navigation_state = "NAVIGATING_TO_DESTINATION"
         else:
-            print(f"🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → ORIENTING_TO_TARGET (retorno - erro: {angle_error:.1f}°)")
+            print(f"🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → ORIENTING_TO_TARGET (retorno - erro: {angle_error:.1f}° > 45°)")
             self.navigation_state = "ORIENTING_TO_TARGET"
 
     def _start_return_navigation(self):
@@ -447,11 +447,19 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
-        # 🎯 CORREÇÃO FINAL: Tolerância ultra-expandida para máxima precisão
-        if abs(angle_error) < 20.0:  # Aumentado de 15.0 para 20.0 graus para máxima precisão
+        # 🎯 CORREÇÃO DEFINITIVA: Tolerância ULTRA-EXPANDIDA diferenciada para ida vs retorno
+        if self.is_returning_to_base:
+            # RETORNO: Tolerância MASSIVAMENTE expandida para eliminar loops totalmente
+            angle_tolerance = 45.0  # ULTRA tolerante - permite quase qualquer orientação
+        else:
+            # IDA: Mantém tolerância original para preservar precisão
+            angle_tolerance = 20.0  # Mantém ida funcionando
+            
+        if abs(angle_error) < angle_tolerance:
             self.motors.stop()
             state_key = "RETURNING_TO_BASE" if self.is_returning_to_base else "NAVIGATING_TO_DESTINATION"
-            print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key} (ângulo OK: {abs(angle_error):.1f}°)")
+            context = "RETORNO - ULTRA TOLERANTE" if self.is_returning_to_base else "IDA - PRECISA"
+            print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key} ({context}: {abs(angle_error):.1f}° < {angle_tolerance}°)")
             self.navigation_state = state_key
             return
 
