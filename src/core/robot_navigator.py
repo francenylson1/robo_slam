@@ -249,8 +249,19 @@ class RobotNavigator(QObject):
         self.current_target = self.path[0]
         self.is_returning_to_base = True
         
-        print("🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → ORIENTING_TO_TARGET (para retorno)")
-        self.navigation_state = "ORIENTING_TO_TARGET"
+        # 🎯 APLICAR MESMAS CORREÇÕES DE PRECISÃO DA IDA
+        dx = self.current_target[0] - self.current_position[0]
+        dy = self.current_target[1] - self.current_position[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
+        
+        # 🎯 CORREÇÃO FINAL: Mesmo critério que eliminou os loops na ida
+        if angle_error < 25.0:
+            print(f"🎯 PULO INTELIGENTE (RETORNO): Base já alinhada (erro: {angle_error:.1f}°), iniciando navegação direta")
+            self.navigation_state = "NAVIGATING_TO_DESTINATION"
+        else:
+            print(f"🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → ORIENTING_TO_TARGET (retorno - erro: {angle_error:.1f}°)")
+            self.navigation_state = "ORIENTING_TO_TARGET"
 
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
