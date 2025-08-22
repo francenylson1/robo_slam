@@ -353,7 +353,7 @@ class RobotNavigator(QObject):
             print(f"🔄 MUDANÇA DE FASE: IDLE → ORIENTING_TO_TARGET (erro: {angle_error:.1f}°)")
             self.navigation_state = "ORIENTING_TO_TARGET"
 
-        def navigate_to_and_return(self, destination: Tuple[float, float]) -> None:
+    def navigate_to_and_return(self, destination: Tuple[float, float]) -> None:
         """🚀 NAVEGAÇÃO REVOLUCIONÁRIA: Ida e volta DIRETA sem waypoints complexos"""
         print(f"DEBUG: ===== NAVEGAÇÃO DIRETA (IDA + VOLTA) =====")
         print(f"DEBUG: Destino: {destination}")
