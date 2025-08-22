@@ -455,12 +455,16 @@ class RobotNavigator(QObject):
             self.navigation_state = state_key
             return
 
-        # 🎯 CORREÇÃO FINAL: Força ultra-reduzida para máxima suavidade e precisão
+        # 🎯 CORREÇÃO CRÍTICA RETORNO: Força AINDA mais reduzida para eliminação total dos loops
         # ANTES: angular_speed_rads = math.radians(angle_error) * 5.0  ← Era muito forte!
         # V1: angular_speed_rads = math.radians(angle_error) * 1.5  ← Ainda causava 1 loop
         # V2: angular_speed_rads = math.radians(angle_error) * 1.0  ← Ainda causava desvios
-        # V3: Força ultra-reduzida para 0.7 (86% menos força que o original)
-        angular_speed_rads = math.radians(angle_error) * 0.7 
+        # V3: angular_speed_rads = math.radians(angle_error) * 0.7  ← Ainda causava loops no retorno
+        # V4 CRÍTICA: Força ultra-reduzida ESPECIAL para retorno (90% menos força que original)
+        if self.is_returning_to_base:
+            angular_speed_rads = math.radians(angle_error) * 0.4  # EXTRA suave para retorno
+        else:
+            angular_speed_rads = math.radians(angle_error) * 0.7  # Mantém ida funcionando 
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = 0.0  # Velocidade linear é zero durante a orientação
@@ -473,12 +477,16 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
-        # 🎯 CORREÇÃO FINAL: Força mínima ultra-reduzida para máxima precisão
+        # 🎯 CORREÇÃO CRÍTICA RETORNO: MIN_TURN_TPS diferenciado para ida vs retorno
         # ANTES: MIN_TURN_TPS = 20.0  ← Era muito forte para ajustes sutis!
         # V1: MIN_TURN_TPS = 12.0  ← Ainda causava 1 loop em 7 testes
         # V2: MIN_TURN_TPS = 8.0  ← Ainda causava desvios de 100-120cm
-        # V3: Força mínima ultra-reduzida para 5.0 (75% menos força que original)
-        MIN_TURN_TPS = 5.0
+        # V3: MIN_TURN_TPS = 5.0  ← Ainda causava loops no retorno
+        # V4 CRÍTICA: MIN_TURN_TPS EXTRA-suave para retorno
+        if self.is_returning_to_base:
+            MIN_TURN_TPS = 3.0  # EXTRA suave para retorno (85% menos força que original)
+        else:
+            MIN_TURN_TPS = 5.0  # Mantém ida funcionando
         if 0 < abs(left_tps) < MIN_TURN_TPS:
             left_tps = MIN_TURN_TPS * (1 if left_tps > 0 else -1)
         if 0 < abs(right_tps) < MIN_TURN_TPS:
