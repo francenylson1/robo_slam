@@ -333,8 +333,8 @@ class MainWindow(QMainWindow):
         
         # Tamanhos adaptativos
         btn_size = 35 if self.is_small_screen else 40
-        rotate_width = 60 if self.is_small_screen else 80
-        rotate_height = 25 if self.is_small_screen else 40
+        rotate_width = 80 if self.is_small_screen else 100  # AUMENTADO para acomodar texto completo
+        rotate_height = 30 if self.is_small_screen else 40  # AUMENTADO para melhor visibilidade
         
         # Botão FRENTE (⬆️)
         self.btn_forward = QPushButton("⬆️")
@@ -346,19 +346,19 @@ class MainWindow(QMainWindow):
         direction_grid.addWidget(self.btn_forward, 0, 1)
         
         # Botão GIRO PRECISO ESQUERDA
-        self.btn_rotate_precise_left = QPushButton("↺ ESQ" if self.is_small_screen else "↺ 45° ESQ")
+        self.btn_rotate_precise_left = QPushButton("↺ 45° ESQ")
         self.btn_rotate_precise_left.setFixedSize(rotate_width, rotate_height)
         self.btn_rotate_precise_left.clicked.connect(lambda: self._execute_precise_rotation("left"))
         if self.is_small_screen:
-            self.btn_rotate_precise_left.setStyleSheet("font-size: 9px; font-weight: bold;")
+            self.btn_rotate_precise_left.setStyleSheet("font-size: 10px; font-weight: bold;")
         direction_grid.addWidget(self.btn_rotate_precise_left, 1, 0)
         
         # Botão GIRO PRECISO DIREITA
-        self.btn_rotate_precise_right = QPushButton("↻ DIR" if self.is_small_screen else "↻ 45° DIR")
+        self.btn_rotate_precise_right = QPushButton("↻ 45° DIR")
         self.btn_rotate_precise_right.setFixedSize(rotate_width, rotate_height)
         self.btn_rotate_precise_right.clicked.connect(lambda: self._execute_precise_rotation("right"))
         if self.is_small_screen:
-            self.btn_rotate_precise_right.setStyleSheet("font-size: 9px; font-weight: bold;")
+            self.btn_rotate_precise_right.setStyleSheet("font-size: 10px; font-weight: bold;")
         direction_grid.addWidget(self.btn_rotate_precise_right, 1, 2)
         
         # Botão TRÁS (⬇️)
@@ -385,31 +385,33 @@ class MainWindow(QMainWindow):
         angle_layout.addWidget(self.angle_label)
         manual_layout.addLayout(angle_layout)
 
-        # Botões de ação
-        action_buttons = QHBoxLayout()
+        # Botões de ação - CORREÇÃO COMPLETA DO LAYOUT
+        action_buttons = QVBoxLayout()  # MUDANÇA: Vertical para melhor organização
         
+        # Botão 1: Definir Nova Partida
         self.btn_set_new_position = QPushButton("📍 Definir Nova Partida")
         self.btn_set_new_position.clicked.connect(self._set_new_starting_position)
+        if self.is_small_screen:
+            self.btn_set_new_position.setMaximumHeight(35)
+            self.btn_set_new_position.setStyleSheet("font-size: 11px;")
         action_buttons.addWidget(self.btn_set_new_position)
         
+        # Botão 2: Voltar à Base
         self.btn_return_base = QPushButton("🏠 Voltar à Base")
         self.btn_return_base.clicked.connect(self._return_to_base)
+        if self.is_small_screen:
+            self.btn_return_base.setMaximumHeight(35)
+            self.btn_return_base.setStyleSheet("font-size: 11px;")
         action_buttons.addWidget(self.btn_return_base)
         
-        # 🆕 NOVO BOTÃO: Orientar para Base (solução para loop 360°)
+        # Botão 3: Orientar para Base (NOVO - SOLUÇÃO PARA LOOP 360°)
         self.btn_orient_to_base = QPushButton("🧭 Orientar para Base")
         self.btn_orient_to_base.clicked.connect(self._orient_robot_to_base)
         self.btn_orient_to_base.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
-        action_buttons.addWidget(self.btn_orient_to_base)
-        
-        # 🔧 CORREÇÃO: Ajusta layout para telas pequenas
         if self.is_small_screen:
-            # Para telas pequenas, organiza botões em grid vertical
-            action_buttons.setDirection(QBoxLayout.Direction.TopToBottom)
-            # Ajusta tamanho dos botões para tela pequena
-            for btn in [self.btn_set_new_position, self.btn_return_base, self.btn_orient_to_base]:
-                btn.setMaximumHeight(35)
-                btn.setStyleSheet(btn.styleSheet() + "font-size: 11px;")
+            self.btn_orient_to_base.setMaximumHeight(35)
+            self.btn_orient_to_base.setStyleSheet(self.btn_orient_to_base.styleSheet() + "font-size: 11px;")
+        action_buttons.addWidget(self.btn_orient_to_base)
         
         manual_layout.addLayout(action_buttons)
         
