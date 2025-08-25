@@ -396,6 +396,12 @@ class MainWindow(QMainWindow):
         self.btn_return_base.clicked.connect(self._return_to_base)
         action_buttons.addWidget(self.btn_return_base)
         
+        # 🆕 NOVO BOTÃO: Orientar para Base (solução para loop 360°)
+        self.btn_orient_to_base = QPushButton("🧭 Orientar para Base")
+        self.btn_orient_to_base.clicked.connect(self._orient_robot_to_base)
+        self.btn_orient_to_base.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        action_buttons.addWidget(self.btn_orient_to_base)
+        
         manual_layout.addLayout(action_buttons)
         
         manual_control_group.setLayout(manual_layout)
@@ -1189,3 +1195,193 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.warning(self, "Erro", f"Erro ao iniciar retorno à base:\n{e}")
                 self.navigation_active = False
+
+    def _orient_robot_to_base(self):
+        """🧭 NOVA FUNÇÃO: Orienta o robô para apontar para a base (solução para loop 360°)"""
+        if self.navigation_active:
+            QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
+            return
+        
+        base_position = ROBOT_INITIAL_POSITION
+        current_pos = self.navigator.current_position
+        current_angle = self.navigator.current_angle
+        
+        # Calcula distância até a base
+        distance_to_base = ((current_pos[0] - base_position[0])**2 + 
+                           (current_pos[1] - base_position[1])**2)**0.5
+        
+        if distance_to_base < 0.3:
+            QMessageBox.information(self, "Orientação para Base", "O robô já está próximo à base!")
+            return
+        
+        # 🎯 FASE 1: Calcula ângulo ideal para a base
+        dx = base_position[0] - current_pos[0]
+        dy = base_position[1] - current_pos[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        
+        # Normaliza o ângulo (-180 a +180)
+        while target_angle > 180:
+            target_angle -= 360
+        while target_angle < -180:
+            target_angle += 360
+        
+        # Calcula erro de ângulo
+        angle_error = (target_angle - current_angle + 180) % 360 - 180
+        
+        print(f"🧭 ORIENTAÇÃO PARA BASE:")
+        print(f"   Posição atual: ({current_pos[0]:.2f}, {current_pos[1]:.2f}) @ {current_angle:.1f}°")
+        print(f"   Base: ({base_position[0]:.2f}, {base_position[1]:.2f})")
+        print(f"   Ângulo ideal: {target_angle:.1f}°")
+        print(f"   Erro de ângulo: {angle_error:.1f}°")
+        
+        # 🎯 FASE 2: Executa orientação automática aproximada
+        self._execute_automatic_base_orientation(angle_error)
+        
+    def _execute_automatic_base_orientation(self, angle_error: float):
+        """🧭 Executa orientação automática aproximada para a base"""
+        print(f"🔄 ORIENTAÇÃO AUTOMÁTICA: Girando {abs(angle_error):.1f}° para base")
+        
+        # Para os motores primeiro
+        self.navigator.motors.stop()
+        
+        # 🎯 ESTRATÉGIA: Orientação com tolerância ampla (±15°) para evitar loops
+        TOLERANCE_DEGREES = 15.0
+        
+        if abs(angle_error) <= TOLERANCE_DEGREES:
+            print(f"✅ ORIENTAÇÃO CONCLUÍDA: Robô já está alinhado (±{TOLERANCE_DEGREES}°)")
+            QMessageBox.information(
+                self, 
+                "Orientação Concluída", 
+                f"Robô já está bem alinhado para a base!\n\n"
+                f"Erro de ângulo: {abs(angle_error):.1f}° (dentro da tolerância de ±{TOLERANCE_DEGREES}°)\n\n"
+                f"Use os botões de giro preciso (45°) para ajuste fino se necessário."
+            )
+            return
+        
+        # 🎯 ESTRATÉGIA: Calcula tempo de giro baseado no erro
+        # Usa os mesmos tempos calibrados dos giros precisos existentes
+        abs_error = abs(angle_error)
+        
+        if abs_error <= 15:
+            rotation_time = 0.2  # 15° em 0.2s
+        elif abs_error <= 30:
+            rotation_time = 0.4  # 30° em 0.4s
+        elif abs_error <= 45:
+            rotation_time = 0.8  # 45° em 0.8s
+        elif abs_error <= 60:
+            rotation_time = 0.8  # 60° em 0.8s
+        elif abs_error <= 90:
+            rotation_time = 1.2  # 90° em 1.2s
+        else:
+            rotation_time = 1.5  # Fallback para ângulos maiores
+        
+        # 🎯 ESTRATÉGIA: Potência reduzida para orientação suave
+        TURN_SPEED_PERCENT = 8  # 8% da potência máxima (mais suave que giros precisos)
+        
+        print(f"🔄 EXECUTANDO: Giro automático de {abs_error:.1f}° em {rotation_time:.1f}s")
+        
+        # Ativa modo de giro preciso no navegador
+        self.navigator.start_precise_rotation()
+        
+        # Salva ângulo inicial para sincronização
+        self.initial_angle_for_sync = self.navigator.current_angle
+        
+        # Define direção dos motores
+        if angle_error > 0:  # Precisa girar para esquerda
+            self.navigator.motors.set_precise_rotation_direction(-1, +1)
+            self.navigator.motors._set_motor_speed_real("left", -TURN_SPEED_PERCENT)
+            self.navigator.motors._set_motor_speed_real("right", TURN_SPEED_PERCENT)
+            print(f"🔄 GIRANDO ESQUERDA: {abs_error:.1f}° para alinhar com base")
+        else:  # Precisa girar para direita
+            self.navigator.motors.set_precise_rotation_direction(+1, -1)
+            self.navigator.motors._set_motor_speed_real("left", TURN_SPEED_PERCENT)
+            self.navigator.motors._set_motor_speed_real("right", -TURN_SPEED_PERCENT)
+            print(f"🔄 GIRANDO DIREITA: {abs_error:.1f}° para alinhar com base")
+        
+        # Salva dados para sincronização
+        self.precise_rotation_target_angle = angle_error
+        self.precise_rotation_start_time = time.time()
+        
+        # Para automaticamente após o tempo calculado
+        QTimer.singleShot(int(rotation_time * 1000), self._stop_base_orientation)
+        
+        # Mostra mensagem para o usuário
+        QMessageBox.information(
+            self, 
+            "Orientação em Andamento", 
+            f"Orientando robô para a base...\n\n"
+            f"Girando {abs_error:.1f}° em {rotation_time:.1f}s\n\n"
+            f"Aguarde a conclusão automática."
+        )
+        
+    def _stop_base_orientation(self):
+        """🧭 Para a orientação automática para a base"""
+        print("🔄 PARANDO ORIENTAÇÃO AUTOMÁTICA PARA BASE")
+        
+        # Para os motores
+        self.navigator.motors.stop()
+        
+        # Sincronização por tempo (mesmo sistema dos giros precisos)
+        if hasattr(self, 'precise_rotation_target_angle') and hasattr(self, 'initial_angle_for_sync'):
+            final_angle = self.initial_angle_for_sync + self.precise_rotation_target_angle
+            
+            # Normaliza o ângulo (-180 a +180)
+            while final_angle > 180:
+                final_angle -= 360
+            while final_angle < -180:
+                final_angle += 360
+            
+            # Força a sincronização exata
+            self.navigator.current_angle = final_angle
+            print(f"🔧 SYNC_BASE: Ângulo corrigido por tempo - {self.initial_angle_for_sync:.1f}° → {final_angle:.1f}°")
+        
+        # Limpa direção forçada dos ticks
+        self.navigator.motors.clear_precise_rotation_direction()
+        
+        # Desativa modo de giro preciso
+        self.navigator.stop_precise_rotation()
+        
+        # Calcula ângulo final para verificação
+        current_pos = self.navigator.current_position
+        base_position = ROBOT_INITIAL_POSITION
+        dx = base_position[0] - current_pos[0]
+        dy = base_position[1] - current_pos[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        
+        # Normaliza o ângulo
+        while target_angle > 180:
+            target_angle -= 360
+        while target_angle < -180:
+            target_angle += 360
+        
+        final_angle_error = abs((target_angle - self.navigator.current_angle + 180) % 360 - 180)
+        
+        print(f"✅ ORIENTAÇÃO PARA BASE CONCLUÍDA:")
+        print(f"   Ângulo final: {self.navigator.current_angle:.1f}°")
+        print(f"   Ângulo ideal: {target_angle:.1f}°")
+        print(f"   Erro final: {final_angle_error:.1f}°")
+        
+        # Mostra resultado para o usuário
+        if final_angle_error <= 15.0:
+            QMessageBox.information(
+                self, 
+                "Orientação Concluída com Sucesso!", 
+                f"Robô orientado para a base!\n\n"
+                f"Ângulo atual: {self.navigator.current_angle:.1f}°\n"
+                f"Erro de alinhamento: {final_angle_error:.1f}°\n\n"
+                f"✅ Pronto para navegação!\n\n"
+                f"💡 Dica: Use os botões de giro preciso (45°) para ajuste fino se necessário."
+            )
+        else:
+            QMessageBox.information(
+                self, 
+                "Orientação Concluída", 
+                f"Orientação automática concluída!\n\n"
+                f"Ângulo atual: {self.navigator.current_angle:.1f}°\n"
+                f"Erro de alinhamento: {final_angle_error:.1f}°\n\n"
+                f"🔄 Use os botões de giro preciso (45°) para ajuste fino:\n"
+                f"   • Esquerda: {final_angle_error:.1f}° para esquerda\n"
+                f"   • Direita: {final_angle_error:.1f}° para direita"
+            )
+        
+        print("🔄 ORIENTAÇÃO PARA BASE FINALIZADA - modo normal restaurado")
