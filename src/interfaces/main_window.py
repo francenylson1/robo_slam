@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QComboBox, QMessageBox,
                              QGroupBox, QGridLayout, QInputDialog, QProgressBar, QSlider,
-                             QScrollArea, QFrame, QSizePolicy, QApplication)
+                             QScrollArea, QFrame, QSizePolicy, QApplication, QBoxLayout)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QCursor
 import sys
@@ -401,6 +401,15 @@ class MainWindow(QMainWindow):
         self.btn_orient_to_base.clicked.connect(self._orient_robot_to_base)
         self.btn_orient_to_base.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         action_buttons.addWidget(self.btn_orient_to_base)
+        
+        # 🔧 CORREÇÃO: Ajusta layout para telas pequenas
+        if self.is_small_screen:
+            # Para telas pequenas, organiza botões em grid vertical
+            action_buttons.setDirection(QBoxLayout.Direction.TopToBottom)
+            # Ajusta tamanho dos botões para tela pequena
+            for btn in [self.btn_set_new_position, self.btn_return_base, self.btn_orient_to_base]:
+                btn.setMaximumHeight(35)
+                btn.setStyleSheet(btn.styleSheet() + "font-size: 11px;")
         
         manual_layout.addLayout(action_buttons)
         

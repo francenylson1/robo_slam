@@ -699,7 +699,12 @@ class RobotNavigator(QObject):
     def _handle_pause_at_destination(self):
         if self.arrival_time is not None and (time.time() - self.arrival_time > self.arrival_pause_time):
             self.is_paused_at_destination = False
-            if self.should_return_to_base:
-                self._return_to_base_direct()  # 🎯 SUA SOLUÇÃO GENIAL: Retorno direto!
-            else:
-                self._finalize_navigation()
+            # 🚨 CORREÇÃO CRÍTICA: DESABILITADO RETORNO AUTOMÁTICO PARA EVITAR LOOP 360°
+            # if self.should_return_to_base:
+            #     self._return_to_base_direct()  # 🎯 SUA SOLUÇÃO GENIAL: Retorno direto!
+            # else:
+            #     self._finalize_navigation()
+            
+            # ✅ NOVA LÓGICA: Sempre finaliza navegação, usuário decide se quer retornar
+            print("🔄 NAVEGAÇÃO PAUSADA: Usuário deve usar botão '🧭 Orientar para Base' para retorno")
+            self._finalize_navigation()
