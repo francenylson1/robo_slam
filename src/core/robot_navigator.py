@@ -381,10 +381,9 @@ class RobotNavigator(QObject):
             self.navigation_state = "ORIENTING_TO_TARGET"
 
     def navigate_to_and_return(self, destination: Tuple[float, float]) -> None:
-        """🚀 NAVEGAÇÃO REVOLUCIONÁRIA: Ida e volta DIRETA sem waypoints complexos"""
-        print(f"DEBUG: ===== NAVEGAÇÃO DIRETA (IDA + VOLTA) =====")
+        """🎯 NAVEGAÇÃO APENAS AO POI: Vai ao destino e para (sem retorno automático)"""
+        print(f"DEBUG: ===== NAVEGAÇÃO APENAS AO POI =====")
         print(f"DEBUG: Destino: {destination}")
-        print(f"DEBUG: Base: {ROBOT_INITIAL_POSITION}")
         print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
 
         self.reset_to_initial_state()
@@ -392,10 +391,10 @@ class RobotNavigator(QObject):
         self.navigation_active = True
         self.start_time = time.time()
         self.is_returning_to_base = False
-        self.should_return_to_base = True  # 🎯 ATIVA retorno automático
+        self.should_return_to_base = False  # 🎯 DESATIVA retorno automático
         self.final_approach_start_time = None
 
-        # 🚀 SOLUÇÃO RADICAL: Caminho DIRETO sem PathFinder complexo
+        # 🎯 NAVEGAÇÃO DIRETA: Caminho simplificado com apenas 2 pontos (atual → destino)
         self.path = [self.current_position, destination]  # LINHA RETA!
         self.path_index = 0
         self.original_destination = destination
@@ -403,7 +402,7 @@ class RobotNavigator(QObject):
 
         self.current_target = destination  # Target DIRETO!
 
-        print(f"🎯 NAVEGAÇÃO DIRETA: Caminho simplificado com apenas 2 pontos (atual → destino)")
+        print(f"🎯 NAVEGAÇÃO APENAS AO POI: Caminho simplificado com apenas 2 pontos (atual → destino)")
 
         # 🎯 Cálculo direto para o destino
         dx = destination[0] - self.current_position[0]
