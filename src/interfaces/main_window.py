@@ -1337,17 +1337,23 @@ class MainWindow(QMainWindow):
         self.precise_rotation_target_angle = angle_error
         self.precise_rotation_start_time = time.time()
         
-        # 🔧 CORREÇÃO: Timer mais longo para permitir sincronização por odometria
-        # O sistema agora vai parar quando atingir o ângulo alvo ou após timeout
-        extended_timeout = rotation_time * 1.5  # 50% mais tempo para sincronização
-        QTimer.singleShot(int(extended_timeout * 1000), self._stop_base_orientation)
+        # 🔧 CORREÇÃO CRÍTICA: Sistema de monitoramento em tempo real
+        # Em vez de timer fixo, monitora o ângulo e para quando atingir o objetivo
+        self.base_orientation_monitor_active = True
+        self.base_orientation_monitor_timer = QTimer()
+        self.base_orientation_monitor_timer.timeout.connect(self._check_base_orientation_progress)
+        self.base_orientation_monitor_timer.start(50)  # Verifica a cada 50ms
+        
+        # 🔧 TIMEOUT DE SEGURANÇA: Para após tempo máximo para evitar travamento
+        max_timeout = max(rotation_time * 2.0, 3.0)  # 2x o tempo calculado ou mínimo 3s
+        QTimer.singleShot(int(max_timeout * 1000), self._stop_base_orientation_timeout)
         
         # Mostra mensagem para o usuário
         QMessageBox.information(
             self, 
             "Orientação em Andamento", 
             f"Orientando robô para a base...\n\n"
-            f"Girando {abs_error:.1f}° em {rotation_time:.1f}s\n\n"
+            f"Girando {abs_error:.1f}° (monitoramento em tempo real)\n\n"
             f"Aguarde a conclusão automática."
         )
         
@@ -1432,3 +1438,108 @@ class MainWindow(QMainWindow):
             )
         
         print("🔄 ORIENTAÇÃO PARA BASE FINALIZADA - modo normal restaurado")
+
+    def _check_base_orientation_progress(self):
+        """🔧 NOVA FUNÇÃO: Monitora progresso da orientação em tempo real"""
+        if not hasattr(self, 'base_orientation_monitor_active') or not self.base_orientation_monitor_active:
+            return
+        
+        if not hasattr(self, 'target_angle_for_base'):
+            return
+        
+        current_angle = self.navigator.current_angle
+        target_angle = self.target_angle_for_base
+        
+        # Calcula erro atual
+        angle_error = abs((target_angle - current_angle + 180) % 360 - 180)
+        
+        print(f"🔧 MONITORAMENTO: Ângulo atual: {current_angle:.1f}°, Alvo: {target_angle:.1f}°, Erro: {angle_error:.1f}°")
+        
+        # Se atingiu o objetivo (dentro da tolerância), para o giro
+        if angle_error <= 15.0:  # Tolerância de 15°
+            print(f"✅ OBJETIVO ATINGIDO: Erro de {angle_error:.1f}° dentro da tolerância!")
+            self._stop_base_orientation_success()
+            return
+        
+        # Se passou muito do objetivo, para o giro
+        if angle_error > 45.0:  # Se passou muito, pode estar girando demais
+            print(f"⚠️ PASSOU DO OBJETIVO: Erro de {angle_error:.1f}° - parando giro!")
+            self._stop_base_orientation_success()
+            return
+    
+    def _stop_base_orientation_success(self):
+        """🔧 NOVA FUNÇÃO: Para orientação quando objetivo é atingido com sucesso"""
+        print("✅ ORIENTAÇÃO ATINGIU OBJETIVO - parando com sucesso!")
+        
+        # Para o monitoramento
+        if hasattr(self, 'base_orientation_monitor_timer'):
+            self.base_orientation_monitor_timer.stop()
+        self.base_orientation_monitor_active = False
+        
+        # Para os motores
+        self.navigator.motors.stop()
+        
+        # Sincroniza com ângulo atual real
+        if hasattr(self, 'target_angle_for_base'):
+            target_angle = self.target_angle_for_base
+            self.navigator.current_angle = target_angle
+            print(f"🔧 SYNC_SUCESSO: Ângulo sincronizado - {target_angle:.1f}°")
+        
+        # Limpa recursos
+        self._cleanup_base_orientation()
+        
+        # Mostra sucesso
+        QMessageBox.information(
+            self, 
+            "Orientação Concluída com Sucesso!", 
+            f"Robô orientado para a base!\n\n"
+            f"Ângulo atual: {self.navigator.current_angle:.1f}°\n"
+            f"✅ Objetivo atingido automaticamente!\n\n"
+            f"💡 Dica: Use os botões de giro preciso (45°) para ajuste fino se necessário."
+        )
+    
+    def _stop_base_orientation_timeout(self):
+        """🔧 NOVA FUNÇÃO: Para orientação por timeout de segurança"""
+        print("⏰ TIMEOUT DE SEGURANÇA - parando orientação!")
+        
+        # Para o monitoramento
+        if hasattr(self, 'base_orientation_monitor_timer'):
+            self.base_orientation_monitor_timer.stop()
+        self.base_orientation_monitor_active = False
+        
+        # Para os motores
+        self.navigator.motors.stop()
+        
+        # Sincroniza com ângulo atual real
+        if hasattr(self, 'target_angle_for_base'):
+            target_angle = self.target_angle_for_base
+            self.navigator.current_angle = target_angle
+            print(f"🔧 SYNC_TIMEOUT: Ângulo sincronizado por timeout - {target_angle:.1f}°")
+        
+        # Limpa recursos
+        self._cleanup_base_orientation()
+        
+        # Mostra aviso de timeout
+        QMessageBox.warning(
+            self, 
+            "Orientação Interrompida por Timeout", 
+            f"Orientação interrompida por segurança!\n\n"
+            f"Ângulo atual: {self.navigator.current_angle:.1f}°\n"
+            f"⏰ Timeout de segurança atingido\n\n"
+            f"🔄 Use os botões de giro preciso (45°) para completar a orientação."
+        )
+    
+    def _cleanup_base_orientation(self):
+        """🔧 NOVA FUNÇÃO: Limpa recursos da orientação para base"""
+        # Limpa direção forçada dos ticks
+        self.navigator.motors.clear_precise_rotation_direction()
+        
+        # Desativa modo de giro preciso
+        self.navigator.stop_precise_rotation()
+        
+        # Limpa variáveis temporárias
+        if hasattr(self, 'base_orientation_monitor_timer'):
+            self.base_orientation_monitor_timer.stop()
+        self.base_orientation_monitor_active = False
+        
+        print("🧹 RECURSOS DA ORIENTAÇÃO LIMPOS - modo normal restaurado")
