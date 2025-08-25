@@ -194,6 +194,9 @@ class RobotNavigator(QObject):
             return
 
         elif self.navigation_state == "ORIENTING_TO_TARGET":
+            # 🎯 CORREÇÃO: Tratamento diferenciado para orientação durante retorno
+            if self.is_returning_to_base:
+                print(f"DEBUG: ORIENTAÇÃO RETORNO: Posição {self.current_position}, Ângulo {self.current_angle:.1f}°")
             self._orient_towards_target()
 
         elif self.navigation_state == "NAVIGATING_TO_DESTINATION":
@@ -207,6 +210,8 @@ class RobotNavigator(QObject):
             self._handle_pause_at_destination()
 
         elif self.navigation_state == "RETURNING_TO_BASE":
+            # 🎯 CORREÇÃO: Logs específicos para debug do retorno
+            print(f"DEBUG: ESTADO RETURNING_TO_BASE: Posição {self.current_position}, Ângulo {self.current_angle:.1f}°")
             self._handle_return_to_base()
 
         elif self.navigation_state == "FINAL_APPROACH_BASE":
@@ -253,9 +258,11 @@ class RobotNavigator(QObject):
         self.path = [self.current_position, ROBOT_INITIAL_POSITION]  # Caminho direto!
         self.path_index = 0
         
-        # 🎯 FASE 3: Ir diretamente para navegação (pular orientação problemática!)
-        print("🚀 NAVEGAÇÃO DIRETA: Indo direto à base SEM orientação prévia!")
-        self.navigation_state = "NAVIGATING_TO_DESTINATION"
+        # 🎯 CORREÇÃO CRÍTICA: Usar estado correto para retorno!
+        # ANTES: navigation_state = "NAVIGATING_TO_DESTINATION" ← ESTADO INCORRETO!
+        # AGORA: navigation_state = "RETURNING_TO_BASE" ← ESTADO CORRETO!
+        print("🚀 NAVEGAÇÃO DIRETA: Indo direto à base com estado RETURNING_TO_BASE!")
+        self.navigation_state = "RETURNING_TO_BASE"
 
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
@@ -435,16 +442,23 @@ class RobotNavigator(QObject):
         if self.is_returning_to_base:
             # RETORNO: Tolerância MASSIVAMENTE expandida para eliminar loops totalmente
             angle_tolerance = 45.0  # ULTRA tolerante - permite quase qualquer orientação
+            print(f"🔄 ORIENTAÇÃO RETORNO: Erro {angle_error:.1f}°, Tolerância {angle_tolerance}°")
         else:
             # IDA: Mantém tolerância original para preservar precisão
             angle_tolerance = 20.0  # Mantém ida funcionando
             
         if abs(angle_error) < angle_tolerance:
             self.motors.stop()
-            state_key = "RETURNING_TO_BASE" if self.is_returning_to_base else "NAVIGATING_TO_DESTINATION"
-            context = "RETORNO - ULTRA TOLERANTE" if self.is_returning_to_base else "IDA - PRECISA"
-            print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key} ({context}: {abs(angle_error):.1f}° < {angle_tolerance}°)")
-            self.navigation_state = state_key
+            if self.is_returning_to_base:
+                # 🎯 CORREÇÃO CRÍTICA: Para retorno, vai direto para navegação
+                print(f"🔄 RETORNO: Orientação OK ({abs(angle_error):.1f}° < {angle_tolerance}°), indo para RETURNING_TO_BASE")
+                self.navigation_state = "RETURNING_TO_BASE"
+            else:
+                # IDA: Mantém comportamento original
+                state_key = "NAVIGATING_TO_DESTINATION"
+                context = "IDA - PRECISA"
+                print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key} ({context}: {abs(angle_error):.1f}° < {angle_tolerance}°)")
+                self.navigation_state = state_key
             return
 
         # 🎯 CORREÇÃO CRÍTICA RETORNO: Força AINDA mais reduzida para eliminação total dos loops
@@ -496,6 +510,17 @@ class RobotNavigator(QObject):
         dy = self.current_target[1] - self.current_position[1]
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
+
+        # 🎯 VERIFICAÇÃO DE SEGURANÇA: Evita loops circulares durante retorno
+        if self.is_returning_to_base and abs(angle_error) > 90:
+            print(f"⚠️ ALERTA: Ângulo de erro muito grande ({angle_error:.1f}°) durante retorno!")
+            print(f"⚠️ Posição atual: {self.current_position}, Alvo: {self.current_target}")
+            print(f"⚠️ Ângulo atual: {self.current_angle:.1f}°, Ângulo alvo: {target_angle:.1f}°")
+            
+            # 🎯 CORREÇÃO: Força orientação antes de mover para evitar loops
+            print("🔄 CORREÇÃO: Forçando orientação antes do movimento para evitar loops")
+            self.navigation_state = "ORIENTING_TO_TARGET"
+            return
 
         angle_factor = max(0.0, math.cos(math.radians(angle_error)))
         linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
@@ -667,27 +692,45 @@ class RobotNavigator(QObject):
         self._move_towards_target()
 
     def _handle_return_to_base(self):
+        """🎯 MANIPULADOR ROBUSTO DE RETORNO: Evita loops de 360° com verificações de segurança"""
         if self.current_target is None or self.current_position is None or not self.path:
+            print("DEBUG: _handle_return_to_base: Parâmetros inválidos, finalizando navegação")
             self._finalize_navigation()
             return
 
         distance_to_target = self._calculate_distance(self.current_position, self.current_target)
         is_near_base = (self.path_index >= len(self.path) - 1)
+        
+        print(f"DEBUG: RETORNO: Distância à base: {distance_to_target:.3f}m, Próximo da base: {is_near_base}")
+
+        # 🎯 VERIFICAÇÃO DE SEGURANÇA: Evita loops infinitos
+        if distance_to_target < 0.05:  # Se chegou muito perto (5cm)
+            print("DEBUG: RETORNO: Chegou muito perto da base, iniciando aproximação final")
+            self.navigation_state = "FINAL_APPROACH_BASE"
+            self.current_target = self.path[-1]
+            self.final_approach_start_time = None 
+            return
 
         if is_near_base and distance_to_target < 0.15:
+            print("DEBUG: RETORNO: Iniciando aproximação final à base")
             self.navigation_state = "FINAL_APPROACH_BASE"
             self.current_target = self.path[-1]
             self.final_approach_start_time = None 
             return
 
         if distance_to_target < NAVIGATION_GOAL_TOLERANCE:
+            print(f"DEBUG: RETORNO: Chegou ao waypoint {self.path_index}, próximo: {self.path_index + 1}")
             self.path_index += 1
             if self.path_index < len(self.path):
                 self.current_target = self.path[self.path_index]
+                print(f"DEBUG: RETORNO: Novo alvo: {self.current_target}")
             else:
+                print("DEBUG: RETORNO: Todos os waypoints completados, iniciando ajuste de ângulo final")
                 self._start_final_angle_adjustment()
             return
         
+        # 🎯 MOVIMENTO DIRETO: Sem orientação prévia para evitar loops
+        print(f"DEBUG: RETORNO: Movendo direto à base (distância: {distance_to_target:.3f}m)")
         self._move_towards_target()
 
     def _transition_to_paused_at_destination(self):
@@ -697,14 +740,25 @@ class RobotNavigator(QObject):
         self.is_paused_at_destination = True
 
     def _handle_pause_at_destination(self):
-        if self.arrival_time is not None and (time.time() - self.arrival_time > self.arrival_pause_time):
-            self.is_paused_at_destination = False
-            # 🚨 CORREÇÃO CRÍTICA: DESABILITADO RETORNO AUTOMÁTICO PARA EVITAR LOOP 360°
-            # if self.should_return_to_base:
-            #     self._return_to_base_direct()  # 🎯 SUA SOLUÇÃO GENIAL: Retorno direto!
-            # else:
-            #     self._finalize_navigation()
+        """🎯 MANIPULADOR DE PAUSA: Controla a transição para retorno à base"""
+        if self.arrival_time is None:
+            print("DEBUG: PAUSA: arrival_time não definido")
+            return
             
-            # ✅ NOVA LÓGICA: Sempre finaliza navegação, usuário decide se quer retornar
-            print("🔄 NAVEGAÇÃO PAUSADA: Usuário deve usar botão '🧭 Orientar para Base' para retorno")
-            self._finalize_navigation()
+        time_elapsed = time.time() - self.arrival_time
+        print(f"DEBUG: PAUSA: Tempo decorrido: {time_elapsed:.1f}s / {self.arrival_pause_time}s")
+        
+        if time_elapsed > self.arrival_pause_time:
+            print("DEBUG: PAUSA: Tempo de pausa concluído, verificando se deve retornar")
+            self.is_paused_at_destination = False
+            
+            if self.should_return_to_base:
+                print("🎯 INICIANDO RETORNO AUTOMÁTICO: Chamando _return_to_base_direct()")
+                self._return_to_base_direct()  # 🎯 SUA SOLUÇÃO GENIAL: Retorno direto!
+            else:
+                print("DEBUG: PAUSA: Retorno automático desabilitado, finalizando navegação")
+                self._finalize_navigation()
+        else:
+            # Ainda em pausa
+            remaining_time = self.arrival_pause_time - time_elapsed
+            print(f"DEBUG: PAUSA: Aguardando mais {remaining_time:.1f}s antes do retorno")
