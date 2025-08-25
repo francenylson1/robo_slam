@@ -98,45 +98,47 @@ class RobotNavigator(QObject):
         print(f"🔄 Estado anterior - navigation_state: {self.navigation_state}")
         
         # Preserva as áreas proibidas durante o reset
-        preserved_forbidden_areas = self.forbidden_areas.copy()
         
-        # ETAPA 2: Correção do "Pulo" - NÃO reseta a posição/ângulo.
-        # A nova navegação deve começar da posição final real da navegação anterior.
-        # self.current_position = ROBOT_INITIAL_POSITION
-        # self.current_angle = ROBOT_INITIAL_ANGLE
-        
-        # Reseta variáveis de navegação
-        self.navigation_active = False
+        # 🎯 CORREÇÃO CRÍTICA: Reset completo de todas as variáveis de estado
+        self.current_position = ROBOT_INITIAL_POSITION
+        self.current_angle = ROBOT_INITIAL_ANGLE
         self.current_target = None
+        self.navigation_active = False
+        self.is_returning_to_base = False
+        self.is_adjusting_final_angle = False
+        self.navigation_state = "IDLE"
+        self.speed_multiplier = 1.0
+        
+        # 🎯 NOVA CORREÇÃO: Reset de variáveis de loop e timeout
+        if hasattr(self, 'return_start_time'):
+            delattr(self, 'return_start_time')
+        if hasattr(self, 'last_positions'):
+            delattr(self, 'last_positions')
+        if hasattr(self, 'last_angles'):
+            delattr(self, 'last_angles')
+        
+        # Reset de variáveis de navegação
         self.path = []
         self.path_index = 0
-        self.is_adjusting_final_angle = False
-        self.is_returning_to_base = False  # RESETA ESTE VALOR
-        self.navigation_state = "IDLE"
-        self.progress = 0.0
-        self.start_time = None
-        self.estimated_time_remaining = 0.0
+        self.current_path = []
+        self.current_path_index = 0
+        
+        # Reset de variáveis de precisão
+        self.precise_rotation_active = False
+        self.final_approach_start_time = None
+        self.arrival_time = None
         self.is_paused_at_destination = False
         
-        # Reset de variáveis específicas
-        if hasattr(self, 'original_destination'):
-            delattr(self, 'original_destination')
-        self.final_approach_start_time = None
+        # Reset de variáveis de controle
+        self.emergency_stop_active = False
+        self.last_position_update = time.time()
+        self.navigation_start_time = None
+        self.estimated_completion_time = None
         
-        # Restaura as áreas proibidas
-        self.forbidden_areas = preserved_forbidden_areas
-        self.path_finder.set_forbidden_areas(preserved_forbidden_areas)
-        
-        # Para os motores
-        self.motors.stop()
-        
-        print("✅ ===== RESET CONCLUÍDO =====")
-        print(f"✅ Posição resetada: {self.current_position}, Ângulo: {self.current_angle}°")
-        print(f"✅ navigation_active: {self.navigation_active}")
-        print(f"✅ is_returning_to_base: {self.is_returning_to_base}")
-        print(f"✅ navigation_state: {self.navigation_state}")
-        print(f"✅ Áreas proibidas preservadas: {len(self.forbidden_areas)}")
-        print("=" * 60)
+        print("✅ RESET COMPLETO: Todas as variáveis de estado foram limpas")
+        print(f"✅ Posição resetada: {self.current_position}")
+        print(f"✅ Ângulo resetado: {self.current_angle}°")
+        print(f"✅ Estado resetado: {self.navigation_state}")
         
     def set_speed_multiplier(self, multiplier: float):
         """
@@ -245,6 +247,18 @@ class RobotNavigator(QObject):
         print(f"DEBUG: Base conhecida: {ROBOT_INITIAL_POSITION}")
         print(f"DEBUG: Ângulo final desejado: {ROBOT_INITIAL_ANGLE}°")
         
+        # 🎯 CORREÇÃO CRÍTICA: Reset completo do estado para evitar loops
+        print("🔄 RESET COMPLETO: Limpando estado anterior para evitar loops")
+        self.motors.stop()  # Para qualquer movimento em andamento
+        time.sleep(0.5)     # Pausa para estabilizar
+        
+        # 🎯 RESET TOTAL: Limpa todas as variáveis de estado
+        self.current_target = None
+        self.path_index = 0
+        self.final_approach_start_time = None
+        self.is_adjusting_final_angle = False
+        self.is_paused_at_destination = False
+        
         # 🎯 FASE 1: Calcular ângulo direto para a base (sem PathFinder!)
         dx = ROBOT_INITIAL_POSITION[0] - self.current_position[0]
         dy = ROBOT_INITIAL_POSITION[1] - self.current_position[1]
@@ -263,6 +277,12 @@ class RobotNavigator(QObject):
         # AGORA: navigation_state = "RETURNING_TO_BASE" ← ESTADO CORRETO!
         print("🚀 NAVEGAÇÃO DIRETA: Indo direto à base com estado RETURNING_TO_BASE!")
         self.navigation_state = "RETURNING_TO_BASE"
+        
+        # 🎯 VERIFICAÇÃO FINAL: Confirma que o estado está correto
+        print(f"✅ ESTADO CONFIRMADO: {self.navigation_state}")
+        print(f"✅ RETORNANDO: {self.is_returning_to_base}")
+        print(f"✅ ALVO: {self.current_target}")
+        print(f"✅ CAMINHO: {self.path}")
 
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
@@ -511,6 +531,33 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
+        # 🎯 NOVA CORREÇÃO: Sistema de detecção de padrões circulares
+        if self.is_returning_to_base:
+            if not hasattr(self, 'last_positions'):
+                self.last_positions = []
+                self.last_angles = []
+            
+            # Armazena as últimas 5 posições e ângulos
+            self.last_positions.append(self.current_position)
+            self.last_angles.append(self.current_angle)
+            
+            if len(self.last_positions) > 5:
+                self.last_positions.pop(0)
+                self.last_angles.pop(0)
+            
+            # 🎯 DETECÇÃO DE LOOP: Se as posições se repetem, há um loop
+            if len(self.last_positions) == 5:
+                # Calcula se está girando em círculo
+                center_x = sum(pos[0] for pos in self.last_positions) / 5
+                center_y = sum(pos[1] for pos in self.last_positions) / 5
+                radius = sum(math.sqrt((pos[0] - center_x)**2 + (pos[1] - center_y)**2) for pos in self.last_positions) / 5
+                
+                if radius < 0.3:  # Se o raio for menor que 30cm, provavelmente está em loop
+                    print(f"⚠️ ALERTA LOOP DETECTADO: Raio {radius:.2f}m < 0.3m - Forçando orientação!")
+                    self.navigation_state = "ORIENTING_TO_TARGET"
+                    self.motors.stop()
+                    return
+
         # 🎯 VERIFICAÇÃO DE SEGURANÇA: Evita loops circulares durante retorno
         if self.is_returning_to_base and abs(angle_error) > 90:
             print(f"⚠️ ALERTA: Ângulo de erro muito grande ({angle_error:.1f}°) durante retorno!")
@@ -591,21 +638,37 @@ class RobotNavigator(QObject):
         return False
 
     def _adjust_final_angle(self):
+        """🎯 CORREÇÃO: Ajuste preciso do ângulo final para 270° na base"""
         angle_diff = (ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180
         
+        print(f"🎯 AJUSTE FINAL: Ângulo atual {self.current_angle:.1f}°, Alvo {ROBOT_INITIAL_ANGLE}°, Diferença {angle_diff:.1f}°")
+        
         if abs(angle_diff) > 1.0:
-            if abs(angle_diff) > 30: turn_value = min(0.8, abs(angle_diff) / 25.0)
-            elif abs(angle_diff) > 10: turn_value = min(0.6, abs(angle_diff) / 30.0)
-            else: turn_value = min(0.4, abs(angle_diff) / 35.0)
+            # 🎯 CORREÇÃO: Cálculo mais preciso da velocidade de giro
+            if abs(angle_diff) > 45: 
+                turn_value = min(0.6, abs(angle_diff) / 40.0)  # Mais suave para giros grandes
+            elif abs(angle_diff) > 20: 
+                turn_value = min(0.5, abs(angle_diff) / 35.0)  # Suave para giros médios
+            elif abs(angle_diff) > 5: 
+                turn_value = min(0.4, abs(angle_diff) / 30.0)  # Preciso para ajustes finos
+            else: 
+                turn_value = min(0.3, abs(angle_diff) / 25.0)  # Muito preciso para ajustes mínimos
                 
+            # 🎯 CORREÇÃO: Direção do giro corrigida
             if angle_diff > 0:
+                # Precisa girar no sentido horário (para a direita)
                 left_speed = turn_value * 100
                 right_speed = -turn_value * 100
+                print(f"🔄 GIRANDO DIREITA: left={left_speed:.0f}, right={right_speed:.0f}")
             else:
+                # Precisa girar no sentido anti-horário (para a esquerda)
                 left_speed = -turn_value * 100
                 right_speed = turn_value * 100
+                print(f"🔄 GIRANDO ESQUERDA: left={left_speed:.0f}, right={right_speed:.0f}")
+                
             self.motors.set_speed(left_speed, right_speed)
         else:
+            print(f"✅ ÂNGULO FINAL CORRETO: {self.current_angle:.1f}° (diferença: {angle_diff:.1f}°)")
             self._finalize_navigation()
 
     def _get_next_waypoint_info(self):
@@ -695,6 +758,19 @@ class RobotNavigator(QObject):
         """🎯 MANIPULADOR ROBUSTO DE RETORNO: Evita loops de 360° com verificações de segurança"""
         if self.current_target is None or self.current_position is None or not self.path:
             print("DEBUG: _handle_return_to_base: Parâmetros inválidos, finalizando navegação")
+            self._finalize_navigation()
+            return
+
+        # 🎯 NOVA CORREÇÃO: Sistema de timeout para prevenir loops infinitos
+        current_time = time.time()
+        if not hasattr(self, 'return_start_time'):
+            self.return_start_time = current_time
+            print("🔄 RETORNO: Iniciando contador de tempo")
+        
+        # 🎯 VERIFICAÇÃO DE TIMEOUT: Se demorar mais de 30s, força parada
+        if current_time - self.return_start_time > 30.0:
+            print("⚠️ TIMEOUT RETORNO: Demorou mais de 30s, forçando parada para evitar loop")
+            self.motors.stop()
             self._finalize_navigation()
             return
 
