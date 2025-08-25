@@ -500,7 +500,15 @@ class RobotNavigator(QObject):
         angle_factor = max(0.0, math.cos(math.radians(angle_error)))
         linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
         
-        angular_speed_rads = math.radians(angle_error) * 1.8
+        # 🎯 CORREÇÃO DEFINITIVA: Movimento angular diferenciado para ida vs retorno
+        if self.is_returning_to_base:
+            # RETORNO: Angular ULTRA suave para eliminar loops totalmente
+            angular_speed_rads = math.radians(angle_error) * 0.2  # Reduzido de 1.8 para 0.2 (11x mais suave!)
+            print(f"🔄 RETORNO SUAVE: Angular reduzido drasticamente (fator 0.2) para erro {angle_error:.1f}°")
+        else:
+            # IDA: Mantém controle angular normal para preservar precisão
+            angular_speed_rads = math.radians(angle_error) * 1.8
+        
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = linear_speed_ms
