@@ -1010,15 +1010,20 @@ class RobotNavigator(QObject):
         self.motors.stop()
         time.sleep(0.2)
         
-        # Calcula tempo para girar 22° (baseado na velocidade angular)
+        # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         turn_angle = 22.0  # graus
-        angular_speed_rads = math.radians(45.0)  # 45°/s para giro suave
-        turn_time = math.radians(turn_angle) / angular_speed_rads
         
-        # Aplica giro para esquerda
-        left_speed = -25  # Motor esquerdo para trás
-        right_speed = 25  # Motor direito para frente
+        # 🎯 VELOCIDADE AUMENTADA: 60% da potência máxima para giro efetivo
+        left_speed = -60  # Motor esquerdo para trás (FORÇA AUMENTADA)
+        right_speed = 60  # Motor direito para frente (FORÇA AUMENTADA)
+        
+        print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
         self.motors.set_speed(left_speed, right_speed)
+        
+        # 🎯 TEMPO CALCULADO: Baseado na velocidade real dos motores
+        # Para 22° com velocidade de 60%, tempo estimado de 0.8 segundos
+        turn_time = 0.8  # Tempo fixo otimizado para 22°
+        print(f"🔄 GIRO MANUAL: Tempo de giro: {turn_time}s")
         
         # Aguarda o tempo calculado
         time.sleep(turn_time)
@@ -1038,15 +1043,20 @@ class RobotNavigator(QObject):
         self.motors.stop()
         time.sleep(0.2)
         
-        # Calcula tempo para girar 22° (baseado na velocidade angular)
+        # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         turn_angle = 22.0  # graus
-        angular_speed_rads = math.radians(45.0)  # 45°/s para giro suave
-        turn_time = math.radians(turn_angle) / angular_speed_rads
         
-        # Aplica giro para direita
-        left_speed = 25  # Motor esquerdo para frente
-        right_speed = -25  # Motor direito para trás
+        # 🎯 VELOCIDADE AUMENTADA: 60% da potência máxima para giro efetivo
+        left_speed = 60  # Motor esquerdo para frente (FORÇA AUMENTADA)
+        right_speed = -60  # Motor direito para trás (FORÇA AUMENTADA)
+        
+        print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
         self.motors.set_speed(left_speed, right_speed)
+        
+        # 🎯 TEMPO CALCULADO: Baseado na velocidade real dos motores
+        # Para 22° com velocidade de 60%, tempo estimado de 0.8 segundos
+        turn_time = 0.8  # Tempo fixo otimizado para 22°
+        print(f"🔄 GIRO MANUAL: Tempo de giro: {turn_time}s")
         
         # Aguarda o tempo calculado
         time.sleep(turn_time)
@@ -1066,21 +1076,27 @@ class RobotNavigator(QObject):
         self.motors.stop()
         time.sleep(0.2)
         
-        # Calcula tempo para girar o ângulo especificado
-        angular_speed_rads = math.radians(45.0)  # 45°/s para giro suave
-        turn_time = math.radians(abs(angle_degrees)) / angular_speed_rads
+        # 🎯 CORREÇÃO: Força aumentada para giro efetivo
+        # 🎯 VELOCIDADE AUMENTADA: 60% da potência máxima para giro efetivo
         
         # Aplica giro na direção especificada
         if direction.lower() == 'left':
-            left_speed = -25
-            right_speed = 25
+            left_speed = -60
+            right_speed = 60
             self.current_angle = (self.current_angle - abs(angle_degrees)) % 360
         else:  # right
-            left_speed = 25
-            right_speed = -25
+            left_speed = 60
+            right_speed = -60
             self.current_angle = (self.current_angle + abs(angle_degrees)) % 360
         
+        print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {angle_degrees}°")
         self.motors.set_speed(left_speed, right_speed)
+        
+        # 🎯 TEMPO CALCULADO: Baseado na velocidade real dos motores
+        # Para ângulos maiores, tempo proporcional
+        base_time = 0.8  # Tempo base para 22°
+        turn_time = (abs(angle_degrees) / 22.0) * base_time
+        print(f"🔄 GIRO MANUAL: Tempo de giro: {turn_time:.2f}s")
         
         # Aguarda o tempo calculado
         time.sleep(turn_time)
