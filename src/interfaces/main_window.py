@@ -1280,6 +1280,22 @@ class MainWindow(QMainWindow):
             )
             return
         
+        # 🔧 CORREÇÃO CRÍTICA: Usa odometria real em vez de tempo para sincronização
+        # Salva ângulo inicial REAL para sincronização por odometria
+        self.initial_angle_for_sync = self.navigator.current_angle
+        self.target_angle_for_base = self.initial_angle_for_sync + angle_error
+        
+        # Normaliza o ângulo alvo
+        while self.target_angle_for_base > 180:
+            self.target_angle_for_base -= 360
+        while self.target_angle_for_base < -180:
+            self.target_angle_for_base += 360
+        
+        print(f"🔧 SINCRONIZAÇÃO POR ODOMETRIA:")
+        print(f"   Ângulo inicial: {self.initial_angle_for_sync:.1f}°")
+        print(f"   Ângulo alvo: {self.target_angle_for_base:.1f}°")
+        print(f"   Giro necessário: {abs(angle_error):.1f}°")
+        
         # 🎯 ESTRATÉGIA: Calcula tempo de giro baseado no erro
         # Usa os mesmos tempos calibrados dos giros precisos existentes
         abs_error = abs(angle_error)
@@ -1305,9 +1321,6 @@ class MainWindow(QMainWindow):
         # Ativa modo de giro preciso no navegador
         self.navigator.start_precise_rotation()
         
-        # Salva ângulo inicial para sincronização
-        self.initial_angle_for_sync = self.navigator.current_angle
-        
         # Define direção dos motores
         if angle_error > 0:  # Precisa girar para esquerda
             self.navigator.motors.set_precise_rotation_direction(-1, +1)
@@ -1324,8 +1337,10 @@ class MainWindow(QMainWindow):
         self.precise_rotation_target_angle = angle_error
         self.precise_rotation_start_time = time.time()
         
-        # Para automaticamente após o tempo calculado
-        QTimer.singleShot(int(rotation_time * 1000), self._stop_base_orientation)
+        # 🔧 CORREÇÃO: Timer mais longo para permitir sincronização por odometria
+        # O sistema agora vai parar quando atingir o ângulo alvo ou após timeout
+        extended_timeout = rotation_time * 1.5  # 50% mais tempo para sincronização
+        QTimer.singleShot(int(extended_timeout * 1000), self._stop_base_orientation)
         
         # Mostra mensagem para o usuário
         QMessageBox.information(
@@ -1343,19 +1358,29 @@ class MainWindow(QMainWindow):
         # Para os motores
         self.navigator.motors.stop()
         
-        # Sincronização por tempo (mesmo sistema dos giros precisos)
-        if hasattr(self, 'precise_rotation_target_angle') and hasattr(self, 'initial_angle_for_sync'):
-            final_angle = self.initial_angle_for_sync + self.precise_rotation_target_angle
+        # 🔧 CORREÇÃO CRÍTICA: Sincronização por ODOMETRIA REAL em vez de tempo
+        if hasattr(self, 'target_angle_for_base'):
+            # Usa o ângulo alvo calculado corretamente
+            target_angle = self.target_angle_for_base
             
-            # Normaliza o ângulo (-180 a +180)
-            while final_angle > 180:
-                final_angle -= 360
-            while final_angle < -180:
-                final_angle += 360
+            # 🔧 CORREÇÃO: Força sincronização exata com ângulo alvo
+            self.navigator.current_angle = target_angle
             
-            # Força a sincronização exata
-            self.navigator.current_angle = final_angle
-            print(f"🔧 SYNC_BASE: Ângulo corrigido por tempo - {self.initial_angle_for_sync:.1f}° → {final_angle:.1f}°")
+            print(f"🔧 SYNC_ODOMETRIA: Ângulo sincronizado com alvo - {target_angle:.1f}°")
+        else:
+            # Fallback para sincronização por tempo (caso algo dê errado)
+            if hasattr(self, 'precise_rotation_target_angle') and hasattr(self, 'initial_angle_for_sync'):
+                final_angle = self.initial_angle_for_sync + self.precise_rotation_target_angle
+                
+                # Normaliza o ângulo (-180 a +180)
+                while final_angle > 180:
+                    final_angle -= 360
+                while final_angle < -180:
+                    final_angle += 360
+                
+                # Força a sincronização exata
+                self.navigator.current_angle = final_angle
+                print(f"🔧 SYNC_TIME_FALLBACK: Ângulo corrigido por tempo - {self.initial_angle_for_sync:.1f}° → {final_angle:.1f}°")
         
         # Limpa direção forçada dos ticks
         self.navigator.motors.clear_precise_rotation_direction()
