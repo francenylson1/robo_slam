@@ -453,6 +453,18 @@ class RobotNavigator(QObject):
         if self.current_target is None:
             return
 
+        # 🎯 CORREÇÃO CRÍTICA: Sistema anti-travamento durante orientação
+        current_time = time.time()
+        if not hasattr(self, 'orientation_start_time'):
+            self.orientation_start_time = current_time
+            print("🔄 ORIENTAÇÃO: Iniciando contador de tempo")
+        
+        # 🎯 TIMEOUT DE ORIENTAÇÃO: Se demorar mais de 10s, força movimento
+        if current_time - self.orientation_start_time > 10.0:
+            print("⚠️ TIMEOUT ORIENTAÇÃO: Demorou mais de 10s, forçando movimento!")
+            self._force_orientation_movement()
+            return
+
         dx = self.current_target[0] - self.current_position[0]
         dy = self.current_target[1] - self.current_position[1]
         target_angle = math.degrees(math.atan2(dy, dx))
@@ -473,6 +485,9 @@ class RobotNavigator(QObject):
                 # 🎯 CORREÇÃO CRÍTICA: Para retorno, vai direto para navegação
                 print(f"🔄 RETORNO: Orientação OK ({abs(angle_error):.1f}° < {angle_tolerance}°), indo para RETURNING_TO_BASE")
                 self.navigation_state = "RETURNING_TO_BASE"
+                # 🎯 RESET: Limpa timer de orientação
+                if hasattr(self, 'orientation_start_time'):
+                    delattr(self, 'orientation_start_time')
             else:
                 # IDA: Mantém comportamento original
                 state_key = "NAVIGATING_TO_DESTINATION"
@@ -520,6 +535,39 @@ class RobotNavigator(QObject):
         
         print(f"🔄 ORIENTAÇÃO SUAVE: erro={angle_error:.1f}°, left_tps={left_tps:.1f}, right_tps={right_tps:.1f}")
         self.motors.set_target_speed(left_tps, right_tps)
+
+    def _force_orientation_movement(self):
+        """🚨 MOVIMENTO FORÇADO: Força o robô a sair do travamento durante orientação"""
+        print("🚨 FORÇANDO MOVIMENTO DURANTE ORIENTAÇÃO!")
+        
+        # Para qualquer movimento atual
+        self.motors.stop()
+        time.sleep(0.5)
+        
+        # Calcula direção para o alvo
+        dx = self.current_target[0] - self.current_position[0]
+        dy = self.current_target[1] - self.current_position[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        angle_error = (target_angle - self.current_angle + 180) % 360 - 180
+        
+        print(f"🚨 FORÇA: Ângulo para alvo: {target_angle:.1f}°, Erro: {angle_error:.1f}°")
+        
+        # Força movimento com velocidade baixa
+        if abs(angle_error) < 30:  # Se está mais ou menos apontado
+            print("🚨 FORÇA: Movendo direto para o alvo")
+            # Velocidade baixa para frente
+            force_speed = 10  # 10% da potência máxima
+            self.motors.set_speed(force_speed, force_speed)
+        else:
+            print("🚨 FORÇA: Girando para alinhar")
+            # Gira para alinhar com velocidade baixa
+            if angle_error > 0:
+                self.motors.set_speed(15, -15)  # Gira direita
+            else:
+                self.motors.set_speed(-15, 15)  # Gira esquerda
+        
+        # Reseta o timer de orientação
+        self.orientation_start_time = time.time()
 
     def _move_towards_target(self):
         if self.current_target is None:
