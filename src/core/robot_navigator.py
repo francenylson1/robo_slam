@@ -767,12 +767,38 @@ class RobotNavigator(QObject):
             self.return_start_time = current_time
             print("🔄 RETORNO: Iniciando contador de tempo")
         
-        # 🎯 VERIFICAÇÃO DE TIMEOUT: Se demorar mais de 30s, força parada
+        # 🎯 VERIFICAÇÃO DE TIMEOUT: Se demorar mais de 30s, força parada para evitar loop
         if current_time - self.return_start_time > 30.0:
             print("⚠️ TIMEOUT RETORNO: Demorou mais de 30s, forçando parada para evitar loop")
             self.motors.stop()
             self._finalize_navigation()
             return
+
+        # 🎯 CORREÇÃO CRÍTICA: Sistema anti-paralisia
+        if not hasattr(self, 'last_position_check'):
+            self.last_position_check = self.current_position
+            self.last_position_check_time = current_time
+            self.stuck_counter = 0
+        
+        # Verifica se está parado no mesmo lugar
+        position_change = self._calculate_distance(self.current_position, self.last_position_check)
+        time_since_last_check = current_time - self.last_position_check_time
+        
+        if time_since_last_check > 2.0:  # A cada 2 segundos
+            if position_change < 0.01:  # Se moveu menos de 1cm
+                self.stuck_counter += 1
+                print(f"⚠️ ALERTA PARALISIA: Robô parado há {self.stuck_counter * 2}s (movimento: {position_change:.3f}m)")
+                
+                if self.stuck_counter >= 3:  # Se ficou parado por 6+ segundos
+                    print("🚨 PARALISIA DETECTADA: Forçando movimento de emergência!")
+                    self._force_movement_emergency()
+                    self.stuck_counter = 0
+            else:
+                self.stuck_counter = 0
+                print(f"✅ MOVIMENTO DETECTADO: {position_change:.3f}m em {time_since_last_check:.1f}s")
+            
+            self.last_position_check = self.current_position
+            self.last_position_check_time = current_time
 
         distance_to_target = self._calculate_distance(self.current_position, self.current_target)
         is_near_base = (self.path_index >= len(self.path) - 1)
@@ -808,6 +834,39 @@ class RobotNavigator(QObject):
         # 🎯 MOVIMENTO DIRETO: Sem orientação prévia para evitar loops
         print(f"DEBUG: RETORNO: Movendo direto à base (distância: {distance_to_target:.3f}m)")
         self._move_towards_target()
+
+    def _force_movement_emergency(self):
+        """🚨 MOVIMENTO DE EMERGÊNCIA: Força o robô a sair da paralisia"""
+        print("🚨 INICIANDO MOVIMENTO DE EMERGÊNCIA!")
+        
+        # Para qualquer movimento atual
+        self.motors.stop()
+        time.sleep(0.5)
+        
+        # Calcula direção para a base
+        dx = self.current_target[0] - self.current_position[0]
+        dy = self.current_target[1] - self.current_position[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        angle_error = (target_angle - self.current_angle + 180) % 360 - 180
+        
+        print(f"🚨 EMERGÊNCIA: Ângulo para base: {target_angle:.1f}°, Erro: {angle_error:.1f}°")
+        
+        # Força movimento direto com velocidade baixa
+        if abs(angle_error) < 45:  # Se está mais ou menos apontado para a base
+            print("🚨 EMERGÊNCIA: Movendo direto para a base")
+            # Velocidade baixa para frente
+            emergency_speed = 15  # 15% da potência máxima
+            self.motors.set_speed(emergency_speed, emergency_speed)
+        else:
+            print("🚨 EMERGÊNCIA: Girando para alinhar com a base")
+            # Gira para alinhar
+            if angle_error > 0:
+                self.motors.set_speed(20, -20)  # Gira direita
+            else:
+                self.motors.set_speed(-20, 20)  # Gira esquerda
+        
+        # Reseta o timeout para dar tempo do movimento de emergência
+        self.return_start_time = time.time()
 
     def _transition_to_paused_at_destination(self):
         self.motors.stop()
