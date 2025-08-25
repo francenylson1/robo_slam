@@ -509,10 +509,8 @@ class RobotMotorController(QObject):
 
     def stop_motors(self):
         """Para ambos os motores e o controle PID de forma segura."""
-        # 🔧 CORREÇÃO CRÍTICA: Não desativa o PID imediatamente
-        # Apenas zera as velocidades alvo
         self.set_target_speed(0, 0)
-        # self.disable_pid_control()  # ❌ REMOVIDO - estava impedindo o giro!
+        self.disable_pid_control()
 
     def set_precise_rotation_direction(self, left_direction: int, right_direction: int):
         """
