@@ -1225,25 +1225,36 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Orientação para Base", "O robô já está próximo à base!")
             return
         
-        # 🎯 FASE 1: Calcula ângulo ideal para a base
+        # 🎯 FASE 1: CORREÇÃO CRÍTICA - Calcula ângulo ideal para a base
         dx = base_position[0] - current_pos[0]
         dy = base_position[1] - current_pos[1]
+        
+        # 🔧 CORREÇÃO: Cálculo correto do ângulo para a base
+        # O robô deve apontar para a base, não apenas calcular diferença
         target_angle = math.degrees(math.atan2(dy, dx))
         
-        # Normaliza o ângulo (-180 a +180)
+        # 🔧 CORREÇÃO: Normaliza o ângulo (-180 a +180) corretamente
         while target_angle > 180:
             target_angle -= 360
         while target_angle < -180:
             target_angle += 360
         
-        # Calcula erro de ângulo
-        angle_error = (target_angle - current_angle + 180) % 360 - 180
+        # 🔧 CORREÇÃO: Cálculo correto do erro de ângulo
+        # O robô deve girar do ângulo atual para o ângulo alvo
+        angle_error = target_angle - current_angle
         
-        print(f"🧭 ORIENTAÇÃO PARA BASE:")
+        # 🔧 CORREÇÃO: Normaliza o erro de ângulo para o caminho mais curto
+        while angle_error > 180:
+            angle_error -= 360
+        while angle_error < -180:
+            angle_error += 360
+        
+        print(f"🧭 ORIENTAÇÃO PARA BASE - CÁLCULO CORRIGIDO:")
         print(f"   Posição atual: ({current_pos[0]:.2f}, {current_pos[1]:.2f}) @ {current_angle:.1f}°")
         print(f"   Base: ({base_position[0]:.2f}, {base_position[1]:.2f})")
-        print(f"   Ângulo ideal: {target_angle:.1f}°")
-        print(f"   Erro de ângulo: {angle_error:.1f}°")
+        print(f"   Ângulo ideal para base: {target_angle:.1f}°")
+        print(f"   Erro de ângulo corrigido: {angle_error:.1f}°")
+        print(f"   Giro necessário: {abs(angle_error):.1f}° {'ESQUERDA' if angle_error > 0 else 'DIREITA'}")
         
         # 🎯 FASE 2: Executa orientação automática aproximada
         self._execute_automatic_base_orientation(angle_error)
