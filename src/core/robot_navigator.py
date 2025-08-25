@@ -457,12 +457,23 @@ class RobotNavigator(QObject):
         current_time = time.time()
         if not hasattr(self, 'orientation_start_time'):
             self.orientation_start_time = current_time
+            self.orientation_attempts = 0
             print("🔄 ORIENTAÇÃO: Iniciando contador de tempo")
         
         # 🎯 TIMEOUT DE ORIENTAÇÃO: Se demorar mais de 10s, força movimento
         if current_time - self.orientation_start_time > 10.0:
             print("⚠️ TIMEOUT ORIENTAÇÃO: Demorou mais de 10s, forçando movimento!")
             self._force_orientation_movement()
+            return
+
+        # 🎯 CORREÇÃO CRÍTICA: Contador de tentativas para quebrar loop infinito
+        if not hasattr(self, 'orientation_attempts'):
+            self.orientation_attempts = 0
+        
+        # 🎯 QUEBRA LOOP INFINITO: Após 3 tentativas, força movimento direto
+        if self.orientation_attempts >= 3:
+            print("🚨 LOOP INFINITO DETECTADO: 3 tentativas de orientação, forçando movimento direto!")
+            self._force_direct_movement()
             return
 
         dx = self.current_target[0] - self.current_position[0]
@@ -474,7 +485,7 @@ class RobotNavigator(QObject):
         if self.is_returning_to_base:
             # RETORNO: Tolerância MASSIVAMENTE expandida para eliminar loops totalmente
             angle_tolerance = 45.0  # ULTRA tolerante - permite quase qualquer orientação
-            print(f"🔄 ORIENTAÇÃO RETORNO: Erro {angle_error:.1f}°, Tolerância {angle_tolerance}°")
+            print(f"🔄 ORIENTAÇÃO RETORNO: Erro {angle_error:.1f}°, Tolerância {angle_tolerance}° (Tentativa {self.orientation_attempts + 1}/3)")
         else:
             # IDA: Mantém tolerância original para preservar precisão
             angle_tolerance = 20.0  # Mantém ida funcionando
@@ -485,9 +496,11 @@ class RobotNavigator(QObject):
                 # 🎯 CORREÇÃO CRÍTICA: Para retorno, vai direto para navegação
                 print(f"🔄 RETORNO: Orientação OK ({abs(angle_error):.1f}° < {angle_tolerance}°), indo para RETURNING_TO_BASE")
                 self.navigation_state = "RETURNING_TO_BASE"
-                # 🎯 RESET: Limpa timer de orientação
+                # 🎯 RESET: Limpa timer de orientação e contador de tentativas
                 if hasattr(self, 'orientation_start_time'):
                     delattr(self, 'orientation_start_time')
+                if hasattr(self, 'orientation_attempts'):
+                    delattr(self, 'orientation_attempts')
             else:
                 # IDA: Mantém comportamento original
                 state_key = "NAVIGATING_TO_DESTINATION"
@@ -495,6 +508,9 @@ class RobotNavigator(QObject):
                 print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key} ({context}: {abs(angle_error):.1f}° < {angle_tolerance}°)")
                 self.navigation_state = state_key
             return
+
+        # 🎯 INCREMENTA CONTADOR DE TENTATIVAS
+        self.orientation_attempts += 1
 
         # 🎯 CORREÇÃO CRÍTICA RETORNO: Força AINDA mais reduzida para eliminação total dos loops
         # ANTES: angular_speed_rads = math.radians(angle_error) * 5.0  ← Era muito forte!
@@ -568,6 +584,47 @@ class RobotNavigator(QObject):
         
         # Reseta o timer de orientação
         self.orientation_start_time = time.time()
+
+    def _force_direct_movement(self):
+        """🚨 MOVIMENTO DIRETO: Força o robô a ir direto para o alvo sem orientação"""
+        print("🚨 FORÇANDO MOVIMENTO DIRETO - QUEBRANDO LOOP INFINITO!")
+        
+        # Para qualquer movimento atual
+        self.motors.stop()
+        time.sleep(0.5)
+        
+        # Calcula direção para o alvo
+        dx = self.current_target[0] - self.current_position[0]
+        dy = self.current_target[1] - self.current_position[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        angle_error = (target_angle - self.current_angle + 180) % 360 - 180
+        
+        print(f"🚨 MOVIMENTO DIRETO: Ângulo para alvo: {target_angle:.1f}°, Erro: {angle_error:.1f}°")
+        
+        # Se o erro de ângulo for muito grande, faz uma correção rápida
+        if abs(angle_error) > 60:
+            print("🚨 MOVIMENTO DIRETO: Erro muito grande, corrigindo ângulo rapidamente")
+            correction_time = abs(angle_error) / 90.0  # Tempo baseado no erro
+            if angle_error > 0:
+                self.motors.set_speed(25, -25)  # Gira direita
+            else:
+                self.motors.set_speed(-25, 25)  # Gira esquerda
+            time.sleep(correction_time)
+            self.motors.stop()
+        
+        # Agora move direto para o alvo
+        print("🚨 MOVIMENTO DIRETO: Indo direto para o alvo")
+        direct_speed = 20  # 20% da potência máxima
+        self.motors.set_speed(direct_speed, direct_speed)
+        
+        # Reseta todos os timers e contadores
+        if hasattr(self, 'orientation_start_time'):
+            delattr(self, 'orientation_start_time')
+        if hasattr(self, 'orientation_attempts'):
+            delattr(self, 'orientation_attempts')
+        
+        # Força mudança para navegação direta
+        self.navigation_state = "RETURNING_TO_BASE"
 
     def _move_towards_target(self):
         if self.current_target is None:
