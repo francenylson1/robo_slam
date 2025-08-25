@@ -1002,3 +1002,106 @@ class RobotNavigator(QObject):
             # Ainda em pausa
             remaining_time = self.arrival_pause_time - time_elapsed
             print(f"DEBUG: PAUSA: Aguardando mais {remaining_time:.1f}s antes do retorno")
+
+    def manual_turn_left(self):
+        """🔄 GIRO MANUAL ESQUERDA: Gira o robô 22° para a esquerda"""
+        print("🔄 GIRO MANUAL: Girando 22° para a esquerda")
+        
+        # Para qualquer movimento atual
+        self.motors.stop()
+        time.sleep(0.2)
+        
+        # Calcula tempo para girar 22° (baseado na velocidade angular)
+        turn_angle = 22.0  # graus
+        angular_speed_rads = math.radians(45.0)  # 45°/s para giro suave
+        turn_time = math.radians(turn_angle) / angular_speed_rads
+        
+        # Aplica giro para esquerda
+        left_speed = -25  # Motor esquerdo para trás
+        right_speed = 25  # Motor direito para frente
+        self.motors.set_speed(left_speed, right_speed)
+        
+        # Aguarda o tempo calculado
+        time.sleep(turn_time)
+        
+        # Para os motores
+        self.motors.stop()
+        
+        # Atualiza o ângulo do robô
+        self.current_angle = (self.current_angle - turn_angle) % 360
+        print(f"🔄 GIRO MANUAL: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
+
+    def manual_turn_right(self):
+        """🔄 GIRO MANUAL DIREITA: Gira o robô 22° para a direita"""
+        print("🔄 GIRO MANUAL: Girando 22° para a direita")
+        
+        # Para qualquer movimento atual
+        self.motors.stop()
+        time.sleep(0.2)
+        
+        # Calcula tempo para girar 22° (baseado na velocidade angular)
+        turn_angle = 22.0  # graus
+        angular_speed_rads = math.radians(45.0)  # 45°/s para giro suave
+        turn_time = math.radians(turn_angle) / angular_speed_rads
+        
+        # Aplica giro para direita
+        left_speed = 25  # Motor esquerdo para frente
+        right_speed = -25  # Motor direito para trás
+        self.motors.set_speed(left_speed, right_speed)
+        
+        # Aguarda o tempo calculado
+        time.sleep(turn_time)
+        
+        # Para os motores
+        self.motors.stop()
+        
+        # Atualiza o ângulo do robô
+        self.current_angle = (self.current_angle + turn_angle) % 360
+        print(f"🔄 GIRO MANUAL: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
+
+    def manual_turn_custom(self, angle_degrees, direction='left'):
+        """🔄 GIRO MANUAL PERSONALIZADO: Gira o robô um ângulo específico"""
+        print(f"🔄 GIRO MANUAL: Girando {angle_degrees}° para {direction}")
+        
+        # Para qualquer movimento atual
+        self.motors.stop()
+        time.sleep(0.2)
+        
+        # Calcula tempo para girar o ângulo especificado
+        angular_speed_rads = math.radians(45.0)  # 45°/s para giro suave
+        turn_time = math.radians(abs(angle_degrees)) / angular_speed_rads
+        
+        # Aplica giro na direção especificada
+        if direction.lower() == 'left':
+            left_speed = -25
+            right_speed = 25
+            self.current_angle = (self.current_angle - abs(angle_degrees)) % 360
+        else:  # right
+            left_speed = 25
+            right_speed = -25
+            self.current_angle = (self.current_angle + abs(angle_degrees)) % 360
+        
+        self.motors.set_speed(left_speed, right_speed)
+        
+        # Aguarda o tempo calculado
+        time.sleep(turn_time)
+        
+        # Para os motores
+        self.motors.stop()
+        
+        print(f"🔄 GIRO MANUAL: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
+
+    def return_to_base_manual(self):
+        """🏠 RETORNO MANUAL: Navega para a base após giro manual"""
+        print("🏠 RETORNO MANUAL: Iniciando navegação para a base")
+        
+        # Verifica se o robô está em um estado válido para retorno
+        if self.navigation_state in ["IDLE", "PAUSED_AT_DESTINATION"]:
+            # Inicia o retorno à base
+            self._return_to_base_direct()
+        else:
+            print("⚠️ RETORNO MANUAL: Robô não está em estado válido para retorno")
+            print(f"   Estado atual: {self.navigation_state}")
+            # Força reset para estado válido
+            self.reset_to_initial_state()
+            self._return_to_base_direct()

@@ -345,21 +345,25 @@ class MainWindow(QMainWindow):
             self.btn_forward.setStyleSheet("font-size: 14px; font-weight: bold;")
         direction_grid.addWidget(self.btn_forward, 0, 1)
         
-        # Botão GIRO PRECISO ESQUERDA
-        self.btn_rotate_precise_left = QPushButton("↺ ESQ" if self.is_small_screen else "↺ 45° ESQ")
-        self.btn_rotate_precise_left.setFixedSize(rotate_width, rotate_height)
-        self.btn_rotate_precise_left.clicked.connect(lambda: self._execute_precise_rotation("left"))
+        # Botão GIRO MANUAL ESQUERDA (22° padrão)
+        self.btn_rotate_manual_left = QPushButton("↺ 22° ESQ" if self.is_small_screen else "↺ 22° ESQUERDA")
+        self.btn_rotate_manual_left.setFixedSize(rotate_width, rotate_height)
+        self.btn_rotate_manual_left.clicked.connect(self._manual_turn_left)
         if self.is_small_screen:
-            self.btn_rotate_precise_left.setStyleSheet("font-size: 9px; font-weight: bold;")
-        direction_grid.addWidget(self.btn_rotate_precise_left, 1, 0)
+            self.btn_rotate_manual_left.setStyleSheet("font-size: 9px; font-weight: bold; background-color: #2196F3; color: white;")
+        else:
+            self.btn_rotate_manual_left.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
+        direction_grid.addWidget(self.btn_rotate_manual_left, 1, 0)
         
-        # Botão GIRO PRECISO DIREITA
-        self.btn_rotate_precise_right = QPushButton("↻ DIR" if self.is_small_screen else "↻ 45° DIR")
-        self.btn_rotate_precise_right.setFixedSize(rotate_width, rotate_height)
-        self.btn_rotate_precise_right.clicked.connect(lambda: self._execute_precise_rotation("right"))
+        # Botão GIRO MANUAL DIREITA (22° padrão)
+        self.btn_rotate_manual_right = QPushButton("↻ 22° DIR" if self.is_small_screen else "↻ 22° DIREITA")
+        self.btn_rotate_manual_right.setFixedSize(rotate_width, rotate_height)
+        self.btn_rotate_manual_right.clicked.connect(self._manual_turn_right)
         if self.is_small_screen:
-            self.btn_rotate_precise_right.setStyleSheet("font-size: 9px; font-weight: bold;")
-        direction_grid.addWidget(self.btn_rotate_precise_right, 1, 2)
+            self.btn_rotate_manual_right.setStyleSheet("font-size: 9px; font-weight: bold; background-color: #2196F3; color: white;")
+        else:
+            self.btn_rotate_manual_right.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
+        direction_grid.addWidget(self.btn_rotate_manual_right, 1, 2)
         
         # Botão TRÁS (⬇️)
         self.btn_backward = QPushButton("⬇️")
@@ -1100,13 +1104,57 @@ class MainWindow(QMainWindow):
     #     except Exception as e:
     #         print(f"⚠️ SYNC_DEBUG: Erro na sincronização: {e}")
 
+    def _manual_turn_left(self):
+        """Executa giro manual de 22° para a esquerda"""
+        if self.navigation_active:
+            QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
+            return
+        
+        try:
+            print("🔄 INTERFACE: Executando giro manual esquerda de 22°")
+            self.navigator.manual_turn_left()
+            
+            # Atualiza a posição do robô na interface
+            current_pos = self.navigator.current_position
+            current_angle = self.navigator.current_angle
+            self.map_widget.update_robot_position(current_pos[0], current_pos[1], current_angle)
+            
+            print(f"🔄 INTERFACE: Giro manual concluído - Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f}), Ângulo: {current_angle:.1f}°")
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Erro", f"Erro ao executar giro manual:\n{e}")
+            print(f"⚠️ INTERFACE: Erro no giro manual: {e}")
+
+    def _manual_turn_right(self):
+        """Executa giro manual de 22° para a direita"""
+        if self.navigation_active:
+            QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
+            return
+        
+        try:
+            print("🔄 INTERFACE: Executando giro manual direita de 22°")
+            self.navigator.manual_turn_right()
+            
+            # Atualiza a posição do robô na interface
+            current_pos = self.navigator.current_position
+            current_angle = self.navigator.current_angle
+            self.map_widget.update_robot_position(current_pos[0], current_pos[1], current_angle)
+            
+            print(f"🔄 INTERFACE: Giro manual concluído - Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f}), Ângulo: {current_angle:.1f}°")
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Erro", f"Erro ao executar giro manual:\n{e}")
+            print(f"⚠️ INTERFACE: Erro no giro manual: {e}")
+
     def _on_angle_slider_changed(self, value: int):
         """Atualiza o ângulo de rotação por clique."""
         self.angle_label.setText(f"Ângulo por clique: {value}°")
         
-        # Atualiza textos dos botões
-        self.btn_rotate_precise_left.setText(f"↺ {value}° ESQUERDA")
-        self.btn_rotate_precise_right.setText(f"↻ {value}° DIREITA")
+        # Atualiza textos dos botões (mantém compatibilidade)
+        if hasattr(self, 'btn_rotate_precise_left'):
+            self.btn_rotate_precise_left.setText(f"↺ {value}° ESQUERDA")
+        if hasattr(self, 'btn_rotate_precise_right'):
+            self.btn_rotate_precise_right.setText(f"↻ {value}° DIREITA")
 
     def _set_new_starting_position(self):
         """Define a posição atual como nova posição de partida"""
@@ -1163,7 +1211,8 @@ class MainWindow(QMainWindow):
             f"Iniciar navegação de retorno à base original?\n\n"
             f"De: ({current_pos[0]:.2f}, {current_pos[1]:.2f})\n"
             f"Para: ({base_position[0]:.2f}, {base_position[1]:.2f})\n"
-            f"Distância: {distance_to_base:.2f}m",
+            f"Distância: {distance_to_base:.2f}m\n\n"
+            f"⚠️ IMPORTANTE: Certifique-se de que o robô está orientado corretamente para a base antes de iniciar!",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
@@ -1174,7 +1223,8 @@ class MainWindow(QMainWindow):
             self.navigator.current_angle = self.navigator.current_angle
             
             try:
-                self.navigator.navigate_to_destination_only(base_position)
+                # Usa o método de retorno manual que chama _return_to_base_direct
+                self.navigator.return_to_base_manual()
                 
                 self.navigation_active = True
                 self.nav_status_label.setText("Status: Retornando à base...")
