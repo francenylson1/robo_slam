@@ -1013,16 +1013,16 @@ class RobotNavigator(QObject):
         # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         turn_angle = 22.0  # graus
         
-        # 🎯 VELOCIDADE AUMENTADA: 60% da potência máxima para giro efetivo
-        left_speed = -60  # Motor esquerdo para trás (FORÇA AUMENTADA)
-        right_speed = 60  # Motor direito para frente (FORÇA AUMENTADA)
+        # 🎯 CORREÇÃO CRÍTICA: Direção corrigida para sincronização
+        # Para girar ESQUERDA: motor esquerdo para frente, direito para trás
+        left_speed = 60   # Motor esquerdo para FRENTE (CORRIGIDO)
+        right_speed = -60 # Motor direito para TRÁS (CORRIGIDO)
         
         print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
         self.motors.set_speed(left_speed, right_speed)
         
-        # 🎯 TEMPO CALCULADO: Baseado na velocidade real dos motores
-        # Para 22° com velocidade de 60%, tempo estimado de 0.8 segundos
-        turn_time = 0.8  # Tempo fixo otimizado para 22°
+        # 🎯 CORREÇÃO: Tempo reduzido para 22° preciso
+        turn_time = 0.5  # Tempo reduzido para giro mais preciso
         print(f"🔄 GIRO MANUAL: Tempo de giro: {turn_time}s")
         
         # Aguarda o tempo calculado
@@ -1046,16 +1046,16 @@ class RobotNavigator(QObject):
         # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         turn_angle = 22.0  # graus
         
-        # 🎯 VELOCIDADE AUMENTADA: 60% da potência máxima para giro efetivo
-        left_speed = 60  # Motor esquerdo para frente (FORÇA AUMENTADA)
-        right_speed = -60  # Motor direito para trás (FORÇA AUMENTADA)
+        # 🎯 CORREÇÃO CRÍTICA: Direção corrigida para sincronização
+        # Para girar DIREITA: motor esquerdo para trás, direito para frente
+        left_speed = -60  # Motor esquerdo para TRÁS (CORRIGIDO)
+        right_speed = 60  # Motor direito para FRENTE (CORRIGIDO)
         
         print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
         self.motors.set_speed(left_speed, right_speed)
         
-        # 🎯 TEMPO CALCULADO: Baseado na velocidade real dos motores
-        # Para 22° com velocidade de 60%, tempo estimado de 0.8 segundos
-        turn_time = 0.8  # Tempo fixo otimizado para 22°
+        # 🎯 CORREÇÃO: Tempo reduzido para 22° preciso
+        turn_time = 0.5  # Tempo reduzido para giro mais preciso
         print(f"🔄 GIRO MANUAL: Tempo de giro: {turn_time}s")
         
         # Aguarda o tempo calculado
@@ -1079,14 +1079,17 @@ class RobotNavigator(QObject):
         # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         # 🎯 VELOCIDADE AUMENTADA: 60% da potência máxima para giro efetivo
         
+        # 🎯 CORREÇÃO CRÍTICA: Direção corrigida para sincronização
         # Aplica giro na direção especificada
         if direction.lower() == 'left':
-            left_speed = -60
-            right_speed = 60
+            # Para girar ESQUERDA: motor esquerdo para frente, direito para trás
+            left_speed = 60   # Motor esquerdo para FRENTE (CORRIGIDO)
+            right_speed = -60 # Motor direito para TRÁS (CORRIGIDO)
             self.current_angle = (self.current_angle - abs(angle_degrees)) % 360
         else:  # right
-            left_speed = 60
-            right_speed = -60
+            # Para girar DIREITA: motor esquerdo para trás, direito para frente
+            left_speed = -60  # Motor esquerdo para TRÁS (CORRIGIDO)
+            right_speed = 60  # Motor direito para FRENTE (CORRIGIDO)
             self.current_angle = (self.current_angle + abs(angle_degrees)) % 360
         
         print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {angle_degrees}°")
