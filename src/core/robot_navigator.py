@@ -241,14 +241,14 @@ class RobotNavigator(QObject):
         print("DEBUG: === NAVEGAÇÃO FINALIZADA ===")
         
     def _return_to_base_direct(self):
-        """🎯 SOLUÇÃO GENIAL: Retorno direto à base usando coordenadas conhecidas"""
+        """🎯 SOLUÇÃO GENIAL: Retorno direto à base usando coordenadas conhecidas com sincronia melhorada"""
         print("DEBUG: === RETORNO DIRETO À BASE ===")
         print(f"DEBUG: Posição atual: {self.current_position}")
         print(f"DEBUG: Base conhecida: {ROBOT_INITIAL_POSITION}")
         print(f"DEBUG: Ângulo final desejado: {ROBOT_INITIAL_ANGLE}°")
         
         # 🎯 CORREÇÃO CRÍTICA: Reset completo do estado para evitar loops
-        print("🔄 RESET COMPLETO: Limpando estado anterior para evitar loops")
+        print("🔄 RESET_COMPLETO: Limpando estado anterior para evitar loops")
         self.motors.stop()  # Para qualquer movimento em andamento
         time.sleep(0.5)     # Pausa para estabilizar
         
@@ -264,7 +264,13 @@ class RobotNavigator(QObject):
         dy = ROBOT_INITIAL_POSITION[1] - self.current_position[1]
         target_angle = math.degrees(math.atan2(dy, dx))
         
-        print(f"🧭 CÁLCULO DIRETO: Ângulo para base = {target_angle:.1f}°")
+        # 🎯 NORMALIZA ângulo para -180 a +180
+        while target_angle > 180:
+            target_angle -= 360
+        while target_angle < -180:
+            target_angle += 360
+        
+        print(f"🧭 CÁLCULO_DIRETO: Ângulo para base = {target_angle:.1f}°")
         
         # 🎯 FASE 2: Configurar navegação direta (sem waypoints intermediários!)
         self.is_returning_to_base = True
@@ -275,14 +281,24 @@ class RobotNavigator(QObject):
         # 🎯 CORREÇÃO CRÍTICA: Usar estado correto para retorno!
         # ANTES: navigation_state = "NAVIGATING_TO_DESTINATION" ← ESTADO INCORRETO!
         # AGORA: navigation_state = "RETURNING_TO_BASE" ← ESTADO CORRETO!
-        print("🚀 NAVEGAÇÃO DIRETA: Indo direto à base com estado RETURNING_TO_BASE!")
+        print("🚀 NAVEGAÇÃO_DIRETA: Indo direto à base com estado RETURNING_TO_BASE!")
         self.navigation_state = "RETURNING_TO_BASE"
         
         # 🎯 VERIFICAÇÃO FINAL: Confirma que o estado está correto
-        print(f"✅ ESTADO CONFIRMADO: {self.navigation_state}")
+        print(f"✅ ESTADO_CONFIRMADO: {self.navigation_state}")
         print(f"✅ RETORNANDO: {self.is_returning_to_base}")
         print(f"✅ ALVO: {self.current_target}")
         print(f"✅ CAMINHO: {self.path}")
+        print(f"✅ ÂNGULO_ALVO: {target_angle:.1f}°")
+        
+        # 🎯 NOVO: Verifica se precisa de orientação prévia
+        angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
+        if angle_error > 90:  # Se está muito desalinhado
+            print(f"⚠️ ORIENTAÇÃO_PRÉVIA: Robô {angle_error:.1f}° desalinhado, iniciando orientação")
+            self.navigation_state = "ORIENTING_TO_TARGET"
+        else:
+            print(f"✅ ORIENTAÇÃO_OK: Robô {angle_error:.1f}° alinhado, navegação direta")
+            self.navigation_state = "RETURNING_TO_BASE"
 
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
@@ -742,37 +758,66 @@ class RobotNavigator(QObject):
         return False
 
     def _adjust_final_angle(self):
-        """🎯 CORREÇÃO: Ajuste preciso do ângulo final para 270° na base"""
+        """🎯 CORREÇÃO: Ajuste preciso do ângulo final para 270° na base com sincronia melhorada"""
         angle_diff = (ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180
         
-        print(f"🎯 AJUSTE FINAL: Ângulo atual {self.current_angle:.1f}°, Alvo {ROBOT_INITIAL_ANGLE}°, Diferença {angle_diff:.1f}°")
+        print(f"🎯 AJUSTE_FINAL: Ângulo atual {self.current_angle:.1f}°, Alvo {ROBOT_INITIAL_ANGLE}°, Diferença {angle_diff:.1f}°")
         
-        if abs(angle_diff) > 1.0:
+        # 🎯 TOLERÂNCIA mais restritiva para máxima precisão
+        if abs(angle_diff) > 0.5:  # Reduzido de 1.0° para 0.5° para maior precisão
             # 🎯 CORREÇÃO: Cálculo mais preciso da velocidade de giro
             if abs(angle_diff) > 45: 
-                turn_value = min(0.6, abs(angle_diff) / 40.0)  # Mais suave para giros grandes
+                turn_value = min(0.5, abs(angle_diff) / 45.0)  # Mais suave para giros grandes
             elif abs(angle_diff) > 20: 
-                turn_value = min(0.5, abs(angle_diff) / 35.0)  # Suave para giros médios
+                turn_value = min(0.4, abs(angle_diff) / 40.0)  # Suave para giros médios
             elif abs(angle_diff) > 5: 
-                turn_value = min(0.4, abs(angle_diff) / 30.0)  # Preciso para ajustes finos
+                turn_value = min(0.35, abs(angle_diff) / 35.0)  # Preciso para ajustes finos
             else: 
-                turn_value = min(0.3, abs(angle_diff) / 25.0)  # Muito preciso para ajustes mínimos
+                turn_value = min(0.25, abs(angle_diff) / 30.0)  # Muito preciso para ajustes mínimos
                 
-            # 🎯 CORREÇÃO: Direção do giro corrigida
+            # 🎯 CORREÇÃO: Direção do giro corrigida com logs detalhados
             if angle_diff > 0:
                 # Precisa girar no sentido horário (para a direita)
                 left_speed = turn_value * 100
                 right_speed = -turn_value * 100
-                print(f"🔄 GIRANDO DIREITA: left={left_speed:.0f}, right={right_speed:.0f}")
+                print(f"🔄 GIRANDO_DIREITA: left={left_speed:.0f}, right={right_speed:.0f} (ângulo: +{angle_diff:.1f}°)")
             else:
                 # Precisa girar no sentido anti-horário (para a esquerda)
                 left_speed = -turn_value * 100
                 right_speed = turn_value * 100
-                print(f"🔄 GIRANDO ESQUERDA: left={left_speed:.0f}, right={right_speed:.0f}")
+                print(f"🔄 GIRANDO_ESQUERDA: left={left_speed:.0f}, right={right_speed:.0f} (ângulo: {angle_diff:.1f}°)")
                 
+            # 🎯 APLICA movimento com controle de tempo para precisão
             self.motors.set_speed(left_speed, right_speed)
+            
+            # 🎯 CALCULA tempo de giro baseado no ângulo e velocidade
+            # Fórmula: tempo = ângulo / (velocidade_angular * fator_correção)
+            base_turn_time = abs(angle_diff) / (turn_value * 100 * 0.8)  # Fator 0.8 para compensar atrito
+            turn_time = max(0.1, min(2.0, base_turn_time))  # Limita entre 0.1s e 2.0s
+            
+            print(f"🎯 TEMPO_GIRO: {turn_time:.2f}s para {abs(angle_diff):.1f}° com velocidade {turn_value:.2f}")
+            
+            # 🎯 PARA automaticamente após o tempo calculado
+            import threading
+            def stop_after_time():
+                time.sleep(turn_time)
+                self.motors.stop()
+                # 🎯 VERIFICA se o ângulo está correto após o giro
+                final_angle_diff = (ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180
+                if abs(final_angle_diff) <= 0.5:
+                    print(f"✅ ÂNGULO_FINAL_CORRETO: {self.current_angle:.1f}° (diferença: {final_angle_diff:.1f}°)")
+                    self._finalize_navigation()
+                else:
+                    print(f"⚠️ ÂNGULO_FINAL_INCORRETO: {self.current_angle:.1f}° (diferença: {final_angle_diff:.1f}°) - tentando novamente")
+                    # 🎯 TENTA ajuste novamente se necessário
+                    time.sleep(0.5)  # Pausa para estabilizar
+                    self._adjust_final_angle()
+            
+            # 🚀 INICIA thread para parada automática
+            threading.Thread(target=stop_after_time, daemon=True).start()
+            
         else:
-            print(f"✅ ÂNGULO FINAL CORRETO: {self.current_angle:.1f}° (diferença: {angle_diff:.1f}°)")
+            print(f"✅ ÂNGULO_FINAL_CORRETO: {self.current_angle:.1f}° (diferença: {angle_diff:.1f}°)")
             self._finalize_navigation()
 
     def _get_next_waypoint_info(self):
