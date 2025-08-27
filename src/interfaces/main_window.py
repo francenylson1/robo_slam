@@ -1085,21 +1085,20 @@ class MainWindow(QMainWindow):
         
         # 🔧 SINCRONIZAÇÃO PRECISA por tempo como método principal
         if hasattr(self, 'precise_rotation_target_angle') and hasattr(self, 'initial_angle_for_sync'):
-            # 🎯 CORREÇÃO CRÍTICA: Inversão de direção corrigida
-            # O robô físico gira corretamente, mas a interface estava invertendo
-            # Para corrigir: usamos a direção OPOSTA do que estava implementado
+            # 🎯 CORREÇÃO CRÍTICA: Lógica simplificada para evitar duplicação
+            # O robô físico já girou, só precisamos sincronizar a interface
             
             if hasattr(self, 'precise_rotation_direction'):
                 if self.precise_rotation_direction == "left":
                     # 🎯 CORREÇÃO: Giro para ESQUERDA na interface
-                    # Se o robô físico girou para esquerda, a interface deve girar para esquerda também
-                    final_angle = self.initial_angle_for_sync - abs(self.precise_rotation_target_angle)
-                    print(f"🔄 SYNC_LEFT_CORRECTED: Giro para ESQUERDA corrigido")
+                    # Para esquerda: diminui o ângulo (sentido anti-horário)
+                    final_angle = self.initial_angle_for_sync + self.precise_rotation_target_angle
+                    print(f"🔄 SYNC_LEFT_CORRECTED: Giro para ESQUERDA - {self.initial_angle_for_sync:.1f}° + {self.precise_rotation_target_angle:.1f}° = {final_angle:.1f}°")
                 else:  # direction == "right"
                     # 🎯 CORREÇÃO: Giro para DIREITA na interface
-                    # Se o robô físico girou para direita, a interface deve girar para direita também
-                    final_angle = self.initial_angle_for_sync + abs(self.precise_rotation_target_angle)
-                    print(f"🔄 SYNC_RIGHT_CORRECTED: Giro para DIREITA corrigido")
+                    # Para direita: aumenta o ângulo (sentido horário)
+                    final_angle = self.initial_angle_for_sync + self.precise_rotation_target_angle
+                    print(f"🔄 SYNC_RIGHT_CORRECTED: Giro para DIREITA - {self.initial_angle_for_sync:.1f}° + {self.precise_rotation_target_angle:.1f}° = {final_angle:.1f}°")
             else:
                 # Fallback para compatibilidade
                 final_angle = self.initial_angle_for_sync + self.precise_rotation_target_angle
