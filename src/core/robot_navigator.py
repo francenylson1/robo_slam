@@ -1155,16 +1155,24 @@ class RobotNavigator(QObject):
         print(f"🔄 GIRO MANUAL: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
 
     def return_to_base_manual(self):
-        """🏠 RETORNO MANUAL: Navega para a base após giro manual"""
-        print("🏠 RETORNO MANUAL: Iniciando navegação para a base")
+        """🏠 RETORNO MANUAL: Navega para a base após giro manual com debug completo"""
+        print("🏠 RETORNO_MANUAL: Método chamado - iniciando verificação")
+        print(f"🏠 RETORNO_MANUAL: Estado atual: {self.navigation_state}")
+        print(f"🏠 RETORNO_MANUAL: Posição atual: {self.current_position}")
+        print(f"🏠 RETORNO_MANUAL: Ângulo atual: {self.current_angle:.1f}°")
         
         # Verifica se o robô está em um estado válido para retorno
         if self.navigation_state in ["IDLE", "PAUSED_AT_DESTINATION"]:
+            print("✅ RETORNO_MANUAL: Estado válido, iniciando retorno à base")
             # Inicia o retorno à base
             self._return_to_base_direct()
         else:
-            print("⚠️ RETORNO MANUAL: Robô não está em estado válido para retorno")
+            print("⚠️ RETORNO_MANUAL: Robô não está em estado válido para retorno")
             print(f"   Estado atual: {self.navigation_state}")
+            print("🔄 RETORNO_MANUAL: Forçando reset para estado válido")
             # Força reset para estado válido
             self.reset_to_initial_state()
+            print(f"🔄 RETORNO_MANUAL: Estado após reset: {self.navigation_state}")
             self._return_to_base_direct()
+        
+        print(f"🏠 RETORNO_MANUAL: Método concluído - Estado final: {self.navigation_state}")

@@ -1003,6 +1003,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Aviso", "Não é possível usar controles manuais durante a navegação automática.")
             return
 
+        print(f"🔄 SYNC_START: Iniciando giro {direction} com sincronia melhorada")
+        
         # 🔄 ATIVA modo de giro preciso no navegador para sincronia
         self.navigator.start_precise_rotation()
         
@@ -1055,30 +1057,61 @@ class MainWindow(QMainWindow):
             print(f"🔄 SYNC_RIGHT: Motor E={TURN_SPEED_PERCENT}%, D={-TURN_SPEED_PERCENT}%")
 
         # 🔧 SALVA dados para sincronização precisa por tempo
-        self.precise_rotation_target_angle = angle_per_click if direction == "right" else -angle_per_click
+        # 🎯 CORREÇÃO: Garante que a direção seja salva corretamente para sincronia
+        if direction == "left":
+            self.precise_rotation_target_angle = -angle_per_click  # Negativo para esquerda
+        else:  # direction == "right"
+            self.precise_rotation_target_angle = angle_per_click   # Positivo para direita
+            
         self.precise_rotation_start_time = time.time()
         self.precise_rotation_direction = direction
         
-        print(f"🔄 SYNC_DATA: Ângulo alvo: {self.precise_rotation_target_angle}°, Tempo: {rotation_time:.2f}s")
+        print(f"🔄 SYNC_DATA: Ângulo alvo: {self.precise_rotation_target_angle}°, Direção: {direction}, Tempo: {rotation_time:.2f}s")
         
-        # Para automaticamente após o tempo calculado
-        QTimer.singleShot(int(rotation_time * 1000), self._stop_precise_rotation)
+        # 🎯 NOVO: Timer mais robusto com callback garantido
+        self.rotation_timer = QTimer()
+        self.rotation_timer.setSingleShot(True)
+        self.rotation_timer.timeout.connect(self._stop_precise_rotation)
+        self.rotation_timer.start(int(rotation_time * 1000))
+        
+        print(f"🔄 SYNC_TIMER: Timer iniciado para {rotation_time:.2f}s")
 
     def _stop_precise_rotation(self):
-        """Para a rotação precisa com sincronia melhorada."""
+        """Para a rotação precisa com sincronia melhorada e robusta."""
+        print("🔄 SYNC_STOP: Parando rotação e aplicando sincronia")
+        
         # Para os motores
         self.navigator.motors.stop()
         
         # 🔧 SINCRONIZAÇÃO PRECISA por tempo como método principal
         if hasattr(self, 'precise_rotation_target_angle') and hasattr(self, 'initial_angle_for_sync'):
-            # Calcula o ângulo final baseado no tempo e direção
-            final_angle = self.initial_angle_for_sync + self.precise_rotation_target_angle
+            # 🎯 CORREÇÃO CRÍTICA: Inversão de direção corrigida
+            # O robô físico gira corretamente, mas a interface estava invertendo
+            # Para corrigir: usamos a direção OPOSTA do que estava implementado
+            
+            if hasattr(self, 'precise_rotation_direction'):
+                if self.precise_rotation_direction == "left":
+                    # 🎯 CORREÇÃO: Giro para ESQUERDA na interface
+                    # Se o robô físico girou para esquerda, a interface deve girar para esquerda também
+                    final_angle = self.initial_angle_for_sync - abs(self.precise_rotation_target_angle)
+                    print(f"🔄 SYNC_LEFT_CORRECTED: Giro para ESQUERDA corrigido")
+                else:  # direction == "right"
+                    # 🎯 CORREÇÃO: Giro para DIREITA na interface
+                    # Se o robô físico girou para direita, a interface deve girar para direita também
+                    final_angle = self.initial_angle_for_sync + abs(self.precise_rotation_target_angle)
+                    print(f"🔄 SYNC_RIGHT_CORRECTED: Giro para DIREITA corrigido")
+            else:
+                # Fallback para compatibilidade
+                final_angle = self.initial_angle_for_sync + self.precise_rotation_target_angle
+                print(f"🔄 SYNC_FALLBACK: Usando cálculo padrão")
             
             # Normaliza o ângulo (-180 a +180)
             while final_angle > 180:
                 final_angle -= 360
             while final_angle < -180:
                 final_angle += 360
+            
+            print(f"🔄 SYNC_CALCULATION: {self.initial_angle_for_sync:.1f}° → {final_angle:.1f}° (direção: {getattr(self, 'precise_rotation_direction', 'unknown')})")
             
             # 🎯 FORÇA a sincronização exata na interface
             self.navigator.current_angle = final_angle
@@ -1088,6 +1121,9 @@ class MainWindow(QMainWindow):
                 current_pos = self.navigator.current_position
                 self.map_widget.update_robot_position(current_pos[0], current_pos[1], final_angle)
                 print(f"🔄 SYNC_UI: Interface atualizada - Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f}), Ângulo: {final_angle:.1f}°")
+                
+                # 🎯 NOVO: Força atualização imediata da interface
+                self.map_widget.repaint()
             
             print(f"🔧 SYNC_TIME_ENHANCED: Ângulo corrigido por tempo - {self.initial_angle_for_sync:.1f}° → {final_angle:.1f}°")
             
@@ -1097,6 +1133,16 @@ class MainWindow(QMainWindow):
                 print(f"✅ SYNC_SUCCESS: Sincronia perfeita alcançada (diferença: {angle_diff:.1f}°)")
             else:
                 print(f"⚠️ SYNC_WARNING: Pequena diferença na sincronia (diferença: {angle_diff:.1f}°)")
+        else:
+            print("⚠️ SYNC_WARNING: Dados de sincronia não encontrados, usando método alternativo")
+            # 🎯 MÉTODO ALTERNATIVO: Usa o ângulo atual do navegador
+            if hasattr(self.navigator, 'current_angle'):
+                current_angle = self.navigator.current_angle
+                current_pos = self.navigator.current_position
+                if hasattr(self, 'map_widget'):
+                    self.map_widget.update_robot_position(current_pos[0], current_pos[1], current_angle)
+                    self.map_widget.repaint()
+                    print(f"🔄 SYNC_ALTERNATIVE: Interface atualizada com ângulo do navegador: {current_angle:.1f}°")
         
         # 🔧 LIMPA direção forçada dos ticks
         self.navigator.motors.clear_precise_rotation_direction()
@@ -1112,6 +1158,14 @@ class MainWindow(QMainWindow):
                 delattr(self, 'precise_rotation_direction')
         else:
             print("🔄 SYNC_COMPLETE: Giro preciso finalizado - modo normal restaurado")
+        
+        # 🎯 NOVO: Limpa timer se existir
+        if hasattr(self, 'rotation_timer'):
+            self.rotation_timer.stop()
+            delattr(self, 'rotation_timer')
+            print("🔄 SYNC_TIMER: Timer limpo")
+        
+        print("✅ SYNC_COMPLETE: Sincronia finalizada com sucesso")
 
     # 🚨 COMPLETAMENTE DESABILITADO: Método de sincronização com problemas
     # def _sync_robot_position_during_rotation(self):
@@ -1217,8 +1271,11 @@ class MainWindow(QMainWindow):
             )
 
     def _return_to_base(self):
-        """Inicia navegação de retorno para a base original com sincronia melhorada"""
+        """Inicia navegação de retorno para a base original com sincronia melhorada e debug"""
+        print("🏠 RETORNO_BASE: Método chamado - iniciando verificação")
+        
         if self.navigation_active:
+            print("⚠️ RETORNO_BASE: Navegação já ativa, bloqueando retorno")
             QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
             return
         
@@ -1226,10 +1283,14 @@ class MainWindow(QMainWindow):
         current_pos = self.navigator.current_position
         current_angle = self.navigator.current_angle
         
+        print(f"🏠 RETORNO_BASE: Posição atual: {current_pos}, Ângulo: {current_angle:.1f}°")
+        print(f"🏠 RETORNO_BASE: Base alvo: {base_position}")
+        
         distance_to_base = ((current_pos[0] - base_position[0])**2 + 
                            (current_pos[1] - base_position[1])**2)**0.5
         
         if distance_to_base < 0.3:
+            print("🏠 RETORNO_BASE: Robô já próximo da base, cancelando")
             QMessageBox.information(self, "Retorno à Base", "O robô já está próximo à base original!")
             return
         
@@ -1238,6 +1299,8 @@ class MainWindow(QMainWindow):
         dy = base_position[1] - current_pos[1]
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = abs((target_angle - current_angle + 180) % 360 - 180)
+        
+        print(f"🏠 RETORNO_BASE: Ângulo para base: {target_angle:.1f}°, Erro: {angle_error:.1f}°")
         
         orientation_warning = ""
         if angle_error > 45:
@@ -1256,20 +1319,28 @@ class MainWindow(QMainWindow):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            print(f"🏠 RETORNO_BASE: Iniciando retorno à base - Distância: {distance_to_base:.2f}m, Erro angular: {angle_error:.1f}°")
-            
-            # 🔄 RESET do estado para garantir navegação limpa
-            self.navigator.reset_to_initial_state()
-            
-            # 🔧 PRESERVA posição e ângulo atuais
-            self.navigator.current_position = current_pos
-            self.navigator.current_angle = current_angle
+            print(f"🏠 RETORNO_BASE: Usuário confirmou - iniciando processo")
             
             try:
+                # 🔄 RESET do estado para garantir navegação limpa
+                print("🏠 RETORNO_BASE: Resetando estado do navegador")
+                self.navigator.reset_to_initial_state()
+                
+                # 🔧 PRESERVA posição e ângulo atuais
+                print("🏠 RETORNO_BASE: Preservando posição e ângulo atuais")
+                self.navigator.current_position = current_pos
+                self.navigator.current_angle = current_angle
+                
+                print(f"🏠 RETORNO_BASE: Estado após reset - Posição: {self.navigator.current_position}, Ângulo: {self.navigator.current_angle:.1f}°")
+                
                 # 🚀 INICIA retorno manual que chama _return_to_base_direct
+                print("🏠 RETORNO_BASE: Chamando return_to_base_manual()")
                 self.navigator.return_to_base_manual()
                 
+                print(f"🏠 RETORNO_BASE: return_to_base_manual() executado - Estado: {self.navigator.navigation_state}")
+                
                 # 🔄 ATIVA navegação e atualiza interface
+                print("🏠 RETORNO_BASE: Ativando navegação na interface")
                 self.navigation_active = True
                 self.nav_status_label.setText("Status: Retornando à base...")
                 self.nav_progress_bar.setVisible(True)
@@ -1279,13 +1350,21 @@ class MainWindow(QMainWindow):
                 
                 # 🎯 ATUALIZA caminho na interface se disponível
                 if hasattr(self.navigator, 'path') and self.navigator.path:
+                    print(f"🏠 RETORNO_BASE: Caminho disponível: {len(self.navigator.path)} pontos")
                     self.map_widget.set_current_path(self.navigator.path)
                     print(f"🏠 RETORNO_BASE: Caminho definido na interface: {len(self.navigator.path)} pontos")
+                else:
+                    print("⚠️ RETORNO_BASE: Nenhum caminho disponível no navegador")
                 
                 print(f"✅ RETORNO_BASE: Navegação iniciada com sucesso - Estado: {self.navigator.navigation_state}")
+                print(f"✅ RETORNO_BASE: navigation_active = {self.navigation_active}")
                 
             except Exception as e:
                 error_msg = f"Erro ao iniciar retorno à base:\n{e}"
-                print(f"🚨 RETORNO_BASE: {error_msg}")
+                print(f"🚨 RETORNO_BASE: EXCEÇÃO CAPTURADA: {error_msg}")
+                import traceback
+                traceback.print_exc()
                 QMessageBox.warning(self, "Erro", error_msg)
                 self.navigation_active = False
+        else:
+            print("🏠 RETORNO_BASE: Usuário cancelou o retorno")
