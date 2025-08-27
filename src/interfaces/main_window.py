@@ -1057,11 +1057,19 @@ class MainWindow(QMainWindow):
             print(f"🔄 SYNC_RIGHT: Motor E={TURN_SPEED_PERCENT}%, D={-TURN_SPEED_PERCENT}%")
 
         # 🔧 SALVA dados para sincronização precisa por tempo
-        # 🎯 CORREÇÃO: Garante que a direção seja salva corretamente para sincronia
+        # 🎯 CORREÇÃO CRÍTICA: Sincronia real com o robô físico
+        # O robô físico gira, a interface deve girar na MESMA direção
+        
         if direction == "left":
+            # 🎯 CORREÇÃO: Para esquerda, o robô físico diminui o ângulo
+            # A interface deve diminuir o ângulo também (sincronia real)
             self.precise_rotation_target_angle = -angle_per_click  # Negativo para esquerda
+            print(f"🔄 SYNC_LEFT_REAL: Giro para ESQUERDA - ângulo será diminuído")
         else:  # direction == "right"
+            # 🎯 CORREÇÃO: Para direita, o robô físico aumenta o ângulo
+            # A interface deve aumentar o ângulo também (sincronia real)
             self.precise_rotation_target_angle = angle_per_click   # Positivo para direita
+            print(f"🔄 SYNC_RIGHT_REAL: Giro para DIREITA - ângulo será aumentado")
             
         self.precise_rotation_start_time = time.time()
         self.precise_rotation_direction = direction
@@ -1118,8 +1126,11 @@ class MainWindow(QMainWindow):
             # 🔄 ATUALIZA a interface gráfica para refletir a nova posição
             if hasattr(self, 'map_widget'):
                 current_pos = self.navigator.current_position
+                # 🎯 CORREÇÃO CRÍTICA: Durante giros, atualiza APENAS o ângulo
+                # A posição deve permanecer fixa para que o robô gire no próprio eixo
                 self.map_widget.update_robot_position(current_pos[0], current_pos[1], final_angle)
-                print(f"🔄 SYNC_UI: Interface atualizada - Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f}), Ângulo: {final_angle:.1f}°")
+                print(f"🔄 SYNC_UI: Interface atualizada - Posição FIXA: ({current_pos[0]:.2f}, {current_pos[1]:.2f}), Ângulo NOVO: {final_angle:.1f}°")
+                print(f"🔄 SYNC_UI: Robô virtual girou no próprio eixo (posição não mudou)")
                 
                 # 🎯 NOVO: Força atualização imediata da interface
                 self.map_widget.repaint()
