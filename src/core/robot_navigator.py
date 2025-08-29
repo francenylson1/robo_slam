@@ -638,8 +638,22 @@ class RobotNavigator(QObject):
             self.motors.set_target_speed(0, 0)
             return
 
-        dx = self.current_target[0] - self.current_position[0]
-        dy = self.current_target[1] - self.current_position[1]
+        # 🎯 CORREÇÃO PRINCIPAL: Verifica se há caminho definido para seguir
+        if hasattr(self, 'path') and len(self.path) > 1 and hasattr(self, 'path_index'):
+            # 🎯 NAVEGAÇÃO POR CAMINHO: Segue o caminho traçado waypoint por waypoint
+            target_for_movement = self._get_path_following_target()
+            if target_for_movement:
+                dx = target_for_movement[0] - self.current_position[0]
+                dy = target_for_movement[1] - self.current_position[1]
+            else:
+                # Fallback para navegação direta
+                dx = self.current_target[0] - self.current_position[0]
+                dy = self.current_target[1] - self.current_position[1]
+        else:
+            # 🎯 NAVEGAÇÃO DIRETA: Quando não há caminho definido
+            dx = self.current_target[0] - self.current_position[0]
+            dy = self.current_target[1] - self.current_position[1]
+            
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
@@ -681,17 +695,26 @@ class RobotNavigator(QObject):
             self.navigation_state = "ORIENTING_TO_TARGET"
             return
 
-        angle_factor = max(0.0, math.cos(math.radians(angle_error)))
-        linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
-        
-        # 🎯 CORREÇÃO DEFINITIVA: Movimento angular diferenciado para ida vs retorno
-        if self.is_returning_to_base:
-            # RETORNO: Angular ULTRA suave para eliminar loops totalmente
-            angular_speed_rads = math.radians(angle_error) * 0.2  # Reduzido de 1.8 para 0.2 (11x mais suave!)
-            print(f"🔄 RETORNO SUAVE: Angular reduzido drasticamente (fator 0.2) para erro {angle_error:.1f}°")
+        # 🎯 CORREÇÃO CURVAS: Ajusta velocidade baseado no tipo de navegação
+        if hasattr(self, 'path') and len(self.path) > 2 and not self.is_returning_to_base:
+            # 🎯 NAVEGAÇÃO COM CURVAS: Velocidade reduzida para maior precisão
+            angle_factor = max(0.3, math.cos(math.radians(angle_error)))  # Mínimo 30% velocidade
+            linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor * 0.8  # 80% da velocidade máxima
+            angular_speed_rads = math.radians(angle_error) * 1.5  # Controle angular mais suave
+            print(f"🎯 CURVA: Velocidade reduzida - Linear: {linear_speed_ms:.2f}, Angular: {math.degrees(angular_speed_rads):.1f}°")
         else:
-            # IDA: Mantém controle angular normal para preservar precisão
-            angular_speed_rads = math.radians(angle_error) * 1.8
+            # 🎯 NAVEGAÇÃO NORMAL: Velocidade padrão
+            angle_factor = max(0.0, math.cos(math.radians(angle_error)))
+            linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
+            
+            # 🎯 CORREÇÃO DEFINITIVA: Movimento angular diferenciado para ida vs retorno
+            if self.is_returning_to_base:
+                # RETORNO: Angular ULTRA suave para eliminar loops totalmente
+                angular_speed_rads = math.radians(angle_error) * 0.2  # Reduzido de 1.8 para 0.2 (11x mais suave!)
+                print(f"🔄 RETORNO SUAVE: Angular reduzido drasticamente (fator 0.2) para erro {angle_error:.1f}°")
+            else:
+                # IDA: Mantém controle angular normal para preservar precisão
+                angular_speed_rads = math.radians(angle_error) * 1.8
         
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
@@ -706,6 +729,42 @@ class RobotNavigator(QObject):
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
         self.motors.set_target_speed(left_tps, right_tps)
+
+    def _get_path_following_target(self) -> Optional[Tuple[float, float]]:
+        """🎯 NOVA FUNÇÃO: Calcula o próximo ponto do caminho para seguir adequadamente as curvas"""
+        if not hasattr(self, 'path') or not self.path or not hasattr(self, 'path_index'):
+            return None
+            
+        # 🎯 LOOK-AHEAD: Olha alguns pontos à frente para suavizar curvas
+        look_ahead_distance = 0.3  # 30cm à frente
+        current_distance = 0.0
+        
+        # Começa do waypoint atual
+        for i in range(self.path_index, len(self.path)):
+            if i == self.path_index:
+                continue  # Pula o waypoint atual
+                
+            # Calcula distância do ponto atual até este waypoint
+            prev_point = self.path[i-1] if i > 0 else self.current_position
+            current_point = self.path[i]
+            
+            segment_distance = math.sqrt(
+                (current_point[0] - prev_point[0])**2 + 
+                (current_point[1] - prev_point[1])**2
+            )
+            current_distance += segment_distance
+            
+            # 🎯 ENCONTROU PONTO LOOK-AHEAD: Retorna este ponto
+            if current_distance >= look_ahead_distance:
+                print(f"🎯 LOOK-AHEAD: Seguindo ponto {i}/{len(self.path)} a {current_distance:.2f}m")
+                return current_point
+                
+        # 🎯 FALLBACK: Se não encontrou ponto look-ahead, usa o waypoint atual
+        if self.path_index < len(self.path):
+            print(f"🎯 FALLBACK: Usando waypoint atual {self.path_index}/{len(self.path)}")
+            return self.path[self.path_index]
+            
+        return None
 
     def _stable_final_approach(self, final_target: Tuple[float, float]):
         if final_target is None:
@@ -879,11 +938,11 @@ class RobotNavigator(QObject):
 
         is_near_final_destination = (self.path_index >= len(self.path) - 1)
 
-        # 🎯 SOLUÇÃO B: Tolerância mais permissiva durante curvas
+        # 🎯 CORREÇÃO CURVAS: Tolerância ajustada para não pular waypoints importantes
         if len(self.path) > 2:
-            # 🎯 CURVAS: Tolerância maior para evitar travamento em waypoints
-            arrival_tolerance = 0.20  # Aumentado de 0.12 para 0.20m durante curvas
-            print(f"🎯 CURVA: Tolerância aumentada para {arrival_tolerance}m")
+            # 🎯 CURVAS: Tolerância menor para seguir waypoints precisamente
+            arrival_tolerance = 0.15  # Reduzido de 0.20 para 0.15m para maior precisão
+            print(f"🎯 CURVA: Tolerância precisa {arrival_tolerance}m")
         else:
             # 🎯 NAVEGAÇÃO DIRETA: Tolerância padrão
             arrival_tolerance = 0.12  # Tolerância original
