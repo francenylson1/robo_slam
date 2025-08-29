@@ -150,7 +150,7 @@ class PathFinder:
         return None # Nenhum ponto válido encontrado
 
     def _astar_optimized(self, start: Tuple[int, int], goal: Tuple[int, int]) -> Optional[List[Tuple[int, int]]]:
-        """Implementação otimizada do algoritmo A*"""
+        """Implementação otimizada do algoritmo A* com caminhos simplificados"""
         # Estruturas de dados otimizadas
         open_set = []  # Fila de prioridade (heap)
         closed_set = set()
@@ -174,7 +174,11 @@ class PathFinder:
             # Verifica se chegou ao objetivo
             if current == goal:
                 print("DEBUG: Caminho encontrado pelo A*!")
-                return self._reconstruct_path(came_from, current)
+                raw_path = self._reconstruct_path(came_from, current)
+                # 🎯 SOLUÇÃO B: Simplifica o caminho para reduzir waypoints
+                simplified_path = self._simplify_path(raw_path)
+                print(f"DEBUG: Caminho simplificado: {len(raw_path)} → {len(simplified_path)} pontos")
+                return simplified_path
                 
             # Adiciona à lista de nós visitados
             closed_set.add(current)
@@ -199,18 +203,77 @@ class PathFinder:
                 movement_cost = 1.4 if dx != 0 and dy != 0 else 1.0
                 tentative_g_score = g_score[current] + movement_cost
                 
-                # Verifica se encontrou um caminho melhor
-                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                    # Atualiza os scores
+                # Se o vizinho não está na fila ou encontrou um caminho melhor
+                if neighbor not in [item[1] for item in open_set] or tentative_g_score < g_score.get(neighbor, float('inf')):
                     came_from[neighbor] = current
                     g_score[neighbor] = tentative_g_score
-                    f_score[neighbor] = g_score[neighbor] + self._heuristic(neighbor, goal)
+                    f_score[neighbor] = tentative_g_score + self._heuristic(neighbor, goal)
                     
                     # Adiciona à fila de prioridade
                     heapq.heappush(open_set, (f_score[neighbor], neighbor))
-                    
-        # Nenhum caminho encontrado
+        
+        print("DEBUG: Nenhum caminho encontrado pelo A*")
         return None
+
+    def _simplify_path(self, path: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """🎯 SOLUÇÃO B: Simplifica o caminho removendo waypoints desnecessários"""
+        if len(path) <= 2:
+            return path
+            
+        simplified = [path[0]]  # Sempre mantém o início
+        current_idx = 0
+        
+        while current_idx < len(path) - 1:
+            # Procura o próximo ponto que não está em linha reta
+            next_idx = current_idx + 1
+            best_idx = next_idx
+            
+            # Verifica se pode "pular" pontos intermediários
+            for i in range(current_idx + 2, len(path)):
+                if self._can_skip_points(path[current_idx], path[i]):
+                    best_idx = i
+                else:
+                    break
+            
+            simplified.append(path[best_idx])
+            current_idx = best_idx
+            
+            if current_idx >= len(path) - 1:
+                break
+        
+        # Sempre mantém o final
+        if simplified[-1] != path[-1]:
+            simplified.append(path[-1])
+            
+        return simplified
+    
+    def _can_skip_points(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
+        """🎯 SOLUÇÃO B: Verifica se pode pular pontos intermediários (linha reta livre)"""
+        # Converte para coordenadas do mundo
+        start_world = (start[0] * self.grid_size, start[1] * self.grid_size)
+        end_world = (end[0] * self.grid_size, end[1] * self.grid_size)
+        
+        # Verifica se a linha reta entre os pontos não passa por áreas proibidas
+        # Usa amostragem para verificar pontos intermediários
+        num_samples = max(3, int(self._calculate_world_distance(start_world, end_world) / (self.grid_size * 2)))
+        
+        for i in range(1, num_samples):
+            t = i / num_samples
+            sample_x = start_world[0] + t * (end_world[0] - start_world[0])
+            sample_y = start_world[1] + t * (end_world[1] - start_world[1])
+            
+            # Converte de volta para grid
+            sample_grid = (int(sample_x / self.grid_size), int(sample_y / self.grid_size))
+            
+            # Verifica se está em área proibida
+            if self._is_in_forbidden_area(sample_grid[0], sample_grid[1]):
+                return False
+                
+        return True
+    
+    def _calculate_world_distance(self, p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
+        """Calcula distância entre dois pontos em coordenadas do mundo"""
+        return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
         
     def _heuristic(self, a: Tuple[int, int], b: Tuple[int, int]) -> float:
         """

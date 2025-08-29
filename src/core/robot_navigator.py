@@ -519,76 +519,48 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = (target_angle - self.current_angle + 180) % 360 - 180
 
-        # 🎯 CORREÇÃO DEFINITIVA: Tolerância ULTRA-EXPANDIDA diferenciada para ida vs retorno
-        if self.is_returning_to_base:
-            # RETORNO: Tolerância MASSIVAMENTE expandida para eliminar loops totalmente
-            angle_tolerance = 45.0  # ULTRA tolerante - permite quase qualquer orientação
-            print(f"🔄 ORIENTAÇÃO RETORNO: Erro {angle_error:.1f}°, Tolerância {angle_tolerance}° (Tentativa {self.orientation_attempts + 1}/3)")
-        else:
-            # IDA: Mantém tolerância original para preservar precisão
-            angle_tolerance = 20.0  # Mantém ida funcionando
-            
-        if abs(angle_error) < angle_tolerance:
-            self.motors.stop()
+        # 🎯 SOLUÇÃO B: Tolerância mais permissiva para curvas
+        # Se o robô está navegando com múltiplos waypoints (curvas), aumenta tolerância
+        if len(self.path) > 2:
+            # 🎯 CURVAS: Tolerância mais permissiva para evitar travamento
             if self.is_returning_to_base:
-                # 🎯 CORREÇÃO CRÍTICA: Para retorno, vai direto para navegação
-                print(f"🔄 RETORNO: Orientação OK ({abs(angle_error):.1f}° < {angle_tolerance}°), indo para RETURNING_TO_BASE")
-                self.navigation_state = "RETURNING_TO_BASE"
-                # 🎯 RESET: Limpa timer de orientação e contador de tentativas
-                if hasattr(self, 'orientation_start_time'):
-                    delattr(self, 'orientation_start_time')
-                if hasattr(self, 'orientation_attempts'):
-                    delattr(self, 'orientation_attempts')
+                tolerance = 15.0  # Aumentado de 8° para 15° durante curvas
             else:
-                # IDA: Mantém comportamento original
-                state_key = "NAVIGATING_TO_DESTINATION"
-                context = "IDA - PRECISA"
-                print(f"🔄 MUDANÇA DE FASE: ORIENTING_TO_TARGET → {state_key} ({context}: {abs(angle_error):.1f}° < {angle_tolerance}°)")
-                self.navigation_state = state_key
+                tolerance = 20.0  # Aumentado de 12° para 20° durante curvas
+            print(f"🎯 CURVA DETECTADA: Tolerância aumentada para {tolerance}°")
+        else:
+            # 🎯 NAVEGAÇÃO DIRETA: Mantém tolerância original
+            if self.is_returning_to_base:
+                tolerance = 8.0  # Tolerância original para retorno
+            else:
+                tolerance = 12.0  # Tolerância original para ida
+            print(f"🎯 NAVEGAÇÃO DIRETA: Tolerância padrão {tolerance}°")
+
+        if abs(angle_error) <= tolerance:
+            print(f"✅ ORIENTAÇÃO CONCLUÍDA: Erro: {angle_error:.1f}° (tolerância: {tolerance}°)")
+            self.navigation_state = "NAVIGATING_TO_DESTINATION"
+            self.orientation_start_time = None
+            self.orientation_attempts = 0
             return
-
-        # 🎯 INCREMENTA CONTADOR DE TENTATIVAS
-        self.orientation_attempts += 1
-
-        # 🎯 CORREÇÃO CRÍTICA RETORNO: Força AINDA mais reduzida para eliminação total dos loops
-        # ANTES: angular_speed_rads = math.radians(angle_error) * 5.0  ← Era muito forte!
-        # V1: angular_speed_rads = math.radians(angle_error) * 1.5  ← Ainda causava 1 loop
-        # V2: angular_speed_rads = math.radians(angle_error) * 1.0  ← Ainda causava desvios
-        # V3: angular_speed_rads = math.radians(angle_error) * 0.7  ← Ainda causava loops no retorno
-        # V4 CRÍTICA: Força ultra-reduzida ESPECIAL para retorno (90% menos força que original)
-        if self.is_returning_to_base:
-            angular_speed_rads = math.radians(angle_error) * 0.4  # EXTRA suave para retorno
         else:
-            angular_speed_rads = math.radians(angle_error) * 0.7  # Mantém ida funcionando 
-        angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
+            # 🎯 SOLUÇÃO B: Movimento mais suave durante curvas
+            if len(self.path) > 2:
+                # 🎯 CURVAS: Movimento mais lento e suave
+                turn_speed = 15.0  # Reduzido para movimento mais suave
+                print(f"🔄 CURVA: Movimento suave - Velocidade: {turn_speed}%")
+            else:
+                # 🎯 NAVEGAÇÃO DIRETA: Velocidade normal
+                turn_speed = 25.0  # Velocidade padrão
+                print(f"🔄 DIREÇÃO: Movimento normal - Velocidade: {turn_speed}%")
 
-        v = 0.0  # Velocidade linear é zero durante a orientação
-        w = angular_speed_rads
-        L = ROBOT_WHEEL_BASE_M
-        
-        left_wheel_speed_ms = v + (w * L) / 2.0
-        right_wheel_speed_ms = v - (w * L) / 2.0
-        
-        left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
-        right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
-        
-        # 🎯 CORREÇÃO CRÍTICA RETORNO: MIN_TURN_TPS diferenciado para ida vs retorno
-        # ANTES: MIN_TURN_TPS = 20.0  ← Era muito forte para ajustes sutis!
-        # V1: MIN_TURN_TPS = 12.0  ← Ainda causava 1 loop em 7 testes
-        # V2: MIN_TURN_TPS = 8.0  ← Ainda causava desvios de 100-120cm
-        # V3: MIN_TURN_TPS = 5.0  ← Ainda causava loops no retorno
-        # V4 CRÍTICA: MIN_TURN_TPS EXTRA-suave para retorno
-        if self.is_returning_to_base:
-            MIN_TURN_TPS = 3.0  # EXTRA suave para retorno (85% menos força que original)
-        else:
-            MIN_TURN_TPS = 5.0  # Mantém ida funcionando
-        if 0 < abs(left_tps) < MIN_TURN_TPS:
-            left_tps = MIN_TURN_TPS * (1 if left_tps > 0 else -1)
-        if 0 < abs(right_tps) < MIN_TURN_TPS:
-            right_tps = MIN_TURN_TPS * (1 if right_tps > 0 else -1)
-        
-        print(f"🔄 ORIENTAÇÃO SUAVE: erro={angle_error:.1f}°, left_tps={left_tps:.1f}, right_tps={right_tps:.1f}")
-        self.motors.set_target_speed(left_tps, right_tps)
+            # Aplica o movimento de orientação
+            if angle_error > 0:
+                self.motors.set_speed(turn_speed, -turn_speed)  # Gira esquerda
+            else:
+                self.motors.set_speed(-turn_speed, turn_speed)  # Gira direita
+            
+            self.orientation_attempts += 1
+            print(f"🔄 ORIENTAÇÃO: Tentativa {self.orientation_attempts}/3 - Erro: {angle_error:.1f}°")
 
     def _force_orientation_movement(self):
         """🚨 MOVIMENTO FORÇADO: Força o robô a sair do travamento durante orientação"""
@@ -910,19 +882,52 @@ class RobotNavigator(QObject):
 
         is_near_final_destination = (self.path_index >= len(self.path) - 1)
 
-        if is_near_final_destination and distance_to_target < 0.15:
+        # 🎯 SOLUÇÃO B: Tolerância mais permissiva durante curvas
+        if len(self.path) > 2:
+            # 🎯 CURVAS: Tolerância maior para evitar travamento em waypoints
+            arrival_tolerance = 0.20  # Aumentado de 0.12 para 0.20m durante curvas
+            print(f"🎯 CURVA: Tolerância aumentada para {arrival_tolerance}m")
+        else:
+            # 🎯 NAVEGAÇÃO DIRETA: Tolerância padrão
+            arrival_tolerance = 0.12  # Tolerância original
+            print(f"🎯 DIRETA: Tolerância padrão {arrival_tolerance}m")
+
+        if is_near_final_destination and distance_to_target < arrival_tolerance:
             self.navigation_state = "FINAL_APPROACH_DESTINATION"
             self.current_target = self.original_destination
             return
 
-        if distance_to_target < 0.12:
+        if distance_to_target < arrival_tolerance:
+            # 🎯 SOLUÇÃO B: Transição mais suave entre waypoints
+            print(f"🎯 WAYPOINT ALCANÇADO: {self.path_index + 1}/{len(self.path)}")
+            
+            # Avança para o próximo waypoint
             self.path_index += 1
             if self.path_index < len(self.path):
                 self.current_target = self.path[self.path_index]
+                print(f"🎯 PRÓXIMO WAYPOINT: {self.current_target}")
+                
+                # 🎯 SOLUÇÃO B: Pausa breve para estabilizar entre waypoints
+                if len(self.path) > 2:
+                    print("🎯 CURVA: Pausa de estabilização entre waypoints")
+                    time.sleep(0.5)  # Pausa de 0.5s para estabilizar
+                
+                # 🎯 SOLUÇÃO B: Verifica se precisa reorientar para o próximo waypoint
+                dx = self.current_target[0] - self.current_position[0]
+                dy = self.current_target[1] - self.current_position[1]
+                target_angle = math.degrees(math.atan2(dy, dx))
+                angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
+                
+                # 🎯 SOLUÇÃO B: Se mudança de direção é grande, reorienta
+                if angle_error > 30.0:  # Tolerância para reorientação
+                    print(f"🎯 CURVA: Mudança de direção grande ({angle_error:.1f}°), reorientando...")
+                    self.navigation_state = "ORIENTING_TO_TARGET"
+                    return
+                else:
+                    print(f"🎯 CURVA: Mudança de direção pequena ({angle_error:.1f}°), continuando...")
+                    self.navigation_state = "NAVIGATING_TO_DESTINATION"
             else:
                 self.navigation_state = "FINAL_APPROACH_DESTINATION"
-                self.current_target = self.original_destination
-            return
         
         self._move_towards_target()
 
