@@ -397,10 +397,11 @@ class RobotNavigator(QObject):
             self.navigation_state = "ORIENTING_TO_TARGET"
 
     def navigate_to_and_return(self, destination: Tuple[float, float]) -> None:
-        """🎯 NAVEGAÇÃO APENAS AO POI: Vai ao destino e para (sem retorno automático)"""
-        print(f"DEBUG: ===== NAVEGAÇÃO APENAS AO POI =====")
+        """🎯 NAVEGAÇÃO INTELIGENTE: Usa A* se houver áreas proibidas, senão usa navegação direta"""
+        print(f"DEBUG: ===== NAVEGAÇÃO INTELIGENTE =====")
         print(f"DEBUG: Destino: {destination}")
         print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
+        print(f"DEBUG: Áreas proibidas configuradas: {len(self.forbidden_areas)}")
 
         self.reset_to_initial_state()
 
@@ -410,25 +411,47 @@ class RobotNavigator(QObject):
         self.should_return_to_base = False  # 🎯 DESATIVA retorno automático
         self.final_approach_start_time = None
 
-        # 🎯 NAVEGAÇÃO DIRETA: Caminho simplificado com apenas 2 pontos (atual → destino)
-        self.path = [self.current_position, destination]  # LINHA RETA!
-        self.path_index = 0
-        self.original_destination = destination
-        self.destination_index = 1  # Apenas 2 pontos: atual → destino
+        # 🎯 VERIFICAÇÃO SEGURA: Se houver áreas proibidas, tenta usar A*
+        if len(self.forbidden_areas) > 0:
+            print(f"🎯 ÁREAS PROIBIDAS DETECTADAS: Tentando usar PathFinder A*...")
+            try:
+                path_to_destination = self.path_finder.find_path(self.current_position, destination)
+                if path_to_destination and len(path_to_destination) >= 2:
+                    self.path = path_to_destination
+                    self.path_index = 0
+                    self.original_destination = destination
+                    self.destination_index = len(path_to_destination) - 1
+                    self.current_target = self.path[0]
+                    print(f"✅ A* SUCESSO: Caminho calculado com {len(self.path)} pontos")
+                    print(f"✅ CAMINHO RESPEITA ÁREAS PROIBIDAS!")
+                else:
+                    print(f"⚠️ A* falhou, usando navegação direta (fallback)")
+                    self._setup_direct_navigation(destination)
+            except Exception as e:
+                print(f"⚠️ ERRO no PathFinder: {e}. Usando navegação direta (fallback)")
+                self._setup_direct_navigation(destination)
+        else:
+            print(f"🎯 SEM ÁREAS PROIBIDAS: Usando navegação direta para máxima velocidade")
+            self._setup_direct_navigation(destination)
 
-        self.current_target = destination  # Target DIRETO!
-
-        print(f"🎯 NAVEGAÇÃO APENAS AO POI: Caminho simplificado com apenas 2 pontos (atual → destino)")
-
-        # 🎯 Cálculo direto para o destino
-        dx = destination[0] - self.current_position[0]
-        dy = destination[1] - self.current_position[1]
+        # 🎯 Cálculo do ângulo para o primeiro target
+        dx = self.current_target[0] - self.current_position[0]
+        dy = self.current_target[1] - self.current_position[1]
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
 
         # 🎯 FORÇA navegação direta SEM orientação prévia
-        print(f"🚀 NAVEGAÇÃO DIRETA SEM ORIENTAÇÃO: Indo direto ao destino!")
+        print(f"🚀 NAVEGAÇÃO INICIADA: Indo ao destino!")
         self.navigation_state = "NAVIGATING_TO_DESTINATION"
+
+    def _setup_direct_navigation(self, destination: Tuple[float, float]) -> None:
+        """Configura navegação direta (método auxiliar para manter código limpo)"""
+        self.path = [self.current_position, destination]
+        self.path_index = 0
+        self.original_destination = destination
+        self.destination_index = 1
+        self.current_target = destination
+        print(f"🎯 NAVEGAÇÃO DIRETA: Caminho simplificado com apenas 2 pontos (atual → destino)")
 
     def get_navigation_status(self) -> dict:
         """Retorna o status atual da navegação"""
