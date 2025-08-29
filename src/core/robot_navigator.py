@@ -411,27 +411,24 @@ class RobotNavigator(QObject):
         self.should_return_to_base = False  # 🎯 DESATIVA retorno automático
         self.final_approach_start_time = None
 
-        # 🎯 VERIFICAÇÃO SEGURA: Se houver áreas proibidas, tenta usar A*
-        if len(self.forbidden_areas) > 0:
-            print(f"🎯 ÁREAS PROIBIDAS DETECTADAS: Tentando usar PathFinder A*...")
-            try:
-                path_to_destination = self.path_finder.find_path(self.current_position, destination)
-                if path_to_destination and len(path_to_destination) >= 2:
-                    self.path = path_to_destination
-                    self.path_index = 0
-                    self.original_destination = destination
-                    self.destination_index = len(path_to_destination) - 1
-                    self.current_target = self.path[0]
-                    print(f"✅ A* SUCESSO: Caminho calculado com {len(self.path)} pontos")
-                    print(f"✅ CAMINHO RESPEITA ÁREAS PROIBIDAS!")
-                else:
-                    print(f"⚠️ A* falhou, usando navegação direta (fallback)")
-                    self._setup_direct_navigation(destination)
-            except Exception as e:
-                print(f"⚠️ ERRO no PathFinder: {e}. Usando navegação direta (fallback)")
+        # 🎯 SOLUTION E: SEMPRE usar PathFinder para POI (não apenas quando há áreas proibidas)
+        print(f"🎯 SOLUTION E: Forçando uso do PathFinder para POI com curvas suaves...")
+        try:
+            path_to_destination = self.path_finder.find_path(self.current_position, destination)
+            if path_to_destination and len(path_to_destination) >= 2:
+                self.path = path_to_destination
+                self.path_index = 0
+                self.original_destination = destination
+                self.destination_index = len(path_to_destination) - 1
+                self.current_target = self.path[0]
+                print(f"✅ A* SUCESSO: Caminho calculado com {len(self.path)} pontos")
+                print(f"✅ CAMINHO COM CURVAS SUAVES E WAYPOINTS INTERMEDIÁRIOS!")
+                print(f"✅ O ROBÔ VAI SEGUIR TODOS OS WAYPOINTS (NÃO VAI CORTAR CAMINHO)!")
+            else:
+                print(f"⚠️ A* falhou, usando navegação direta (fallback)")
                 self._setup_direct_navigation(destination)
-        else:
-            print(f"🎯 SEM ÁREAS PROIBIDAS: Usando navegação direta para máxima velocidade")
+        except Exception as e:
+            print(f"⚠️ ERRO no PathFinder: {e}. Usando navegação direta (fallback)")
             self._setup_direct_navigation(destination)
 
         # 🎯 Cálculo do ângulo para o primeiro target
