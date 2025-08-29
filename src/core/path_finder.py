@@ -324,17 +324,17 @@ class PathFinder:
         p2_world = (p2[0] * self.grid_size, p2[1] * self.grid_size)
         p3_world = (p3[0] * self.grid_size, p3[1] * self.grid_size)
         
-        # 🎯 SOLUÇÃO C MELHORADA: Dobrar pontos para navegação física
-        # QUANTO MAIS FECHADA A CURVA, MAIS PONTOS INTERMEDIÁRIOS
+        # 🎯 SOLUÇÃO D: Dobrar NOVAMENTE pontos para navegação física mais precisa
+        # QUANTO MAIS FECHADA A CURVA, MUITO MAIS PONTOS INTERMEDIÁRIOS
         if angle < 30.0:
-            num_points = 8  # Curva muito fechada: 8 pontos (DOBRADO de 4)
-            print(f"🎯 CURVA MUITO FECHADA ({angle:.1f}°): 8 pontos intermediários")
+            num_points = 16  # Curva muito fechada: 16 pontos (DOBRADO de 8)
+            print(f"🎯 CURVA MUITO FECHADA ({angle:.1f}°): 16 pontos intermediários")
         elif angle < 45.0:
-            num_points = 6  # Curva fechada: 6 pontos (DOBRADO de 3)
-            print(f"🎯 CURVA FECHADA ({angle:.1f}°): 6 pontos intermediários")
+            num_points = 12  # Curva fechada: 12 pontos (DOBRADO de 6)
+            print(f"🎯 CURVA FECHADA ({angle:.1f}°): 12 pontos intermediários")
         else:
-            num_points = 4  # Curva moderada: 4 pontos (DOBRADO de 2)
-            print(f"🎯 CURVA MODERADA ({angle:.1f}°): 4 pontos intermediários")
+            num_points = 8  # Curva moderada: 8 pontos (DOBRADO de 4)
+            print(f"🎯 CURVA MODERADA ({angle:.1f}°): 8 pontos intermediários")
         
         intermediate_points = []
         
