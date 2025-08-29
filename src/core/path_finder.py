@@ -324,17 +324,21 @@ class PathFinder:
         p2_world = (p2[0] * self.grid_size, p2[1] * self.grid_size)
         p3_world = (p3[0] * self.grid_size, p3[1] * self.grid_size)
         
-        # 🎯 QUANTO MAIS FECHADA A CURVA, MAIS PONTOS INTERMEDIÁRIOS
+        # 🎯 SOLUÇÃO C MELHORADA: Dobrar pontos para navegação física
+        # QUANTO MAIS FECHADA A CURVA, MAIS PONTOS INTERMEDIÁRIOS
         if angle < 30.0:
-            num_points = 4  # Curva muito fechada: 4 pontos intermediários
+            num_points = 8  # Curva muito fechada: 8 pontos (DOBRADO de 4)
+            print(f"🎯 CURVA MUITO FECHADA ({angle:.1f}°): 8 pontos intermediários")
         elif angle < 45.0:
-            num_points = 3  # Curva fechada: 3 pontos intermediários
+            num_points = 6  # Curva fechada: 6 pontos (DOBRADO de 3)
+            print(f"🎯 CURVA FECHADA ({angle:.1f}°): 6 pontos intermediários")
         else:
-            num_points = 2  # Curva moderada: 2 pontos intermediários
+            num_points = 4  # Curva moderada: 4 pontos (DOBRADO de 2)
+            print(f"🎯 CURVA MODERADA ({angle:.1f}°): 4 pontos intermediários")
         
         intermediate_points = []
         
-        # 🎯 ALGORITMO DE CURVA SUAVE: Interpolação com distância crescente
+        # 🎯 ALGORITMO DE CURVA SUAVE MELHORADO: Mais pontos para navegação física
         for i in range(1, num_points + 1):
             t = i / (num_points + 1)
             
@@ -360,6 +364,7 @@ class PathFinder:
                 not self._is_in_forbidden_area(grid_x, grid_y)):
                 intermediate_points.append((grid_x, grid_y))
         
+        print(f"🎯 PONTOS INTERMEDIÁRIOS GERADOS: {len(intermediate_points)}/{num_points} válidos")
         return intermediate_points
     
     def _can_skip_points(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
