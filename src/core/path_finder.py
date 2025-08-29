@@ -178,7 +178,12 @@ class PathFinder:
                 # 🎯 SOLUÇÃO B: Simplifica o caminho para reduzir waypoints
                 simplified_path = self._simplify_path(raw_path)
                 print(f"DEBUG: Caminho simplificado: {len(raw_path)} → {len(simplified_path)} pontos")
-                return simplified_path
+                
+                # 🎯 SOLUÇÃO C: Suaviza curvas agudas para evitar travamentos
+                final_path = self._smooth_curves(simplified_path)
+                print(f"DEBUG: Caminho final suavizado: {len(simplified_path)} → {len(final_path)} pontos")
+                
+                return final_path
                 
             # Adiciona à lista de nós visitados
             closed_set.add(current)
@@ -246,6 +251,116 @@ class PathFinder:
             simplified.append(path[-1])
             
         return simplified
+
+    def _smooth_curves(self, path: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """🎯 SOLUÇÃO C: Suaviza curvas agudas inserindo waypoints intermediários"""
+        if len(path) <= 2:
+            return path
+            
+        smoothed = [path[0]]  # Sempre mantém o início
+        
+        for i in range(1, len(path) - 1):
+            current = path[i]
+            prev = path[i - 1]
+            next_point = path[i + 1]
+            
+            # Calcula ângulo entre os três pontos
+            angle = self._calculate_angle_between_points(prev, current, next_point)
+            
+            # 🎯 DETECTA CURVAS AGRESSIVAS: Ângulos < 45° são muito fechados
+            if angle < 45.0:
+                print(f"🎯 CURVA AGRESSIVA DETECTADA: Ângulo {angle:.1f}° em waypoint {i}")
+                
+                # 🎯 INSERE WAYPOINTS INTERMEDIÁRIOS para suavizar a curva
+                intermediate_points = self._generate_intermediate_points(prev, current, next_point, angle)
+                
+                # Adiciona pontos intermediários
+                for inter_point in intermediate_points:
+                    smoothed.append(inter_point)
+                    print(f"🎯 WAYPOINT INTERMEDIÁRIO ADICIONADO: {inter_point}")
+                
+                print(f"🎯 CURVA SUAVIZADA: {len(intermediate_points)} pontos intermediários inseridos")
+            else:
+                # Ângulo aceitável, mantém o waypoint original
+                smoothed.append(current)
+        
+        # Sempre mantém o final
+        smoothed.append(path[-1])
+        
+        print(f"🎯 CAMINHO SUAVIZADO: {len(path)} → {len(smoothed)} pontos")
+        return smoothed
+    
+    def _calculate_angle_between_points(self, p1: Tuple[int, int], p2: Tuple[int, int], p3: Tuple[int, int]) -> float:
+        """Calcula o ângulo entre três pontos (p2 é o vértice)"""
+        # Converte para coordenadas do mundo
+        p1_world = (p1[0] * self.grid_size, p1[1] * self.grid_size)
+        p2_world = (p2[0] * self.grid_size, p2[1] * self.grid_size)
+        p3_world = (p3[0] * self.grid_size, p3[1] * self.grid_size)
+        
+        # Vetores dos dois lados
+        v1 = (p1_world[0] - p2_world[0], p1_world[1] - p2_world[1])
+        v2 = (p3_world[0] - p2_world[0], p3_world[1] - p2_world[1])
+        
+        # Produto escalar
+        dot_product = v1[0] * v2[0] + v1[1] * v2[1]
+        
+        # Módulos dos vetores
+        mag1 = math.sqrt(v1[0]**2 + v1[1]**2)
+        mag2 = math.sqrt(v2[0]**2 + v2[1]**2)
+        
+        # Ângulo em radianos
+        cos_angle = dot_product / (mag1 * mag2)
+        cos_angle = max(-1.0, min(1.0, cos_angle))  # Evita erros numéricos
+        
+        angle_rad = math.acos(cos_angle)
+        angle_deg = math.degrees(angle_rad)
+        
+        return angle_deg
+    
+    def _generate_intermediate_points(self, p1: Tuple[int, int], p2: Tuple[int, int], p3: Tuple[int, int], angle: float) -> List[Tuple[int, int]]:
+        """Gera waypoints intermediários para suavizar curvas agudas"""
+        # Converte para coordenadas do mundo
+        p1_world = (p1[0] * self.grid_size, p1[1] * self.grid_size)
+        p2_world = (p2[0] * self.grid_size, p2[1] * self.grid_size)
+        p3_world = (p3[0] * self.grid_size, p3[1] * self.grid_size)
+        
+        # 🎯 QUANTO MAIS FECHADA A CURVA, MAIS PONTOS INTERMEDIÁRIOS
+        if angle < 30.0:
+            num_points = 4  # Curva muito fechada: 4 pontos intermediários
+        elif angle < 45.0:
+            num_points = 3  # Curva fechada: 3 pontos intermediários
+        else:
+            num_points = 2  # Curva moderada: 2 pontos intermediários
+        
+        intermediate_points = []
+        
+        # 🎯 ALGORITMO DE CURVA SUAVE: Interpolação com distância crescente
+        for i in range(1, num_points + 1):
+            t = i / (num_points + 1)
+            
+            # 🎯 CURVA MAIS NATURAL: Usa interpolação quadrática
+            # P1 → P2 → P3: Cria curva mais suave e redonda
+            if t <= 0.5:
+                # Primeira metade: P1 → P2 (mais suave)
+                t_smooth = 2 * t * t  # Aceleração gradual
+                x = p1_world[0] + t_smooth * (p2_world[0] - p1_world[0])
+                y = p1_world[1] + t_smooth * (p2_world[1] - p1_world[1])
+            else:
+                # Segunda metade: P2 → P3 (mais suave)
+                t_smooth = 1 - 2 * (1 - t) * (1 - t)  # Desaceleração gradual
+                x = p2_world[0] + t_smooth * (p3_world[0] - p2_world[0])
+                y = p2_world[1] + t_smooth * (p3_world[1] - p2_world[1])
+            
+            # Converte de volta para grid
+            grid_x = int(x / self.grid_size)
+            grid_y = int(y / self.grid_size)
+            
+            # Verifica se o ponto está dentro dos limites e não é obstáculo
+            if (0 <= grid_x < self.width and 0 <= grid_y < self.height and 
+                not self._is_in_forbidden_area(grid_x, grid_y)):
+                intermediate_points.append((grid_x, grid_y))
+        
+        return intermediate_points
     
     def _can_skip_points(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
         """🎯 SOLUÇÃO B: Verifica se pode pular pontos intermediários (linha reta livre)"""
