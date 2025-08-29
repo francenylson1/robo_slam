@@ -697,11 +697,11 @@ class RobotNavigator(QObject):
 
         # 🎯 CORREÇÃO CURVAS: Ajusta velocidade baseado no tipo de navegação
         if hasattr(self, 'path') and len(self.path) > 2 and not self.is_returning_to_base:
-            # 🎯 NAVEGAÇÃO COM CURVAS: Velocidade reduzida para maior precisão
-            angle_factor = max(0.3, math.cos(math.radians(angle_error)))  # Mínimo 30% velocidade
-            linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor * 0.8  # 80% da velocidade máxima
+            # 🎯 NAVEGAÇÃO COM CURVAS: Velocidade mínima adequada para não travar
+            angle_factor = max(0.6, math.cos(math.radians(angle_error)))  # Mínimo 60% velocidade
+            linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor  # Remove multiplicador 0.8
             angular_speed_rads = math.radians(angle_error) * 1.5  # Controle angular mais suave
-            print(f"🎯 CURVA: Velocidade reduzida - Linear: {linear_speed_ms:.2f}, Angular: {math.degrees(angular_speed_rads):.1f}°")
+            print(f"🎯 CURVA: Velocidade ajustada - Linear: {linear_speed_ms:.2f}, Angular: {math.degrees(angular_speed_rads):.1f}°")
         else:
             # 🎯 NAVEGAÇÃO NORMAL: Velocidade padrão
             angle_factor = max(0.0, math.cos(math.radians(angle_error)))
