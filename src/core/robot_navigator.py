@@ -700,8 +700,8 @@ class RobotNavigator(QObject):
             # 🎯 NAVEGAÇÃO COM CURVAS: Controle angular mais agressivo para curvas fechadas
             angle_factor = max(0.6, math.cos(math.radians(angle_error)))  # Mínimo 60% velocidade
             linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor  # Remove multiplicador 0.8
-            angular_speed_rads = math.radians(angle_error) * 3.0  # Controle angular mais agressivo para curvas
-            print(f"🎯 CURVA: Controle agressivo - Linear: {linear_speed_ms:.2f}, Angular: {math.degrees(angular_speed_rads):.1f}°")
+            angular_speed_rads = math.radians(angle_error) * 2.0  # Controle angular balanceado para curvas
+            print(f"🎯 CURVA: Controle balanceado - Linear: {linear_speed_ms:.2f}, Angular: {math.degrees(angular_speed_rads):.1f}°")
         else:
             # 🎯 NAVEGAÇÃO NORMAL: Velocidade padrão
             angle_factor = max(0.0, math.cos(math.radians(angle_error)))
