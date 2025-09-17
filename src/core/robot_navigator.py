@@ -1145,10 +1145,10 @@ class RobotNavigator(QObject):
         # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         turn_angle = 22.0  # graus
         
-        # 🎯 CORREÇÃO CRÍTICA: Direção INVERTIDA para sincronização
-        # Para girar ESQUERDA: motor esquerdo para trás, direito para frente (INVERTIDO)
-        left_speed = -60  # Motor esquerdo para TRÁS (INVERTIDO)
-        right_speed = 60  # Motor direito para FRENTE (INVERTIDO)
+        # 🎯 CORREÇÃO CRÍTICA: Direção corrigida após correção da cinemática
+        # Para girar ESQUERDA: motor esquerdo para frente, direito para trás
+        left_speed = 60   # Motor esquerdo para FRENTE
+        right_speed = -60 # Motor direito para TRÁS
         
         print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
         self.motors.set_speed(left_speed, right_speed)
@@ -1178,10 +1178,10 @@ class RobotNavigator(QObject):
         # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         turn_angle = 22.0  # graus
         
-        # 🎯 CORREÇÃO CRÍTICA: Direção INVERTIDA para sincronização
-        # Para girar DIREITA: motor esquerdo para frente, direito para trás (INVERTIDO)
-        left_speed = 60   # Motor esquerdo para FRENTE (INVERTIDO)
-        right_speed = -60 # Motor direito para TRÁS (INVERTIDO)
+        # 🎯 CORREÇÃO CRÍTICA: Direção corrigida após correção da cinemática
+        # Para girar DIREITA: motor esquerdo para trás, direito para frente
+        left_speed = -60  # Motor esquerdo para TRÁS
+        right_speed = 60  # Motor direito para FRENTE
         
         print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
         self.motors.set_speed(left_speed, right_speed)
@@ -1211,17 +1211,17 @@ class RobotNavigator(QObject):
         # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         # 🎯 VELOCIDADE AUMENTADA: 60% da potência máxima para giro efetivo
         
-        # 🎯 CORREÇÃO CRÍTICA: Direção INVERTIDA para sincronização
+        # 🎯 CORREÇÃO CRÍTICA: Direção corrigida após correção da cinemática
         # Aplica giro na direção especificada
         if direction.lower() == 'left':
-            # Para girar ESQUERDA: motor esquerdo para trás, direito para frente (INVERTIDO)
-            left_speed = -60  # Motor esquerdo para TRÁS (INVERTIDO)
-            right_speed = 60  # Motor direito para FRENTE (INVERTIDO)
+            # Para girar ESQUERDA: motor esquerdo para frente, direito para trás
+            left_speed = 60   # Motor esquerdo para FRENTE
+            right_speed = -60 # Motor direito para TRÁS
             self.current_angle = (self.current_angle - abs(angle_degrees)) % 360
         else:  # right
-            # Para girar DIREITA: motor esquerdo para frente, direito para trás (INVERTIDO)
-            left_speed = 60   # Motor esquerdo para FRENTE (INVERTIDO)
-            right_speed = -60 # Motor direito para TRÁS (INVERTIDO)
+            # Para girar DIREITA: motor esquerdo para trás, direito para frente
+            left_speed = -60  # Motor esquerdo para TRÁS
+            right_speed = 60  # Motor direito para FRENTE
             self.current_angle = (self.current_angle + abs(angle_degrees)) % 360
         
         print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {angle_degrees}°")
