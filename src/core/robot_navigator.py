@@ -722,8 +722,11 @@ class RobotNavigator(QObject):
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         
-        left_wheel_speed_ms = v + (w * L) / 2.0
-        right_wheel_speed_ms = v - (w * L) / 2.0
+        # 🎯 CORREÇÃO CRÍTICA: Cinemática diferencial corrigida
+        # Para giro à esquerda (w > 0): roda esquerda mais lenta, direita mais rápida
+        # Para giro à direita (w < 0): roda esquerda mais rápida, direita mais lenta
+        left_wheel_speed_ms = v - (w * L) / 2.0   # CORRIGIDO: era v + (w * L) / 2.0
+        right_wheel_speed_ms = v + (w * L) / 2.0  # CORRIGIDO: era v - (w * L) / 2.0
         
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
