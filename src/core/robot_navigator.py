@@ -736,11 +736,11 @@ class RobotNavigator(QObject):
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         
-        # 🎯 CORREÇÃO CRÍTICA: Cinemática diferencial corrigida
+        # 🎯 CINEMÁTICA DIFERENCIAL PADRÃO: Restaurada após correção do wheelbase
         # Para giro à esquerda (w > 0): roda esquerda mais lenta, direita mais rápida
         # Para giro à direita (w < 0): roda esquerda mais rápida, direita mais lenta
-        left_wheel_speed_ms = v - (w * L) / 2.0   # CORRIGIDO: era v + (w * L) / 2.0
-        right_wheel_speed_ms = v + (w * L) / 2.0  # CORRIGIDO: era v - (w * L) / 2.0
+        left_wheel_speed_ms = v + (w * L) / 2.0   # RESTAURADO: Fórmula padrão
+        right_wheel_speed_ms = v - (w * L) / 2.0  # RESTAURADO: Fórmula padrão
         
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
@@ -1159,10 +1159,10 @@ class RobotNavigator(QObject):
         # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         turn_angle = 22.0  # graus
         
-        # 🎯 CORREÇÃO CRÍTICA: Direção corrigida após correção da cinemática
-        # Para girar ESQUERDA: motor esquerdo para frente, direito para trás
-        left_speed = 60   # Motor esquerdo para FRENTE
-        right_speed = -60 # Motor direito para TRÁS
+        # 🎯 GIRO ESQUERDA: Configuração padrão restaurada
+        # Para girar ESQUERDA: motor esquerdo para trás, direito para frente
+        left_speed = -60  # Motor esquerdo para TRÁS
+        right_speed = 60  # Motor direito para FRENTE
         
         print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
         self.motors.set_speed(left_speed, right_speed)
@@ -1192,10 +1192,10 @@ class RobotNavigator(QObject):
         # 🎯 CORREÇÃO: Força aumentada para giro efetivo
         turn_angle = 22.0  # graus
         
-        # 🎯 CORREÇÃO CRÍTICA: Direção corrigida após correção da cinemática
-        # Para girar DIREITA: motor esquerdo para trás, direito para frente
-        left_speed = -60  # Motor esquerdo para TRÁS
-        right_speed = 60  # Motor direito para FRENTE
+        # 🎯 GIRO DIREITA: Configuração padrão restaurada
+        # Para girar DIREITA: motor esquerdo para frente, direito para trás
+        left_speed = 60   # Motor esquerdo para FRENTE
+        right_speed = -60 # Motor direito para TRÁS
         
         print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
         self.motors.set_speed(left_speed, right_speed)
