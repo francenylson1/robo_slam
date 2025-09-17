@@ -697,11 +697,25 @@ class RobotNavigator(QObject):
 
         # 🎯 CORREÇÃO CURVAS: Ajusta velocidade baseado no tipo de navegação
         if hasattr(self, 'path') and len(self.path) > 2 and not self.is_returning_to_base:
-            # 🎯 NAVEGAÇÃO COM CURVAS: Controle angular mais agressivo para curvas fechadas
-            angle_factor = max(0.6, math.cos(math.radians(angle_error)))  # Mínimo 60% velocidade
-            linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor  # Remove multiplicador 0.8
-            angular_speed_rads = math.radians(angle_error) * 2.0  # Controle angular balanceado para curvas
-            print(f"🎯 CURVA: Controle balanceado - Linear: {linear_speed_ms:.2f}, Angular: {math.degrees(angular_speed_rads):.1f}°")
+            # 🎯 NAVEGAÇÃO COM CURVAS: Controle adaptativo baseado no ângulo de erro
+            abs_angle_error = abs(angle_error)
+            
+            if abs_angle_error > 45:  # Curvas muito fechadas (>45°)
+                angle_factor = max(0.3, math.cos(math.radians(angle_error)))  # Reduz velocidade drasticamente
+                angular_factor = 1.2  # Controle angular mais suave
+                print(f"🎯 CURVA FECHADA (>{abs_angle_error:.1f}°): Velocidade reduzida, controle suave")
+            elif abs_angle_error > 30:  # Curvas fechadas (30-45°)
+                angle_factor = max(0.5, math.cos(math.radians(angle_error)))  # Velocidade moderada
+                angular_factor = 1.5  # Controle angular equilibrado
+                print(f"🎯 CURVA MODERADA ({abs_angle_error:.1f}°): Velocidade moderada")
+            else:  # Curvas suaves (<30°)
+                angle_factor = max(0.7, math.cos(math.radians(angle_error)))  # Velocidade normal
+                angular_factor = 2.0  # Controle angular normal
+                print(f"🎯 CURVA SUAVE ({abs_angle_error:.1f}°): Velocidade normal")
+            
+            linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
+            angular_speed_rads = math.radians(angle_error) * angular_factor
+            print(f"🎯 CURVA: Linear: {linear_speed_ms:.2f}, Angular: {math.degrees(angular_speed_rads):.1f}°")
         else:
             # 🎯 NAVEGAÇÃO NORMAL: Velocidade padrão
             angle_factor = max(0.0, math.cos(math.radians(angle_error)))
