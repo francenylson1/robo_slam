@@ -15,10 +15,10 @@ from src.core.config import (TICKS_PER_REVOLUTION, MANUAL_CONTROL_MAX_TPS,
                             SAFETY_POWER_MONITOR_INTERVAL, SAFETY_POWER_VIOLATION_TIMEOUT) # Importa as constantes necessárias
 
 # === CORREÇÃO DE DERIVA LATERAL ===
-# Fatores de correção baseados em análise de 10 testes
-# Data: 2025-09-17 15:45:00
-# Ajuste conservador: média 5.78%, fator otimizado para consistência
-LEFT_MOTOR_CORRECTION_FACTOR = 0.920000
+# Fatores de correção baseados em análise precisa de 10 testes
+# Data: 2025-09-17 16:20:00
+# Média: Left=70.2, Right=67.8 ticks - Motor esquerdo 3.54% mais rápido
+LEFT_MOTOR_CORRECTION_FACTOR = 0.965812
 RIGHT_MOTOR_CORRECTION_FACTOR = 1.000000
 
 if GPIO_AVAILABLE:
