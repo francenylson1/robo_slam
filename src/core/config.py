@@ -135,24 +135,26 @@ SPEED_FAST_TPS = 50      # Alta - até 15% potência máxima  (trajetos longos)
 MANUAL_CONTROL_MAX_TPS = SPEED_NORMAL_TPS  # Usa velocidade média como padrão
 
 # Perfis PID otimizados para cada velocidade
+# PID SUAVE - Correção de vibração e instabilidade (2025-01-27)
+# Parâmetros reduzidos para eliminar oscilação em motores potentes
 PID_PROFILES = {
     'slow': {
-        'Kp': 0.40, 'Ki': 0.30, 'Kd': 0.05, 
+        'Kp': 0.20, 'Ki': 0.12, 'Kd': 0.03,  # Reduzido: Kp-50%, Ki-60%, Kd-40%
         'output_limits': (-8, 8),    # 8% potência máxima
         'tps': SPEED_SLOW_TPS,
-        'description': 'Precisão máxima - aproximação final'
+        'description': 'PID SUAVE - Precisão sem vibração'
     },
     'normal': {
-        'Kp': 0.35, 'Ki': 0.25, 'Kd': 0.03,
+        'Kp': 0.18, 'Ki': 0.10, 'Kd': 0.02,  # Reduzido: Kp-48%, Ki-60%, Kd-33%
         'output_limits': (-12, 12),  # 12% potência máxima
         'tps': SPEED_NORMAL_TPS,
-        'description': 'Navegação balanceada - uso geral'
+        'description': 'PID SUAVE - Navegação estável'
     },
     'fast': {
-        'Kp': 0.30, 'Ki': 0.20, 'Kd': 0.01,
+        'Kp': 0.15, 'Ki': 0.08, 'Kd': 0.01,  # Reduzido: Kp-50%, Ki-60%, Kd mantido
         'output_limits': (-15, 15),  # 15% potência máxima (LIMITE SEGURANÇA)
         'tps': SPEED_FAST_TPS,
-        'description': 'Velocidade máxima - trajetos longos'
+        'description': 'PID SUAVE - Velocidade controlada'
     }
 }
 

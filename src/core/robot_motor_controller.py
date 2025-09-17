@@ -275,8 +275,8 @@ class RobotMotorController(QObject):
                     GPIO.output(self.break_E, GPIO.HIGH)
                     GPIO.output(self.break_D, GPIO.HIGH)
             
-            # 4. Define a frequencia do loop de controle (ex: 20Hz)
-            time.sleep(0.05)
+            # 4. FREQUÊNCIA REDUZIDA: 10Hz em vez de 20Hz para eliminar vibração
+            time.sleep(0.1)  # 100ms = 10Hz (era 50ms = 20Hz)
 
     def _update_current_speed(self):
         """
@@ -307,11 +307,13 @@ class RobotMotorController(QObject):
         Ativa o controle PID se ele estiver desativado.
         Aplica correção de deriva lateral baseada em calibração.
         """
-        # Aplica fatores de correção de deriva lateral
-        left_tps_corrected = left_tps * LEFT_MOTOR_CORRECTION_FACTOR
-        right_tps_corrected = right_tps * RIGHT_MOTOR_CORRECTION_FACTOR
+        # TESTE: Fatores de correção temporariamente desabilitados para isolar vibração
+        # left_tps_corrected = left_tps * LEFT_MOTOR_CORRECTION_FACTOR
+        # right_tps_corrected = right_tps * RIGHT_MOTOR_CORRECTION_FACTOR
+        left_tps_corrected = left_tps   # SEM correção para teste
+        right_tps_corrected = right_tps # SEM correção para teste
         
-        print(f"🚀 SYNC_DEBUG: set_target_speed(left={left_tps:.1f}->{left_tps_corrected:.1f}, right={right_tps:.1f}->{right_tps_corrected:.1f})")
+        print(f"🚀 TESTE_PID_SUAVE: set_target_speed(left={left_tps:.1f}, right={right_tps:.1f}) - SEM fatores correção")
         
         if not self.pid_enabled:
             self.enable_pid_control()
