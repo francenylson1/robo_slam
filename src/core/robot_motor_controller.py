@@ -14,6 +14,13 @@ from src.core.config import (TICKS_PER_REVOLUTION, MANUAL_CONTROL_MAX_TPS,
                             PID_PROFILES, SAFETY_MAX_MOTOR_POWER_PERCENT,
                             SAFETY_POWER_MONITOR_INTERVAL, SAFETY_POWER_VIOLATION_TIMEOUT) # Importa as constantes necessárias
 
+# === CORREÇÃO DE DERIVA LATERAL ===
+# Fatores de correção baseados em teste de calibração
+# Data: 2025-09-17 15:10:32
+# Motor esquerdo 15.9% mais rápido - aplicando fator de correção
+LEFT_MOTOR_CORRECTION_FACTOR = 0.863014
+RIGHT_MOTOR_CORRECTION_FACTOR = 1.000000
+
 if GPIO_AVAILABLE:
     try:
         import RPi.GPIO as GPIO
@@ -298,19 +305,25 @@ class RobotMotorController(QObject):
         """
         Define a velocidade alvo para o controle PID em ticks por segundo (tps).
         Ativa o controle PID se ele estiver desativado.
+        Aplica correção de deriva lateral baseada em calibração.
         """
-        print(f"🚀 SYNC_DEBUG: set_target_speed(left={left_tps:.1f}, right={right_tps:.1f})")
+        # Aplica fatores de correção de deriva lateral
+        left_tps_corrected = left_tps * LEFT_MOTOR_CORRECTION_FACTOR
+        right_tps_corrected = right_tps * RIGHT_MOTOR_CORRECTION_FACTOR
+        
+        print(f"🚀 SYNC_DEBUG: set_target_speed(left={left_tps:.1f}->{left_tps_corrected:.1f}, right={right_tps:.1f}->{right_tps_corrected:.1f})")
+        
         if not self.pid_enabled:
             self.enable_pid_control()
 
-        self.pid_left.set_setpoint(left_tps)
-        self.pid_right.set_setpoint(right_tps)
+        self.pid_left.set_setpoint(left_tps_corrected)
+        self.pid_right.set_setpoint(right_tps_corrected)
 
         # --- CORREÇÃO PARA SIMULAÇÃO ---
         # Se não estiver no hardware, armazena a velocidade alvo para simular os ticks.
         if not GPIO_AVAILABLE:
-            self.simulated_left_tps = left_tps
-            self.simulated_right_tps = right_tps
+            self.simulated_left_tps = left_tps_corrected
+            self.simulated_right_tps = right_tps_corrected
 
     def _initialize_pid_controllers(self):
         """Inicializa os controladores PID com o perfil atual."""
