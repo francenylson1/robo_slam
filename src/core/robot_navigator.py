@@ -700,19 +700,19 @@ class RobotNavigator(QObject):
             self.lateral_drift_history = []
             self.last_target_angle = target_angle
             
-        # 🎯 DETECÇÃO DE DERIVA LATERAL: Monitora desvio consistente
+        # 🎯 DETECÇÃO DE DERIVA LATERAL: Monitora desvio consistente (ULTRA-SENSÍVEL)
         angle_change = abs(target_angle - getattr(self, 'last_target_angle', target_angle))
-        if angle_change < 5.0:  # Só monitora deriva em navegação relativamente reta
+        if angle_change < 8.0:  # Monitora deriva em navegação mais ampla
             self.lateral_drift_history.append(angle_error)
-            if len(self.lateral_drift_history) > 10:
+            if len(self.lateral_drift_history) > 15:  # Histórico maior para melhor análise
                 self.lateral_drift_history.pop(0)
                 
-            # 🎯 CALCULA DERIVA MÉDIA: Se há tendência consistente de desvio
-            if len(self.lateral_drift_history) >= 5:
+            # 🎯 CALCULA DERIVA MÉDIA: Detecção ultra-sensível
+            if len(self.lateral_drift_history) >= 3:  # Menos amostras necessárias
                 avg_drift = sum(self.lateral_drift_history) / len(self.lateral_drift_history)
-                if abs(avg_drift) > 3.0:  # Deriva consistente > 3°
-                    drift_correction = avg_drift * 0.1  # Fator de correção suave
-                    print(f"🎯 DERIVA DETECTADA: {avg_drift:.1f}° média, aplicando correção {drift_correction:.2f}")
+                if abs(avg_drift) > 1.5:  # Limiar muito mais sensível (1.5° vs 3°)
+                    drift_correction = avg_drift * 0.25  # Correção mais agressiva
+                    print(f"🎯 DERIVA ULTRA-SENSÍVEL: {avg_drift:.1f}° média, correção {drift_correction:.3f}")
                 else:
                     drift_correction = 0.0
             else:
@@ -784,8 +784,8 @@ class RobotNavigator(QObject):
         
         # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Aplica correção baseada no desvio detectado
         if hasattr(self, 'adaptive_drift_correction') and abs(drift_correction) > 0.001:
-            # Aplica correção suave nas velocidades TPS
-            correction_factor = drift_correction * 0.3  # Fator suave para evitar oscilações
+            # Aplica correção mais agressiva nas velocidades TPS
+            correction_factor = drift_correction * 0.6  # Fator mais agressivo para correção efetiva
             
             if drift_correction > 0:  # Desvio para direita, corrige reduzindo motor direito
                 right_tps *= (1.0 - correction_factor)
