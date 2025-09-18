@@ -822,61 +822,41 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
-        # === SISTEMA AVANÇADO DE CORREÇÃO DE VELOCIDADE DIFERENCIAL ===
-        # Aplica múltiplas camadas de correção para eliminar erro acumulativo
+        # === CORREÇÃO BÁSICA E EFETIVA PARA DERIVA ===
+        # Sistema simplificado baseado no padrão conhecido de deriva para direita
         
-        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Versão mais suave
-        if abs(drift_correction) > 0.001:
-            # Correção muito mais suave para evitar over-correction
-            correction_factor = drift_correction * 0.2  # Reduzido de 0.6 para 0.2 (3x mais suave)
+        # 🎯 CORREÇÃO PREVENTIVA CONSTANTE: Compensa deriva conhecida para direita
+        # Baseado nos testes: robô deriva consistentemente para direita
+        preventive_correction = 0.08  # 8% de correção preventiva constante
+        
+        # Aplica correção preventiva: aumenta motor esquerdo, reduz motor direito
+        left_tps *= (1.0 + preventive_correction)   # Motor esquerdo 8% mais rápido
+        right_tps *= (1.0 - preventive_correction * 0.6)  # Motor direito 4.8% mais lento
+        
+        print(f"🎯 CORREÇÃO PREVENTIVA: L+{preventive_correction*100:.1f}%, R-{preventive_correction*60:.1f}%")
+        
+        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Só se detectada deriva significativa
+        if abs(drift_correction) > 0.002:  # Threshold mais alto para evitar micro-correções
+            # Correção moderada baseada na deriva detectada
+            correction_factor = drift_correction * 0.4  # Fator intermediário (não muito suave, não muito agressivo)
             
-            if drift_correction > 0:  # Desvio para direita, corrige reduzindo motor direito
+            if drift_correction > 0:  # Desvio para direita detectado
                 right_tps *= (1.0 - abs(correction_factor))
-                print(f"🎯 DERIVA SUAVE: Reduzindo motor direito em {abs(correction_factor)*100:.1f}%")
-            else:  # Desvio para esquerda, corrige reduzindo motor esquerdo
+                print(f"🎯 DERIVA DETECTADA: Reduzindo motor direito em {abs(correction_factor)*100:.1f}%")
+            else:  # Desvio para esquerda detectado
                 left_tps *= (1.0 + correction_factor)  # correction_factor é negativo
-                print(f"🎯 DERIVA SUAVE: Reduzindo motor esquerdo em {abs(correction_factor)*100:.1f}%")
+                print(f"🎯 DERIVA DETECTADA: Reduzindo motor esquerdo em {abs(correction_factor)*100:.1f}%")
         
-        # 🎯 CORREÇÃO BASEADA NA DISTÂNCIA PERCORRIDA: Versão simplificada e suave
-        if hasattr(self, 'total_distance_traveled') and self.total_distance_traveled > 200.0:  # Só após 2m
-            # Fator de correção muito mais suave
-            distance_error_factor = min(0.05, self.total_distance_traveled * 0.005)  # Máximo 5%, 0.5% por metro
+        # 🎯 CORREÇÃO PROGRESSIVA POR DISTÂNCIA: Aumenta correção em navegações longas
+        if hasattr(self, 'total_distance_traveled') and self.total_distance_traveled > 150.0:  # Após 1.5m
+            # Correção progressiva que cresce com a distância
+            distance_factor = min(0.12, (self.total_distance_traveled - 150.0) * 0.01)  # Máximo 12%, 1% por 10cm
             
-            # Correção preventiva muito mais suave
-            preventive_left_boost = 1.0 + (distance_error_factor * 0.5)  # Reduzido pela metade
-            preventive_right_reduction = 1.0 - (distance_error_factor * 0.3)  # Ainda mais suave
+            # Aplica correção adicional para compensar erro acumulativo
+            left_tps *= (1.0 + distance_factor * 0.8)   # Boost adicional no motor esquerdo
+            right_tps *= (1.0 - distance_factor * 0.5)  # Redução adicional no motor direito
             
-            left_tps *= preventive_left_boost
-            right_tps *= preventive_right_reduction
-            
-            print(f"🎯 CORREÇÃO DISTÂNCIA SUAVE: {self.total_distance_traveled:.1f}cm, L+{distance_error_factor*50:.1f}%, R-{distance_error_factor*30:.1f}%")
-        
-        # 🎯 CORREÇÃO DINÂMICA DE WHEELBASE: Temporariamente desabilitada
-        # Comentado para testar sem correções complexas
-        # if hasattr(self, 'wheelbase_calibration_data') and 'dynamic_wheelbase' in self.wheelbase_calibration_data:
-        #     pass  # Correção de wheelbase desabilitada temporariamente
-        
-        # 🎯 CORREÇÃO EXPONENCIAL REMOVIDA: Estava causando over-correction
-        # Comentado temporariamente para testar precisão sem correções agressivas
-        # if hasattr(self, 'total_distance_traveled') and self.total_distance_traveled > 300.0:
-        #     pass  # Correção exponencial desabilitada
-        
-        # 🎯 CORREÇÃO ADAPTATIVA DE VELOCIDADE: Versão muito mais suave
-        if hasattr(self, 'navigation_error_history') and len(self.navigation_error_history) > 10:  # Mais dados para decisão
-            recent_errors = self.navigation_error_history[-10:]  # Analisa mais pontos
-            avg_recent_error = sum(recent_errors) / len(recent_errors)
-            
-            if abs(avg_recent_error) > 20.0:  # Só corrige erros realmente significativos
-                adaptive_correction = min(0.03, abs(avg_recent_error) / 500.0)  # Máximo 3%, muito mais suave
-                
-                if avg_recent_error > 0:  # Erro positivo = desvio para direita
-                    left_tps *= (1.0 + adaptive_correction * 0.5)  # Ainda mais suave
-                    right_tps *= (1.0 - adaptive_correction * 0.3)  # Ainda mais suave
-                    print(f"🎯 ADAPTATIVA SUAVE: Erro direita {avg_recent_error:.1f}cm, L+{adaptive_correction*50:.2f}%, R-{adaptive_correction*30:.2f}%")
-                else:  # Erro negativo = desvio para esquerda
-                    left_tps *= (1.0 - adaptive_correction * 0.3)
-                    right_tps *= (1.0 + adaptive_correction * 0.5)
-                    print(f"🎯 ADAPTATIVA SUAVE: Erro esquerda {abs(avg_recent_error):.1f}cm, L-{adaptive_correction*30:.2f}%, R+{adaptive_correction*50:.2f}%")
+            print(f"🎯 CORREÇÃO PROGRESSIVA: {self.total_distance_traveled:.1f}cm, L+{distance_factor*80:.1f}%, R-{distance_factor*50:.1f}%")
         
         self.motors.set_target_speed(left_tps, right_tps)
 
