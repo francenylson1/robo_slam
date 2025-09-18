@@ -81,6 +81,23 @@ class RobotNavigator(QObject):
         self.final_approach_start_time = None
         self.final_approach_timeout = 25.0  # Aumentado de 15s para 25s para dar mais tempo ao PID
         
+        # === SISTEMAS AVANÇADOS DE CORREÇÃO ===
+        # Histórico de erro para correção adaptativa
+        self.navigation_error_history = []
+        self.total_distance_traveled = 0.0
+        
+        # Sistema de calibração dinâmica de wheelbase
+        self.wheelbase_calibration_data = {
+            'error_samples': [],
+            'distance_samples': [],
+            'dynamic_wheelbase': ROBOT_WHEEL_BASE_M
+        }
+        
+        # Histórico de deriva lateral para correção adaptativa
+        self.lateral_drift_history = []
+        
+        print(f"🎯 SISTEMAS AVANÇADOS: Inicializados históricos de erro e calibração")
+        
         print(f"DEBUG: Posição inicial definida: {self.current_position}")
         print(f"DEBUG: Ângulo inicial definido: {self.current_angle}°")
         print(f"DEBUG: Base position definida: {self.base_position}")
@@ -358,6 +375,17 @@ class RobotNavigator(QObject):
         print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
         
         self.reset_to_initial_state()
+        
+        # === RESET DOS SISTEMAS DE CORREÇÃO AVANÇADOS ===
+        # Zera contadores de distância e calibração para nova navegação
+        self.total_distance_traveled = 0.0
+        if hasattr(self, 'wheelbase_calibration_data'):
+            self.wheelbase_calibration_data['error_samples'] = []
+            self.wheelbase_calibration_data['distance_samples'] = []
+        if hasattr(self, 'lateral_drift_history'):
+            self.lateral_drift_history = []
+        
+        print(f"🎯 RESET AVANÇADO: Sistemas de correção reinicializados para nova navegação")
         
         self.navigation_active = True
         self.start_time = time.time()
@@ -700,19 +728,31 @@ class RobotNavigator(QObject):
             self.lateral_drift_history = []
             self.last_target_angle = target_angle
             
-        # 🎯 DETECÇÃO DE DERIVA LATERAL: Monitora desvio consistente (ULTRA-SENSÍVEL)
+        # 🎯 DETECÇÃO DE DERIVA LATERAL AVANÇADA: Sistema adaptativo baseado na distância
         angle_change = abs(target_angle - getattr(self, 'last_target_angle', target_angle))
+        
+        # === CORREÇÃO BASEADA NA DISTÂNCIA PERCORRIDA ===
+        # Aplica correção mais agressiva conforme a distância aumenta
+        distance_traveled = getattr(self, 'total_distance_traveled', 0.0)
+        distance_factor = 1.0 + (distance_traveled * 0.15)  # 15% mais agressivo por metro
+        
         if angle_change < 8.0:  # Monitora deriva em navegação mais ampla
             self.lateral_drift_history.append(angle_error)
             if len(self.lateral_drift_history) > 15:  # Histórico maior para melhor análise
                 self.lateral_drift_history.pop(0)
                 
-            # 🎯 CALCULA DERIVA MÉDIA: Detecção ultra-sensível
+            # 🎯 CALCULA DERIVA MÉDIA: Detecção ultra-sensível com fator de distância
             if len(self.lateral_drift_history) >= 3:  # Menos amostras necessárias
                 avg_drift = sum(self.lateral_drift_history) / len(self.lateral_drift_history)
-                if abs(avg_drift) > 1.5:  # Limiar muito mais sensível (1.5° vs 3°)
-                    drift_correction = avg_drift * 0.25  # Correção mais agressiva
-                    print(f"🎯 DERIVA ULTRA-SENSÍVEL: {avg_drift:.1f}° média, correção {drift_correction:.3f}")
+                
+                # Limiar adaptativo baseado na distância (mais sensível em distâncias longas)
+                adaptive_threshold = max(0.8, 1.5 - (distance_traveled * 0.2))  # Reduz limiar com distância
+                
+                if abs(avg_drift) > adaptive_threshold:
+                    # Correção progressiva: mais agressiva em distâncias longas
+                    base_correction = avg_drift * 0.25
+                    drift_correction = base_correction * distance_factor
+                    print(f"🎯 DERIVA ADAPTATIVA: {avg_drift:.1f}° média, distância {distance_traveled:.1f}m, correção {drift_correction:.3f} (fator {distance_factor:.2f})")
                 else:
                     drift_correction = 0.0
             else:
@@ -782,8 +822,11 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
-        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Aplica correção baseada no desvio detectado
-        if hasattr(self, 'adaptive_drift_correction') and abs(drift_correction) > 0.001:
+        # === SISTEMA AVANÇADO DE CORREÇÃO DE VELOCIDADE DIFERENCIAL ===
+        # Aplica múltiplas camadas de correção para eliminar erro acumulativo
+        
+        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Baseada no desvio detectado
+        if abs(drift_correction) > 0.001:
             # Aplica correção mais agressiva nas velocidades TPS
             correction_factor = drift_correction * 0.6  # Fator mais agressivo para correção efetiva
             
@@ -793,6 +836,66 @@ class RobotNavigator(QObject):
             else:  # Desvio para esquerda, corrige reduzindo motor esquerdo
                 left_tps *= (1.0 + correction_factor)  # correction_factor é negativo
                 print(f"🎯 DERIVA ADAPTATIVA: Reduzindo motor esquerdo em {abs(correction_factor)*100:.1f}%")
+        
+        # 🎯 CORREÇÃO BASEADA NA DISTÂNCIA PERCORRIDA: Compensa erro acumulativo
+        if hasattr(self, 'total_distance_traveled') and self.total_distance_traveled > 1.0:
+            # Fator de correção progressivo que aumenta com a distância
+            distance_error_factor = min(0.15, self.total_distance_traveled * 0.02)  # Máximo 15%, 2% por metro
+            
+            # Aplica correção assimétrica baseada no padrão de deriva observado
+            # Como o robô tende a derivar para direita, aplica correção preventiva
+            preventive_left_boost = 1.0 + distance_error_factor
+            preventive_right_reduction = 1.0 - (distance_error_factor * 0.5)
+            
+            left_tps *= preventive_left_boost
+            right_tps *= preventive_right_reduction
+            
+            print(f"🎯 CORREÇÃO DISTÂNCIA: {self.total_distance_traveled:.1f}m, L+{distance_error_factor*100:.1f}%, R-{distance_error_factor*50:.1f}%")
+        
+        # 🎯 CORREÇÃO DINÂMICA DE WHEELBASE: Usa wheelbase calibrado se disponível
+        if hasattr(self, 'wheelbase_calibration_data') and 'dynamic_wheelbase' in self.wheelbase_calibration_data:
+            # Recalcula velocidades com wheelbase corrigido
+            corrected_wheelbase = self.wheelbase_calibration_data['dynamic_wheelbase']
+            wheelbase_ratio = corrected_wheelbase / ROBOT_WHEEL_BASE_M
+            
+            # Ajusta velocidades proporcionalmente ao wheelbase corrigido
+            if wheelbase_ratio != 1.0:
+                angular_adjustment = (wheelbase_ratio - 1.0) * 0.5  # 50% do ajuste
+                left_tps *= (1.0 + angular_adjustment)
+                right_tps *= (1.0 - angular_adjustment)
+                print(f"🎯 WHEELBASE DINÂMICO: {corrected_wheelbase:.4f}m (ratio {wheelbase_ratio:.3f}), ajuste ±{angular_adjustment*100:.1f}%")
+        
+        # 🎯 CORREÇÃO EXPONENCIAL PARA NAVEGAÇÕES LONGAS: Nova camada para distâncias >3m
+        if hasattr(self, 'total_distance_traveled') and self.total_distance_traveled > 300.0:
+            # Fator exponencial que cresce com a distância
+            excess_distance = self.total_distance_traveled - 300.0  # Distância além de 3m
+            exponential_factor = min(0.20, excess_distance / 1000.0)  # Máximo 20%, cresce 1% por 10m
+            
+            # Correção mais agressiva para compensar erro acumulativo em longas distâncias
+            exponential_left_boost = 1.0 + (exponential_factor * 1.2)  # 20% mais agressivo no motor esquerdo
+            exponential_right_reduction = 1.0 - (exponential_factor * 0.8)  # 20% menos agressivo no motor direito
+            
+            left_tps *= exponential_left_boost
+            right_tps *= exponential_right_reduction
+            
+            print(f"🚀 CORREÇÃO EXPONENCIAL: {self.total_distance_traveled:.1f}cm, excesso={excess_distance:.1f}cm, L+{exponential_factor*120:.1f}%, R-{exponential_factor*80:.1f}%")
+        
+        # 🎯 CORREÇÃO ADAPTATIVA DE VELOCIDADE: Ajuste fino baseado no histórico de erro
+        if hasattr(self, 'navigation_error_history') and len(self.navigation_error_history) > 5:
+            recent_errors = self.navigation_error_history[-5:]
+            avg_recent_error = sum(recent_errors) / len(recent_errors)
+            
+            if abs(avg_recent_error) > 10.0:  # Erro médio significativo
+                adaptive_correction = min(0.15, abs(avg_recent_error) / 100.0)  # Máximo 15%
+                
+                if avg_recent_error > 0:  # Erro positivo = desvio para direita
+                    left_tps *= (1.0 + adaptive_correction)
+                    right_tps *= (1.0 - adaptive_correction * 0.7)
+                    print(f"🎯 ADAPTATIVA: Erro direita {avg_recent_error:.1f}cm, L+{adaptive_correction*100:.1f}%, R-{adaptive_correction*70:.1f}%")
+                else:  # Erro negativo = desvio para esquerda
+                    left_tps *= (1.0 - adaptive_correction * 0.7)
+                    right_tps *= (1.0 + adaptive_correction)
+                    print(f"🎯 ADAPTATIVA: Erro esquerda {abs(avg_recent_error):.1f}cm, L-{adaptive_correction*70:.1f}%, R+{adaptive_correction*100:.1f}%")
         
         self.motors.set_target_speed(left_tps, right_tps)
 
@@ -946,14 +1049,38 @@ class RobotNavigator(QObject):
         """
         Atualiza a posição e ângulo do robô baseado na odometria.
         Durante giros precisos, atualiza apenas o ângulo para manter sincronização correta.
+        NOVA VERSÃO: Correção de erro acumulativo baseada na distância percorrida
         """
         ticks_data = self.motors.get_and_reset_ticks()
         if not ticks_data:
             return
 
         left_ticks, right_ticks = ticks_data.get('left', 0), ticks_data.get('right', 0)
-        dist_left = (left_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
-        dist_right = (right_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
+        
+        # === CORREÇÃO DE ERRO ACUMULATIVO BASEADA NA DISTÂNCIA ===
+        # Aplica fatores de correção progressivos para compensar erro em distâncias longas
+        
+        # Calcula distância total percorrida desde o início da navegação
+        if not hasattr(self, 'total_distance_traveled'):
+            self.total_distance_traveled = 0.0
+            
+        # Distâncias brutas dos encoders
+        dist_left_raw = (left_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
+        dist_right_raw = (right_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
+        
+        # Fator de correção progressivo baseado na distância total percorrida
+        # Aumenta a correção conforme a distância aumenta para compensar acúmulo de erro
+        distance_correction_factor = 1.0 + (self.total_distance_traveled * 0.002)  # 0.2% por metro
+        
+        # Aplica correção progressiva
+        dist_left = dist_left_raw * distance_correction_factor
+        dist_right = dist_right_raw * distance_correction_factor
+        
+        # Atualiza distância total percorrida
+        delta_distance_raw = (dist_left_raw + dist_right_raw) / 2.0
+        self.total_distance_traveled += abs(delta_distance_raw)
+        
+        # Cálculos de odometria com correção aplicada
         delta_distance = (dist_left + dist_right) / 2.0
         delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
@@ -970,6 +1097,44 @@ class RobotNavigator(QObject):
             delta_x = delta_distance * math.cos(angle_rad)
             delta_y = delta_distance * math.sin(angle_rad)
             self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
+            
+            # === COLETA DE DADOS PARA CORREÇÃO ADAPTATIVA ===
+            # Calcula erro lateral se há um alvo ativo
+            if self.current_target and self.navigation_active:
+                # Calcula erro lateral em relação à linha ideal até o alvo
+                target_dx = self.current_target[0] - self.current_position[0]
+                target_dy = self.current_target[1] - self.current_position[1]
+                
+                if abs(target_dx) > 0.01 or abs(target_dy) > 0.01:  # Evita divisão por zero
+                    # Vetor unitário da direção ideal
+                    target_distance = math.sqrt(target_dx**2 + target_dy**2)
+                    ideal_direction = (target_dx / target_distance, target_dy / target_distance)
+                    
+                    # Calcula erro lateral (perpendicular à direção ideal)
+                    lateral_error = abs(target_dx * math.sin(math.radians(self.current_angle)) - 
+                                      target_dy * math.cos(math.radians(self.current_angle)))
+                    
+                    # Adiciona ao histórico de erro (mantém últimas 20 amostras)
+                    self.navigation_error_history.append(lateral_error * 100)  # Converte para cm
+                    if len(self.navigation_error_history) > 20:
+                        self.navigation_error_history.pop(0)
+                    
+                    # Adiciona à deriva lateral (mantém últimas 15 amostras)
+                    angle_to_target = math.degrees(math.atan2(target_dy, target_dx))
+                    angle_error = (angle_to_target - self.current_angle + 180) % 360 - 180
+                    self.lateral_drift_history.append(angle_error)
+                    if len(self.lateral_drift_history) > 15:
+                        self.lateral_drift_history.pop(0)
+                    
+                    # Coleta dados para calibração de wheelbase
+                    if len(self.wheelbase_calibration_data['error_samples']) < 50:
+                        self.wheelbase_calibration_data['error_samples'].append(abs(angle_error))
+                        self.wheelbase_calibration_data['distance_samples'].append(self.total_distance_traveled)
+            
+            # Debug da correção de erro acumulativo
+            if self.total_distance_traveled > 0 and int(self.total_distance_traveled * 10) % 10 == 0:  # A cada 1m
+                avg_error = sum(self.navigation_error_history[-5:]) / min(5, len(self.navigation_error_history)) if self.navigation_error_history else 0
+                print(f"📊 ODOMETRY_CORRECTION: Distância: {self.total_distance_traveled:.2f}m, Fator: {distance_correction_factor:.4f}, Erro médio: {avg_error:.1f}cm")
         else:
             # GIRO PRECISO: Atualiza APENAS o ângulo (posição permanece fixa)
             # Durante giros precisos, a posição não é modificada para manter sincronização correta
