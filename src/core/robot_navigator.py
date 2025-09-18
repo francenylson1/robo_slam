@@ -825,38 +825,38 @@ class RobotNavigator(QObject):
         # === CORREÇÃO BÁSICA E EFETIVA PARA DERIVA ===
         # Sistema simplificado baseado no padrão conhecido de deriva para direita
         
-        # 🎯 CORREÇÃO PREVENTIVA OTIMIZADA: Compensa deriva conhecida para direita
-        # Baseado nos testes: versão anterior (12%) + ajuste otimizado para 18%
-        preventive_correction = 0.18  # 18% de correção preventiva (12% + 50%)
+        # 🎯 CORREÇÃO PREVENTIVA MODERADA: Compensa deriva conhecida para direita
+        # Baseado nos testes: versão estável moderada
+        preventive_correction = 0.12  # 12% de correção preventiva moderada
         
-        # Aplica correção preventiva otimizada: aumenta motor esquerdo, reduz motor direito
-        left_tps *= (1.0 + preventive_correction)   # Motor esquerdo 18% mais rápido
-        right_tps *= (1.0 - preventive_correction * 0.7)  # Motor direito 12.6% mais lento
+        # Aplica correção preventiva moderada: aumenta motor esquerdo, reduz motor direito
+        left_tps *= (1.0 + preventive_correction)   # Motor esquerdo 12% mais rápido
+        right_tps *= (1.0 - preventive_correction * 0.75)  # Motor direito 9% mais lento
         
-        print(f"🎯 CORREÇÃO PREVENTIVA OTIMIZADA: L+{preventive_correction*100:.1f}%, R-{preventive_correction*70:.1f}%")
+        print(f"🎯 CORREÇÃO PREVENTIVA MODERADA: L+{preventive_correction*100:.1f}%, R-{preventive_correction*75:.1f}%")
         
-        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Otimizada para deriva significativa
-        if abs(drift_correction) > 0.0012:  # Threshold otimizado (0.0015 - 20%)
-            # Correção otimizada baseada na deriva detectada
-            correction_factor = drift_correction * 0.75  # Fator otimizado (0.5 + 50%)
+        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Moderada para deriva significativa
+        if abs(drift_correction) > 0.0015:  # Threshold moderado
+            # Correção moderada baseada na deriva detectada
+            correction_factor = drift_correction * 0.5  # Fator moderado
             
             if drift_correction > 0:  # Desvio para direita detectado
                 right_tps *= (1.0 - abs(correction_factor))
-                print(f"🎯 DERIVA DETECTADA OTIMIZADA: Reduzindo motor direito em {abs(correction_factor)*100:.1f}%")
+                print(f"🎯 DERIVA DETECTADA MODERADA: Reduzindo motor direito em {abs(correction_factor)*100:.1f}%")
             else:  # Desvio para esquerda detectado
                 left_tps *= (1.0 + correction_factor)  # correction_factor é negativo
-                print(f"🎯 DERIVA DETECTADA OTIMIZADA: Reduzindo motor esquerdo em {abs(correction_factor)*100:.1f}%")
+                print(f"🎯 DERIVA DETECTADA MODERADA: Reduzindo motor esquerdo em {abs(correction_factor)*100:.1f}%")
         
-        # 🎯 CORREÇÃO PROGRESSIVA OTIMIZADA: Aumenta correção gradualmente em navegações longas
-        if hasattr(self, 'total_distance_traveled') and self.total_distance_traveled > 115.0:  # Após 1.15m (130 - 15cm)
-            # Correção progressiva otimizada que cresce com a distância
-            distance_factor = min(0.225, (self.total_distance_traveled - 115.0) * 0.0225)  # Máximo 22.5%, 2.25% por 10cm
+        # 🎯 CORREÇÃO PROGRESSIVA MODERADA: Aumenta correção gradualmente em navegações longas
+        if hasattr(self, 'total_distance_traveled') and self.total_distance_traveled > 130.0:  # Após 1.30m
+            # Correção progressiva moderada que cresce com a distância
+            distance_factor = min(0.15, (self.total_distance_traveled - 130.0) * 0.015)  # Máximo 15%, 1.5% por 10cm
             
             # Aplica correção adicional otimizada para compensar erro acumulativo
             left_tps *= (1.0 + distance_factor * 1.0)   # Boost otimizado no motor esquerdo
             right_tps *= (1.0 - distance_factor * 0.6)  # Redução otimizada no motor direito
             
-            print(f"🎯 CORREÇÃO PROGRESSIVA OTIMIZADA: {self.total_distance_traveled:.1f}cm, L+{distance_factor*100:.1f}%, R-{distance_factor*60:.1f}%")
+            print(f"🎯 CORREÇÃO PROGRESSIVA MODERADA: {self.total_distance_traveled:.1f}cm, L+{distance_factor*100:.1f}%, R-{distance_factor*60:.1f}%")
         
         self.motors.set_target_speed(left_tps, right_tps)
 
