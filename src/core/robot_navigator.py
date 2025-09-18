@@ -695,22 +695,32 @@ class RobotNavigator(QObject):
             self.navigation_state = "ORIENTING_TO_TARGET"
             return
 
-        # 🎯 CORREÇÃO CURVAS: Ajusta velocidade baseado no tipo de navegação
+        # 🎯 CORREÇÃO CURVAS MELHORADA: Sistema adaptativo para curvas fechadas
         if hasattr(self, 'path') and len(self.path) > 2 and not self.is_returning_to_base:
-            # 🎯 NAVEGAÇÃO COM CURVAS: Controle adaptativo baseado no ângulo de erro
+            # 🎯 NAVEGAÇÃO COM CURVAS: Controle ultra-adaptativo para curvas fechadas
             abs_angle_error = abs(angle_error)
             
-            if abs_angle_error > 45:  # Curvas muito fechadas (>45°)
-                angle_factor = max(0.3, math.cos(math.radians(angle_error)))  # Reduz velocidade drasticamente
-                angular_factor = 1.2  # Controle angular mais suave
-                print(f"🎯 CURVA FECHADA (>{abs_angle_error:.1f}°): Velocidade reduzida, controle suave")
+            if abs_angle_error > 60:  # Curvas extremamente fechadas (>60°)
+                # Para curvas muito fechadas, para e reorienta primeiro
+                print(f"🔄 CURVA EXTREMA ({abs_angle_error:.1f}°): Forçando reorientação")
+                self.navigation_state = "ORIENTING_TO_TARGET"
+                self.motors.stop()
+                return
+            elif abs_angle_error > 45:  # Curvas muito fechadas (45-60°)
+                angle_factor = 0.2  # Velocidade muito baixa
+                angular_factor = 0.8  # Controle angular muito suave
+                print(f"🎯 CURVA MUITO FECHADA ({abs_angle_error:.1f}°): Velocidade mínima")
             elif abs_angle_error > 30:  # Curvas fechadas (30-45°)
-                angle_factor = max(0.5, math.cos(math.radians(angle_error)))  # Velocidade moderada
-                angular_factor = 1.5  # Controle angular equilibrado
+                angle_factor = 0.4  # Velocidade baixa
+                angular_factor = 1.0  # Controle angular suave
+                print(f"🎯 CURVA FECHADA ({abs_angle_error:.1f}°): Velocidade baixa")
+            elif abs_angle_error > 15:  # Curvas moderadas (15-30°)
+                angle_factor = 0.6  # Velocidade moderada
+                angular_factor = 1.3  # Controle angular equilibrado
                 print(f"🎯 CURVA MODERADA ({abs_angle_error:.1f}°): Velocidade moderada")
-            else:  # Curvas suaves (<30°)
-                angle_factor = max(0.7, math.cos(math.radians(angle_error)))  # Velocidade normal
-                angular_factor = 2.0  # Controle angular normal
+            else:  # Curvas suaves (<15°)
+                angle_factor = 0.8  # Velocidade quase normal
+                angular_factor = 1.8  # Controle angular normal
                 print(f"🎯 CURVA SUAVE ({abs_angle_error:.1f}°): Velocidade normal")
             
             linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
@@ -1149,70 +1159,82 @@ class RobotNavigator(QObject):
             print(f"DEBUG: PAUSA: Aguardando mais {remaining_time:.1f}s antes do retorno")
 
     def manual_turn_left(self):
-        """🔄 GIRO MANUAL ESQUERDA: Gira o robô 22° para a esquerda"""
+        """🔄 GIRO MANUAL ESQUERDA: Gira o robô 22° para a esquerda usando PID"""
         print("🔄 GIRO MANUAL: Girando 22° para a esquerda")
         
         # Para qualquer movimento atual
         self.motors.stop()
-        time.sleep(0.2)
+        time.sleep(0.3)
         
-        # 🎯 CORREÇÃO: Força aumentada para giro efetivo
+        # 🎯 CORREÇÃO: Usa sistema PID para giro mais preciso
         turn_angle = 22.0  # graus
         
-        # 🎯 GIRO ESQUERDA: Configuração padrão restaurada
-        # Para girar ESQUERDA: motor esquerdo para trás, direito para frente
-        left_speed = -60  # Motor esquerdo para TRÁS
-        right_speed = 60  # Motor direito para FRENTE
+        # 🎯 GIRO ESQUERDA com PID: Velocidades em TPS para controle preciso
+        # Para girar ESQUERDA: motor esquerdo negativo, direito positivo
+        left_tps = -30.0   # TPS negativo para giro esquerda
+        right_tps = 30.0   # TPS positivo para giro esquerda
         
-        print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
-        self.motors.set_speed(left_speed, right_speed)
+        print(f"🔄 GIRO MANUAL PID: Aplicando TPS {left_tps}/{right_tps} para giro de {turn_angle}°")
         
-        # 🎯 CORREÇÃO: Tempo reduzido para 22° preciso
-        turn_time = 0.5  # Tempo reduzido para giro mais preciso
-        print(f"🔄 GIRO MANUAL: Tempo de giro: {turn_time}s")
+        # Define direção precisa para odometria durante giro
+        self.motors.set_precise_rotation_direction(-1, 1)  # Esquerda: E(-), D(+)
+        
+        # Aplica velocidade via PID
+        self.motors.set_target_speed(left_tps, right_tps)
+        
+        # 🎯 CORREÇÃO: Tempo ajustado para giro PID
+        turn_time = 0.7  # Tempo ajustado para PID
+        print(f"🔄 GIRO MANUAL PID: Tempo de giro: {turn_time}s")
         
         # Aguarda o tempo calculado
         time.sleep(turn_time)
         
-        # Para os motores
+        # Para os motores e limpa direção precisa
         self.motors.stop()
+        self.motors.clear_precise_rotation_direction()
         
         # Atualiza o ângulo do robô
         self.current_angle = (self.current_angle - turn_angle) % 360
-        print(f"🔄 GIRO MANUAL: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
+        print(f"🔄 GIRO MANUAL PID: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
 
     def manual_turn_right(self):
-        """🔄 GIRO MANUAL DIREITA: Gira o robô 22° para a direita"""
+        """🔄 GIRO MANUAL DIREITA: Gira o robô 22° para a direita usando PID"""
         print("🔄 GIRO MANUAL: Girando 22° para a direita")
         
         # Para qualquer movimento atual
         self.motors.stop()
-        time.sleep(0.2)
+        time.sleep(0.3)
         
-        # 🎯 CORREÇÃO: Força aumentada para giro efetivo
+        # 🎯 CORREÇÃO: Usa sistema PID para giro mais preciso
         turn_angle = 22.0  # graus
         
-        # 🎯 GIRO DIREITA: Configuração padrão restaurada
-        # Para girar DIREITA: motor esquerdo para frente, direito para trás
-        left_speed = 60   # Motor esquerdo para FRENTE
-        right_speed = -60 # Motor direito para TRÁS
+        # 🎯 GIRO DIREITA com PID: Velocidades em TPS para controle preciso
+        # Para girar DIREITA: motor esquerdo positivo, direito negativo
+        left_tps = 30.0    # TPS positivo para giro direita
+        right_tps = -30.0  # TPS negativo para giro direita
         
-        print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {turn_angle}°")
-        self.motors.set_speed(left_speed, right_speed)
+        print(f"🔄 GIRO MANUAL PID: Aplicando TPS {left_tps}/{right_tps} para giro de {turn_angle}°")
         
-        # 🎯 CORREÇÃO: Tempo reduzido para 22° preciso
-        turn_time = 0.5  # Tempo reduzido para giro mais preciso
-        print(f"🔄 GIRO MANUAL: Tempo de giro: {turn_time}s")
+        # Define direção precisa para odometria durante giro
+        self.motors.set_precise_rotation_direction(1, -1)  # Direita: E(+), D(-)
+        
+        # Aplica velocidade via PID
+        self.motors.set_target_speed(left_tps, right_tps)
+        
+        # 🎯 CORREÇÃO: Tempo ajustado para giro PID
+        turn_time = 0.7  # Tempo ajustado para PID
+        print(f"🔄 GIRO MANUAL PID: Tempo de giro: {turn_time}s")
         
         # Aguarda o tempo calculado
         time.sleep(turn_time)
         
-        # Para os motores
+        # Para os motores e limpa direção precisa
         self.motors.stop()
+        self.motors.clear_precise_rotation_direction()
         
         # Atualiza o ângulo do robô
         self.current_angle = (self.current_angle + turn_angle) % 360
-        print(f"🔄 GIRO MANUAL: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
+        print(f"🔄 GIRO MANUAL PID: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
 
     def manual_turn_custom(self, angle_degrees, direction='left'):
         """🔄 GIRO MANUAL PERSONALIZADO: Gira o robô um ângulo específico"""

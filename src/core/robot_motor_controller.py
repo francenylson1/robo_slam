@@ -307,13 +307,13 @@ class RobotMotorController(QObject):
         Ativa o controle PID se ele estiver desativado.
         Aplica correção de deriva lateral baseada em calibração.
         """
-        # TESTE: Fatores de correção temporariamente desabilitados para isolar vibração
-        # left_tps_corrected = left_tps * LEFT_MOTOR_CORRECTION_FACTOR
-        # right_tps_corrected = right_tps * RIGHT_MOTOR_CORRECTION_FACTOR
-        left_tps_corrected = left_tps   # SEM correção para teste
-        right_tps_corrected = right_tps # SEM correção para teste
+        # CORREÇÃO DERIVA: Fatores reativados com ajuste sensível para corrigir desvio à direita
+        # Motor esquerdo ligeiramente mais lento (0.965812) para compensar deriva à direita
+        left_tps_corrected = left_tps * LEFT_MOTOR_CORRECTION_FACTOR
+        right_tps_corrected = right_tps * RIGHT_MOTOR_CORRECTION_FACTOR
         
-        print(f"🚀 TESTE_PID_SUAVE: set_target_speed(left={left_tps:.1f}, right={right_tps:.1f}) - SEM fatores correção")
+        print(f"🎯 CORREÇÃO_DERIVA: set_target_speed(left={left_tps:.1f}→{left_tps_corrected:.1f}, right={right_tps:.1f}→{right_tps_corrected:.1f})")
+        print(f"🎯 Fatores aplicados: E={LEFT_MOTOR_CORRECTION_FACTOR:.6f}, D={RIGHT_MOTOR_CORRECTION_FACTOR:.6f}")
         
         if not self.pid_enabled:
             self.enable_pid_control()
