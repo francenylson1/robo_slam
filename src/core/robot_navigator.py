@@ -695,6 +695,33 @@ class RobotNavigator(QObject):
             self.navigation_state = "ORIENTING_TO_TARGET"
             return
 
+        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Sistema de compensação em tempo real
+        if not hasattr(self, 'lateral_drift_history'):
+            self.lateral_drift_history = []
+            self.last_target_angle = target_angle
+            
+        # 🎯 DETECÇÃO DE DERIVA LATERAL: Monitora desvio consistente
+        angle_change = abs(target_angle - getattr(self, 'last_target_angle', target_angle))
+        if angle_change < 5.0:  # Só monitora deriva em navegação relativamente reta
+            self.lateral_drift_history.append(angle_error)
+            if len(self.lateral_drift_history) > 10:
+                self.lateral_drift_history.pop(0)
+                
+            # 🎯 CALCULA DERIVA MÉDIA: Se há tendência consistente de desvio
+            if len(self.lateral_drift_history) >= 5:
+                avg_drift = sum(self.lateral_drift_history) / len(self.lateral_drift_history)
+                if abs(avg_drift) > 3.0:  # Deriva consistente > 3°
+                    drift_correction = avg_drift * 0.1  # Fator de correção suave
+                    print(f"🎯 DERIVA DETECTADA: {avg_drift:.1f}° média, aplicando correção {drift_correction:.2f}")
+                else:
+                    drift_correction = 0.0
+            else:
+                drift_correction = 0.0
+        else:
+            drift_correction = 0.0
+            
+        self.last_target_angle = target_angle
+
         # 🎯 CORREÇÃO CURVAS MELHORADA: Sistema adaptativo para curvas fechadas
         if hasattr(self, 'path') and len(self.path) > 2 and not self.is_returning_to_base:
             # 🎯 NAVEGAÇÃO COM CURVAS: Controle ultra-adaptativo para curvas fechadas
@@ -754,6 +781,18 @@ class RobotNavigator(QObject):
         
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+        
+        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Aplica correção baseada no desvio detectado
+        if hasattr(self, 'adaptive_drift_correction') and abs(drift_correction) > 0.001:
+            # Aplica correção suave nas velocidades TPS
+            correction_factor = drift_correction * 0.3  # Fator suave para evitar oscilações
+            
+            if drift_correction > 0:  # Desvio para direita, corrige reduzindo motor direito
+                right_tps *= (1.0 - correction_factor)
+                print(f"🎯 DERIVA ADAPTATIVA: Reduzindo motor direito em {correction_factor*100:.1f}%")
+            else:  # Desvio para esquerda, corrige reduzindo motor esquerdo
+                left_tps *= (1.0 + correction_factor)  # correction_factor é negativo
+                print(f"🎯 DERIVA ADAPTATIVA: Reduzindo motor esquerdo em {abs(correction_factor)*100:.1f}%")
         
         self.motors.set_target_speed(left_tps, right_tps)
 

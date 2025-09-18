@@ -14,12 +14,13 @@ from src.core.config import (TICKS_PER_REVOLUTION, MANUAL_CONTROL_MAX_TPS,
                             PID_PROFILES, SAFETY_MAX_MOTOR_POWER_PERCENT,
                             SAFETY_POWER_MONITOR_INTERVAL, SAFETY_POWER_VIOLATION_TIMEOUT) # Importa as constantes necessárias
 
-# === CORREÇÃO DE DERIVA LATERAL ===
-# Fatores de correção baseados em análise precisa de 10 testes
-# Data: 2025-09-17 16:20:00
-# Média: Left=70.2, Right=67.8 ticks - Motor esquerdo 3.54% mais rápido
-LEFT_MOTOR_CORRECTION_FACTOR = 0.965812
-RIGHT_MOTOR_CORRECTION_FACTOR = 1.000000
+# === CORREÇÃO DE DERIVA LATERAL AGRESSIVA ===
+# Fatores de correção ajustados para eliminar desvio à direita
+# Data: 2025-09-17 18:30:00 - Versão mais agressiva
+# Análise: Robô ainda desvia à direita, reduzindo motor esquerdo em 6%
+# Motor esquerdo reduzido para 94% para compensar deriva à direita
+LEFT_MOTOR_CORRECTION_FACTOR = 0.940000  # Reduzido de 0.965812 para 0.940000 (-2.67%)
+RIGHT_MOTOR_CORRECTION_FACTOR = 1.000000  # Mantido como referência
 
 if GPIO_AVAILABLE:
     try:
