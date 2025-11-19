@@ -1,11 +1,13 @@
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtCore import Qt, QPointF, QPoint
-from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QFont, QCursor, QPolygon
+from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QFont, QCursor, QPolygon, QImage
 from src.core.config import MAP_WIDTH, MAP_HEIGHT, MAP_SCALE, ROBOT_INITIAL_POSITION, ROBOT_INITIAL_ANGLE, DATABASE_PATH, INTERFACE_ROBOT_SIZE, INTERFACE_DIRECTION_LENGTH
 import math
 import sys
 import os
 import sqlite3
+import yaml
+from pathlib import Path
 from typing import Dict, List, Tuple, Callable, Optional
 
 # Adiciona o diretório raiz ao PYTHONPATH
@@ -41,6 +43,12 @@ class MapWidget(QWidget):
         self.base_position = ROBOT_INITIAL_POSITION  # Posição base original
         self.show_base_marker = True  # Se deve mostrar marcador da base
         
+        # NOVO: Atributos para mapa PGM
+        self.map_image = None  # QImage do mapa PGM
+        self.map_resolution = 0.05  # Resolução do mapa em metros por pixel
+        self.map_origin = (0.0, 0.0)  # Origem do mapa (x, y)
+        self.show_grid = True  # Se deve mostrar grid (pode desabilitar quando houver PGM)
+        
     def set_current_path(self, path: List[Tuple[float, float]]):
         """Define o caminho de navegação atual para ser desenhado."""
         self.current_path = path
@@ -73,8 +81,13 @@ class MapWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Desenha o grid
-        self._draw_grid(painter)
+        # NOVO: Desenha mapa PGM como fundo (se carregado)
+        if self.map_image:
+            self._draw_pgm_map(painter)
+        
+        # Desenha o grid (opcional, pode desabilitar quando houver PGM)
+        if self.show_grid:
+            self._draw_grid(painter)
         
         # Desenha as áreas proibidas
         self._draw_forbidden_areas(painter)
@@ -464,4 +477,134 @@ class MapWidget(QWidget):
         
     def get_forbidden_areas_list(self) -> List[Dict]:
         """Retorna lista de todas as áreas proibidas com dados completos."""
-        return [area for area in self.forbidden_areas if isinstance(area, dict)] 
+        return [area for area in self.forbidden_areas if isinstance(area, dict)]
+    
+    def load_pgm_map(self, pgm_path: str, yaml_path: Optional[str] = None) -> bool:
+        """
+        Carrega mapa PGM como fundo do widget.
+        
+        Args:
+            pgm_path: Caminho para arquivo .pgm
+            yaml_path: Caminho para arquivo .yaml (opcional, tenta encontrar automaticamente)
+            
+        Returns:
+            True se carregamento bem-sucedido
+        """
+        try:
+            pgm_file = Path(pgm_path)
+            if not pgm_file.exists():
+                print(f"ERRO: Arquivo PGM não encontrado: {pgm_path}")
+                return False
+            
+            # Carrega imagem PGM
+            self.map_image = QImage(str(pgm_file))
+            if self.map_image.isNull():
+                print(f"ERRO: Não foi possível carregar imagem PGM: {pgm_path}")
+                return False
+            
+            # Tenta carregar YAML para metadados
+            if yaml_path is None:
+                yaml_path = pgm_file.with_suffix('.yaml')
+            
+            yaml_file = Path(yaml_path)
+            if yaml_file.exists():
+                try:
+                    with open(yaml_file, 'r') as f:
+                        metadata = yaml.safe_load(f)
+                    
+                    self.map_resolution = metadata.get('resolution', 0.05)
+                    origin = metadata.get('origin', [0.0, 0.0, 0.0])
+                    self.map_origin = (float(origin[0]), float(origin[1]))
+                    
+                    print(f"✅ Mapa PGM carregado: {self.map_image.width()}x{self.map_image.height()}")
+                    print(f"   Resolução: {self.map_resolution}m/pixel")
+                    print(f"   Origem: {self.map_origin}")
+                except Exception as e:
+                    print(f"⚠️  Aviso: Erro ao carregar YAML: {e}")
+                    print("   Usando valores padrão")
+            
+            # Ajusta escala baseado no mapa
+            # Calcula escala para que o mapa caiba na tela
+            if self.map_image.width() > 0 and self.map_image.height() > 0:
+                # Escala baseada na resolução do mapa
+                # 1 pixel do PGM = map_resolution metros
+                # Queremos mostrar em pixels na tela
+                # self.scale = pixels_por_metro
+                # Se o mapa tem width pixels e representa width * resolution metros
+                # Então precisamos de scale = pixels_na_tela / metros
+                # Ajusta para caber na tela mantendo proporção
+                map_width_m = self.map_image.width() * self.map_resolution
+                map_height_m = self.map_image.height() * self.map_resolution
+                
+                # Ajusta escala para caber na tela (com margem)
+                available_width = self.width() * 0.9
+                available_height = self.height() * 0.9
+                
+                scale_x = available_width / map_width_m if map_width_m > 0 else self.scale
+                scale_y = available_height / map_height_m if map_height_m > 0 else self.scale
+                
+                # Usa a menor escala para garantir que cabe
+                self.scale = min(scale_x, scale_y, self.scale)
+                
+                # Atualiza dimensões do mapa
+                self.map_width = map_width_m
+                self.map_height = map_height_m
+            
+            self.update()  # Força redesenho
+            return True
+            
+        except Exception as e:
+            print(f"ERRO ao carregar mapa PGM: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def clear_pgm_map(self):
+        """Remove o mapa PGM carregado."""
+        self.map_image = None
+        self.map_resolution = 0.05
+        self.map_origin = (0.0, 0.0)
+        self.show_grid = True
+        self.update()
+    
+    def _draw_pgm_map(self, painter: QPainter):
+        """Desenha o mapa PGM como fundo."""
+        if self.map_image is None:
+            return
+        
+        # Largura e altura do mapa em metros
+        map_width_m = self.map_image.width() * self.map_resolution
+        map_height_m = self.map_image.height() * self.map_resolution
+        
+        # Calcula posição na tela
+        # A origem do mapa em coordenadas do mundo é map_origin
+        # Convertemos para coordenadas de tela
+        origin_x_screen = -self.map_origin[0] * self.scale
+        origin_y_screen = -self.map_origin[1] * self.scale
+        
+        # Tamanho na tela
+        display_width = map_width_m * self.scale
+        display_height = map_height_m * self.scale
+        
+        # Escala a imagem para o tamanho correto
+        scaled_image = self.map_image.scaled(
+            int(display_width),
+            int(display_height),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+        
+        # Desenha a imagem
+        # Nota: O PGM tem origem no canto inferior esquerdo (formato ROS)
+        # Mas QImage tem origem no canto superior esquerdo
+        # Precisamos inverter verticalmente
+        painter.save()
+        
+        # Inverte verticalmente
+        painter.translate(origin_x_screen, origin_y_screen + display_height)
+        painter.scale(1, -1)
+        
+        # Desenha a imagem invertida
+        painter.drawImage(0, 0, scaled_image)
+        
+        painter.restore() 

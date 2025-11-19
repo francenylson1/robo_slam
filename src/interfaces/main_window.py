@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QComboBox, QMessageBox,
                              QGroupBox, QGridLayout, QInputDialog, QProgressBar, QSlider,
-                             QScrollArea, QFrame, QSizePolicy, QApplication)
+                             QScrollArea, QFrame, QSizePolicy, QApplication, QFileDialog)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QCursor
 import sys
@@ -180,6 +180,22 @@ class MainWindow(QMainWindow):
         
         poi_buttons.addWidget(add_poi_btn, 0, 0)
         poi_buttons.addWidget(delete_poi_btn, 0, 1)
+        
+        # NOVO: Botões de exportar/importar JSON
+        export_poi_btn = QPushButton("💾 Exportar JSON")
+        export_poi_btn.clicked.connect(self._export_pois_json)
+        export_poi_btn.setToolTip("Exporta POIs para arquivo JSON")
+        import_poi_btn = QPushButton("📥 Importar JSON")
+        import_poi_btn.clicked.connect(self._import_pois_json)
+        import_poi_btn.setToolTip("Importa POIs de arquivo JSON")
+        
+        if self.is_small_screen:
+            export_poi_btn.setMaximumHeight(30)
+            import_poi_btn.setMaximumHeight(30)
+        
+        poi_buttons.addWidget(export_poi_btn, 1, 0)
+        poi_buttons.addWidget(import_poi_btn, 1, 1)
+        
         poi_layout.addLayout(poi_buttons)
         
         # === 🚫 ÁREAS PROIBIDAS (Colapsável) ===
@@ -204,6 +220,22 @@ class MainWindow(QMainWindow):
         
         forbidden_buttons.addWidget(add_forbidden_btn, 0, 0)
         forbidden_buttons.addWidget(delete_forbidden_btn, 0, 1)
+        
+        # NOVO: Botões de exportar/importar JSON para áreas
+        export_area_btn = QPushButton("💾 Exportar JSON")
+        export_area_btn.clicked.connect(self._export_areas_json)
+        export_area_btn.setToolTip("Exporta áreas proibidas para arquivo JSON")
+        import_area_btn = QPushButton("📥 Importar JSON")
+        import_area_btn.clicked.connect(self._import_areas_json)
+        import_area_btn.setToolTip("Importa áreas proibidas de arquivo JSON")
+        
+        if self.is_small_screen:
+            export_area_btn.setMaximumHeight(30)
+            import_area_btn.setMaximumHeight(30)
+        
+        forbidden_buttons.addWidget(export_area_btn, 1, 0)
+        forbidden_buttons.addWidget(import_area_btn, 1, 1)
+        
         forbidden_layout.addLayout(forbidden_buttons)
 
         # === 🗺️ GERENCIAMENTO DE MAPAS (Colapsável) ===
@@ -217,6 +249,12 @@ class MainWindow(QMainWindow):
         save_map_btn.clicked.connect(self._save_map)
         load_map_btn = QPushButton("📂 Carregar")
         load_map_btn.clicked.connect(self._load_active_map)
+        
+        # NOVO: Botão para carregar mapa PGM
+        load_pgm_btn = QPushButton("🗺️ Carregar PGM")
+        load_pgm_btn.clicked.connect(self._load_pgm_map)
+        load_pgm_btn.setToolTip("Carrega mapa PGM gerado do Aurora como fundo")
+        
         autosave_btn = QPushButton("🔄 Autosave: ON")
         autosave_btn.clicked.connect(self._toggle_autosave)
         self.autosave_button = autosave_btn  # Referência para atualizar o texto
@@ -225,15 +263,16 @@ class MainWindow(QMainWindow):
         calibrate_btn.clicked.connect(self._open_calibration_window)
 
         # Botões menores para tela pequena
-        map_buttons = [save_map_btn, load_map_btn, autosave_btn, calibrate_btn]
+        map_buttons = [save_map_btn, load_map_btn, load_pgm_btn, autosave_btn, calibrate_btn]
         if self.is_small_screen:
             for btn in map_buttons:
                 btn.setMaximumHeight(30)
 
         map_buttons_grid.addWidget(save_map_btn, 0, 0)
         map_buttons_grid.addWidget(load_map_btn, 0, 1)
-        map_buttons_grid.addWidget(autosave_btn, 1, 0)
-        map_buttons_grid.addWidget(calibrate_btn, 1, 1)
+        map_buttons_grid.addWidget(load_pgm_btn, 1, 0)
+        map_buttons_grid.addWidget(autosave_btn, 1, 1)
+        map_buttons_grid.addWidget(calibrate_btn, 2, 0, 1, 2)  # Ocupa 2 colunas
         map_management_layout.addLayout(map_buttons_grid)
         
         # === 🎯 NAVEGAÇÃO (Expansível, inicialmente aberto) ===
@@ -744,6 +783,250 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Salvar Mapa", f"Mapa '{map_name}' salvo com sucesso!")
         elif not map_name and ok:
             QMessageBox.warning(self, "Aviso", "O nome do mapa não pode ser vazio!")
+    
+    def _load_pgm_map(self):
+        """Carrega mapa PGM como fundo do widget."""
+        from pathlib import Path
+        
+        # Abre diálogo para escolher arquivo PGM
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Carregar Mapa PGM",
+            str(Path("mapas/otimizados").absolute()),
+            "Arquivos PGM (*.pgm);;Todos os arquivos (*.*)"
+        )
+        
+        if file_path:
+            # Tenta encontrar arquivo YAML correspondente
+            pgm_file = Path(file_path)
+            yaml_file = pgm_file.with_suffix('.yaml')
+            
+            # Carrega no MapWidget
+            if self.map_widget.load_pgm_map(str(pgm_file), str(yaml_file) if yaml_file.exists() else None):
+                QMessageBox.information(
+                    self,
+                    "Mapa Carregado",
+                    f"Mapa PGM carregado com sucesso!\n\n"
+                    f"Arquivo: {pgm_file.name}\n"
+                    f"Tamanho: {self.map_widget.map_image.width()}x{self.map_widget.map_image.height()} pixels"
+                )
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível carregar o mapa PGM.")
+    
+    def _export_pois_json(self):
+        """Exporta POIs para arquivo JSON."""
+        from pathlib import Path
+        import json
+        from datetime import datetime
+        
+        if not self.map_widget.points_of_interest:
+            QMessageBox.warning(self, "Aviso", "Não há POIs para exportar.")
+            return
+        
+        # Abre diálogo para salvar
+        default_name = f"pois_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportar POIs para JSON",
+            str(Path("mapas/pois") / default_name),
+            "Arquivos JSON (*.json);;Todos os arquivos (*.*)"
+        )
+        
+        if file_path:
+            try:
+                # Prepara dados no formato JSON
+                pois_data = {
+                    "map_id": self.map_widget.map_name or "mapa_atual",
+                    "version": "1.0",
+                    "created_at": datetime.now().isoformat(),
+                    "pois": []
+                }
+                
+                for name, point_data in self.map_widget.points_of_interest.items():
+                    if isinstance(point_data, tuple) and len(point_data) >= 2:
+                        x, y = point_data[0], point_data[1]
+                        point_type = point_data[2] if len(point_data) > 2 else "delivery"
+                        
+                        pois_data["pois"].append({
+                            "id": name.lower().replace(" ", "_"),
+                            "name": name,
+                            "x": float(x),
+                            "y": float(y),
+                            "orientation": 0.0,
+                            "type": point_type,
+                            "description": f"POI {name}",
+                            "enabled": True,
+                            "priority": "normal"
+                        })
+                
+                # Salva arquivo
+                Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(pois_data, f, indent=2, ensure_ascii=False)
+                
+                QMessageBox.information(
+                    self,
+                    "Exportação Concluída",
+                    f"POIs exportados com sucesso!\n\n"
+                    f"Arquivo: {Path(file_path).name}\n"
+                    f"Total: {len(pois_data['pois'])} POIs"
+                )
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao exportar POIs:\n{str(e)}")
+    
+    def _import_pois_json(self):
+        """Importa POIs de arquivo JSON."""
+        from pathlib import Path
+        import json
+        
+        # Abre diálogo para escolher arquivo
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Importar POIs de JSON",
+            str(Path("mapas/pois").absolute()),
+            "Arquivos JSON (*.json);;Todos os arquivos (*.*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    pois_data = json.load(f)
+                
+                # Processa POIs
+                imported_count = 0
+                for poi in pois_data.get('pois', []):
+                    name = poi.get('name', poi.get('id', f"poi_{imported_count}"))
+                    x = float(poi.get('x', 0))
+                    y = float(poi.get('y', 0))
+                    point_type = poi.get('type', 'delivery')
+                    
+                    # Adiciona ao mapa (sobrescreve se já existir)
+                    self.map_widget.points_of_interest[name] = (x, y, point_type)
+                    imported_count += 1
+                
+                # Atualiza interface
+                self._update_points_list()
+                self.map_widget.update()
+                
+                QMessageBox.information(
+                    self,
+                    "Importação Concluída",
+                    f"POIs importados com sucesso!\n\n"
+                    f"Total: {imported_count} POIs"
+                )
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao importar POIs:\n{str(e)}")
+    
+    def _export_areas_json(self):
+        """Exporta áreas proibidas para arquivo JSON."""
+        from pathlib import Path
+        import json
+        from datetime import datetime
+        
+        areas_list = self.map_widget.get_forbidden_areas_list()
+        if not areas_list:
+            QMessageBox.warning(self, "Aviso", "Não há áreas proibidas para exportar.")
+            return
+        
+        # Abre diálogo para salvar
+        default_name = f"areas_proibidas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportar Áreas Proibidas para JSON",
+            str(Path("mapas/areas_proibidas") / default_name),
+            "Arquivos JSON (*.json);;Todos os arquivos (*.*)"
+        )
+        
+        if file_path:
+            try:
+                # Prepara dados no formato JSON
+                areas_data = {
+                    "map_id": self.map_widget.map_name or "mapa_atual",
+                    "version": "1.0",
+                    "created_at": datetime.now().isoformat(),
+                    "forbidden_areas": []
+                }
+                
+                for area in areas_list:
+                    area_id = area.get('id', 0)
+                    area_name = area.get('nome', f"Área {area_id}")
+                    coordinates = area.get('coordenadas', [])
+                    
+                    if coordinates and len(coordinates) >= 3:
+                        areas_data["forbidden_areas"].append({
+                            "id": f"area_{area_id}",
+                            "name": area_name,
+                            "type": "polygon",
+                            "points": [{"x": float(x), "y": float(y)} for x, y in coordinates],
+                            "priority": "high",
+                            "enabled": True,
+                            "description": f"Área proibida: {area_name}"
+                        })
+                
+                # Salva arquivo
+                Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(areas_data, f, indent=2, ensure_ascii=False)
+                
+                QMessageBox.information(
+                    self,
+                    "Exportação Concluída",
+                    f"Áreas proibidas exportadas com sucesso!\n\n"
+                    f"Arquivo: {Path(file_path).name}\n"
+                    f"Total: {len(areas_data['forbidden_areas'])} áreas"
+                )
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao exportar áreas:\n{str(e)}")
+    
+    def _import_areas_json(self):
+        """Importa áreas proibidas de arquivo JSON."""
+        from pathlib import Path
+        import json
+        
+        # Abre diálogo para escolher arquivo
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Importar Áreas Proibidas de JSON",
+            str(Path("mapas/areas_proibidas").absolute()),
+            "Arquivos JSON (*.json);;Todos os arquivos (*.*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    areas_data = json.load(f)
+                
+                # Processa áreas
+                imported_count = 0
+                for area in areas_data.get('forbidden_areas', []):
+                    area_name = area.get('name', f"Área {imported_count}")
+                    points = area.get('points', [])
+                    
+                    if points and len(points) >= 3:
+                        # Converte pontos para formato esperado
+                        coordinates = [(float(p['x']), float(p['y'])) for p in points]
+                        
+                        # Adiciona ao mapa
+                        area_dict = {
+                            'id': len(self.map_widget.forbidden_areas),
+                            'nome': area_name,
+                            'coordenadas': coordinates
+                        }
+                        self.map_widget.add_forbidden_area(area_dict)
+                        imported_count += 1
+                
+                # Atualiza interface
+                self._update_forbidden_areas_list()
+                self.map_widget.update()
+                
+                QMessageBox.information(
+                    self,
+                    "Importação Concluída",
+                    f"Áreas proibidas importadas com sucesso!\n\n"
+                    f"Total: {imported_count} áreas"
+                )
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao importar áreas:\n{str(e)}")
 
     def _start_navigation(self):
         """Inicia a navegação autônoma com feedback melhorado"""

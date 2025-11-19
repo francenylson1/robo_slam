@@ -6,3 +6,9 @@ scipy==1.13.1
 shapely==2.0.4
 RPi.GPIO>=0.7.1 # Para controle de hardware na Raspberry Pi
 pyqtgraph==0.13.3
+
+# Dependências para processamento de mapas Aurora → C1
+open3d>=0.18.0  # Para processamento de nuvens de pontos 3D
+Pillow>=10.0.0  # Para manipulação de imagens (PGM)
+PyYAML>=6.0  # Para arquivos YAML de configuração de mapas
+requests>=2.31.0  # Para comunicação HTTP com API SLAMWARE do C1

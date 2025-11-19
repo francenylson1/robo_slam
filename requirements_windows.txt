@@ -1,0 +1,16 @@
+# Requirements para Windows (sem RPi.GPIO que só funciona no Raspberry Pi)
+numpy==1.26.4
+PyQt5==5.15.10
+pyserial==3.5
+pygame>=2.5.0
+scipy==1.13.1
+shapely==2.0.4
+# RPi.GPIO>=0.7.1  # Apenas para Raspberry Pi - não instalar no Windows
+pyqtgraph==0.13.3
+
+# Dependências para processamento de mapas Aurora → C1
+open3d>=0.18.0
+Pillow>=10.0.0
+PyYAML>=6.0
+requests>=2.31.0
+
