@@ -346,7 +346,7 @@ class MainWindow(QMainWindow):
         direction_grid.addWidget(self.btn_forward, 0, 1)
         
         # Botão GIRO MANUAL ESQUERDA (22° padrão)
-        self.btn_rotate_manual_left = QPushButton("↺ 22° ESQ" if self.is_small_screen else "↺ 22° ESQUERDA")
+        self.btn_rotate_manual_left = QPushButton("↺ 180° ESQ" if self.is_small_screen else "↺ 180° ESQUERDA")
         self.btn_rotate_manual_left.setFixedSize(rotate_width, rotate_height)
         self.btn_rotate_manual_left.clicked.connect(self._manual_turn_left)
         if self.is_small_screen:
@@ -356,7 +356,7 @@ class MainWindow(QMainWindow):
         direction_grid.addWidget(self.btn_rotate_manual_left, 1, 0)
         
         # Botão GIRO MANUAL DIREITA (22° padrão)
-        self.btn_rotate_manual_right = QPushButton("↻ 22° DIR" if self.is_small_screen else "↻ 22° DIREITA")
+        self.btn_rotate_manual_right = QPushButton("↻ 180° DIR" if self.is_small_screen else "↻ 180° DIREITA")
         self.btn_rotate_manual_right.setFixedSize(rotate_width, rotate_height)
         self.btn_rotate_manual_right.clicked.connect(self._manual_turn_right)
         if self.is_small_screen:
@@ -1206,13 +1206,13 @@ class MainWindow(QMainWindow):
     #         print(f"⚠️ SYNC_DEBUG: Erro na sincronização: {e}")
 
     def _manual_turn_left(self):
-        """Executa giro manual de 22° para a esquerda"""
+        """Executa giro manual de 180° para a esquerda"""
         if self.navigation_active:
             QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
             return
         
         try:
-            print("🔄 INTERFACE: Executando giro manual esquerda de 22°")
+            print("🔄 INTERFACE: Executando giro manual esquerda de 180°")
             self.navigator.manual_turn_left()
             
             # Atualiza a posição do robô na interface
@@ -1227,13 +1227,13 @@ class MainWindow(QMainWindow):
             print(f"⚠️ INTERFACE: Erro no giro manual: {e}")
 
     def _manual_turn_right(self):
-        """Executa giro manual de 22° para a direita"""
+        """Executa giro manual de 180° para a direita"""
         if self.navigation_active:
             QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
             return
         
         try:
-            print("🔄 INTERFACE: Executando giro manual direita de 22°")
+            print("🔄 INTERFACE: Executando giro manual direita de 180°")
             self.navigator.manual_turn_right()
             
             # Atualiza a posição do robô na interface

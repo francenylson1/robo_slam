@@ -1324,20 +1324,20 @@ class RobotNavigator(QObject):
             print(f"DEBUG: PAUSA: Aguardando mais {remaining_time:.1f}s antes do retorno")
 
     def manual_turn_left(self):
-        """🔄 GIRO MANUAL ESQUERDA: Gira o robô 22° para a esquerda usando PID"""
-        print("🔄 GIRO MANUAL: Girando 22° para a esquerda")
+        """🔄 GIRO MANUAL ESQUERDA: Gira o robô 180° para a esquerda usando PID"""
+        print("🔄 GIRO MANUAL: Girando 180° para a esquerda")
         
         # Para qualquer movimento atual
         self.motors.stop()
         time.sleep(0.3)
         
         # 🎯 CORREÇÃO: Usa sistema PID para giro mais preciso
-        turn_angle = 22.0  # graus
+        turn_angle = 180.0  # graus - ALTERADO DE 22° PARA 180°
         
         # 🎯 GIRO ESQUERDA com PID: Velocidades em TPS para controle preciso
         # Para girar ESQUERDA: motor esquerdo negativo, direito positivo
-        left_tps = -30.0   # TPS negativo para giro esquerda
-        right_tps = 30.0   # TPS positivo para giro esquerda
+        left_tps = -25.0   # TPS negativo para giro esquerda (reduzido para maior precisão)
+        right_tps = 25.0   # TPS positivo para giro esquerda (reduzido para maior precisão)
         
         print(f"🔄 GIRO MANUAL PID: Aplicando TPS {left_tps}/{right_tps} para giro de {turn_angle}°")
         
@@ -1347,8 +1347,9 @@ class RobotNavigator(QObject):
         # Aplica velocidade via PID
         self.motors.set_target_speed(left_tps, right_tps)
         
-        # 🎯 CORREÇÃO: Tempo ajustado para giro PID
-        turn_time = 0.7  # Tempo ajustado para PID
+        # 🎯 CORREÇÃO: Tempo calculado para 180° (proporcionalmente maior)
+        # Tempo base de 0.7s para 22° = 0.7 * (180/22) = 5.7s aproximadamente
+        turn_time = 5.8  # Tempo ajustado para 180°
         print(f"🔄 GIRO MANUAL PID: Tempo de giro: {turn_time}s")
         
         # Aguarda o tempo calculado
@@ -1363,20 +1364,20 @@ class RobotNavigator(QObject):
         print(f"🔄 GIRO MANUAL PID: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
 
     def manual_turn_right(self):
-        """🔄 GIRO MANUAL DIREITA: Gira o robô 22° para a direita usando PID"""
-        print("🔄 GIRO MANUAL: Girando 22° para a direita")
+        """🔄 GIRO MANUAL DIREITA: Gira o robô 180° para a direita usando PID"""
+        print("🔄 GIRO MANUAL: Girando 180° para a direita")
         
         # Para qualquer movimento atual
         self.motors.stop()
         time.sleep(0.3)
         
         # 🎯 CORREÇÃO: Usa sistema PID para giro mais preciso
-        turn_angle = 22.0  # graus
+        turn_angle = 180.0  # graus - ALTERADO DE 22° PARA 180°
         
         # 🎯 GIRO DIREITA com PID: Velocidades em TPS para controle preciso
         # Para girar DIREITA: motor esquerdo positivo, direito negativo
-        left_tps = 30.0    # TPS positivo para giro direita
-        right_tps = -30.0  # TPS negativo para giro direita
+        left_tps = 25.0    # TPS positivo para giro direita (reduzido para maior precisão)
+        right_tps = -25.0  # TPS negativo para giro direita (reduzido para maior precisão)
         
         print(f"🔄 GIRO MANUAL PID: Aplicando TPS {left_tps}/{right_tps} para giro de {turn_angle}°")
         
@@ -1386,8 +1387,9 @@ class RobotNavigator(QObject):
         # Aplica velocidade via PID
         self.motors.set_target_speed(left_tps, right_tps)
         
-        # 🎯 CORREÇÃO: Tempo ajustado para giro PID
-        turn_time = 0.7  # Tempo ajustado para PID
+        # 🎯 CORREÇÃO: Tempo calculado para 180° (proporcionalmente maior)
+        # Tempo base de 0.7s para 22° = 0.7 * (180/22) = 5.7s aproximadamente
+        turn_time = 5.8  # Tempo ajustado para 180°
         print(f"🔄 GIRO MANUAL PID: Tempo de giro: {turn_time}s")
         
         # Aguarda o tempo calculado
