@@ -20,9 +20,9 @@ Na última sessão, desenvolvemos:
 - ✅ Testes básicos funcionando
 
 ### 3. Melhorias na Interface
-- ✅ Carregar mapa PGM como fundo no `MapWidget`
-- ✅ Exportar/Importar POIs em JSON
-- ✅ Exportar/Importar áreas proibidas em JSON
+- ✅ Carregar mapa PGM como fundo no `MapWidget` (IMPLEMENTADO E TESTADO)
+- ✅ Exportar/Importar POIs em JSON (IMPLEMENTADO E TESTADO)
+- ✅ Exportar/Importar áreas proibidas em JSON (IMPLEMENTADO E TESTADO)
 - ✅ Todas funcionalidades existentes mantidas
 
 ### 4. Documentação
@@ -35,7 +35,8 @@ Na última sessão, desenvolvemos:
 **Funcionando:**
 - ✅ Conversão BMP → PGM + YAML
 - ✅ Carregamento de PGM na interface
-- ✅ Exportação/importação JSON
+- ✅ Exportação/importação de POIs em JSON
+- ✅ Exportação/importação de áreas proibidas em JSON
 - ✅ Sistema básico completo
 
 **Aguardando:**
@@ -72,7 +73,46 @@ python3 src/main.py
 
 ## O Que Preciso Agora
 
-[Descrever o que você precisa fazer na nova sessão]
+### ✅ Funcionalidades Implementadas e Testadas
+
+Todas as funcionalidades de interface foram implementadas e validadas:
+
+1. ✅ **Carregar mapa PGM como fundo no MapWidget**
+   - Método `load_pgm_map()` implementado
+   - Botão "🗺️ Carregar PGM" na interface
+   - Carrega metadados do arquivo YAML automaticamente
+   - Ajusta escala automaticamente baseado no mapa
+
+2. ✅ **Exportar POIs para JSON**
+   - Método `_export_pois_json()` implementado
+   - Formato compatível com `mapas/pois/template_pois.json`
+   - Salva em `mapas/pois/` por padrão
+
+3. ✅ **Importar POIs de JSON**
+   - Método `_import_pois_json()` implementado
+   - Adiciona POIs ao mapa atual
+   - Sobrescreve se mesmo nome
+
+4. ✅ **Exportar áreas proibidas para JSON**
+   - Método `_export_areas_json()` implementado
+   - Formato compatível com `mapas/areas_proibidas/template_areas_proibidas.json`
+
+5. ✅ **Importar áreas proibidas de JSON**
+   - Método `_import_areas_json()` implementado
+   - Adiciona áreas ao mapa atual
+
+### 🧪 Testes
+
+Execute o script de teste para validar:
+```bash
+python3 tests/teste_funcionalidades_interface.py
+```
+
+### 📝 Próximos Passos
+
+- Testar na interface gráfica completa
+- Validar com mapas reais do Aurora
+- Testar integração completa do fluxo
 
 ---
 

@@ -48,6 +48,7 @@ class MapWidget(QWidget):
         self.map_resolution = 0.05  # Resolução do mapa em metros por pixel
         self.map_origin = (0.0, 0.0)  # Origem do mapa (x, y)
         self.show_grid = True  # Se deve mostrar grid (pode desabilitar quando houver PGM)
+        self.pgm_flip_vertical = True  # Se deve inverter verticalmente o PGM ao desenhar
         
     def set_current_path(self, path: List[Tuple[float, float]]):
         """Define o caminho de navegação atual para ser desenhado."""
@@ -496,6 +497,10 @@ class MapWidget(QWidget):
                 print(f"ERRO: Arquivo PGM não encontrado: {pgm_path}")
                 return False
             
+            # Limpa mapa anterior se existir
+            if self.map_image:
+                self.map_image = None
+            
             # Carrega imagem PGM
             self.map_image = QImage(str(pgm_file))
             if self.map_image.isNull():
@@ -546,9 +551,12 @@ class MapWidget(QWidget):
                 # Usa a menor escala para garantir que cabe
                 self.scale = min(scale_x, scale_y, self.scale)
                 
-                # Atualiza dimensões do mapa
-                self.map_width = map_width_m
-                self.map_height = map_height_m
+            # Atualiza dimensões do mapa
+            self.map_width = map_width_m
+            self.map_height = map_height_m
+            
+            # Desabilita o grid quando um PGM é carregado
+            self.show_grid = False
             
             self.update()  # Força redesenho
             return True
@@ -572,19 +580,24 @@ class MapWidget(QWidget):
         if self.map_image is None:
             return
         
+        # Largura e altura do mapa em pixels (original)
+        img_width = self.map_image.width()
+        img_height = self.map_image.height()
+        
         # Largura e altura do mapa em metros
-        map_width_m = self.map_image.width() * self.map_resolution
-        map_height_m = self.map_image.height() * self.map_resolution
+        map_width_m = img_width * self.map_resolution
+        map_height_m = img_height * self.map_resolution
         
-        # Calcula posição na tela
-        # A origem do mapa em coordenadas do mundo é map_origin
-        # Convertemos para coordenadas de tela
-        origin_x_screen = -self.map_origin[0] * self.scale
-        origin_y_screen = -self.map_origin[1] * self.scale
-        
-        # Tamanho na tela
+        # Tamanho na tela (em pixels)
         display_width = map_width_m * self.scale
         display_height = map_height_m * self.scale
+        
+        print(f"DEBUG PGM: Imagem original: {img_width}x{img_height} pixels")
+        print(f"DEBUG PGM: Tamanho em metros: {map_width_m:.2f}x{map_height_m:.2f}m")
+        print(f"DEBUG PGM: Tamanho na tela: {display_width:.1f}x{display_height:.1f} pixels")
+        print(f"DEBUG PGM: Widget size: {self.width()}x{self.height()} pixels")
+        print(f"DEBUG PGM: Scale: {self.scale} pixels/m")
+        print(f"DEBUG PGM: Origin: {self.map_origin}")
         
         # Escala a imagem para o tamanho correto
         scaled_image = self.map_image.scaled(
@@ -594,17 +607,42 @@ class MapWidget(QWidget):
             Qt.TransformationMode.SmoothTransformation
         )
         
+        # Simplifica: desenha do canto superior esquerdo primeiro
+        # Depois podemos ajustar a posição baseada na origem
+        x_pos = 0
+        y_pos = 0
+        
+        # Se a origem não for (0,0), ajusta a posição
+        if self.map_origin[0] != 0.0 or self.map_origin[1] != 0.0:
+            # A origem do mapa está em coordenadas do mundo
+            # Converte para coordenadas de tela
+            origin_x_screen = self.map_origin[0] * self.scale
+            # Para Y: o widget tem origem no topo, então invertemos
+            origin_y_screen = self.height() - (self.map_origin[1] * self.scale)
+            
+            # Posiciona o mapa considerando a origem
+            x_pos = origin_x_screen
+            y_pos = origin_y_screen - display_height
+        else:
+            # Origem (0,0) - desenha do canto superior esquerdo
+            x_pos = 0
+            y_pos = 0
+        
+        print(f"DEBUG PGM: Desenhando em posição: ({x_pos:.1f}, {y_pos:.1f})")
+        
         # Desenha a imagem
-        # Nota: O PGM tem origem no canto inferior esquerdo (formato ROS)
-        # Mas QImage tem origem no canto superior esquerdo
-        # Precisamos inverter verticalmente
         painter.save()
         
-        # Inverte verticalmente
-        painter.translate(origin_x_screen, origin_y_screen + display_height)
-        painter.scale(1, -1)
+        if self.pgm_flip_vertical:
+            # Inverte verticalmente para corresponder ao nosso sistema de coordenadas
+            # O widget tem origem no topo, mas queremos origem embaixo
+            painter.translate(x_pos, y_pos + display_height)
+            painter.scale(1, -1)
+            painter.drawImage(0, 0, scaled_image)
+        else:
+            # Desenha sem inverter
+            painter.drawImage(int(x_pos), int(y_pos), scaled_image)
         
-        # Desenha a imagem invertida
-        painter.drawImage(0, 0, scaled_image)
+        painter.restore()
         
-        painter.restore() 
+        print(f"DEBUG PGM: Mapa desenhado") 

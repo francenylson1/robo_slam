@@ -520,31 +520,70 @@ class MainWindow(QMainWindow):
 
     def _load_active_map(self):
         """Carrega o mapa ativo ou permite seleção de um mapa"""
-        map_names = self.map_manager.get_all_map_names()
+        from pathlib import Path
         
-        if map_names:
+        # Lista mapas do banco de dados
+        db_map_names = self.map_manager.get_all_map_names()
+        
+        # Lista mapas PGM disponíveis
+        pgm_dir = Path("mapas/otimizados")
+        pgm_maps = []
+        if pgm_dir.exists():
+            pgm_maps = [f.stem for f in pgm_dir.glob("*.pgm")]
+        
+        # Combina ambas as listas
+        all_maps = []
+        if db_map_names:
+            all_maps.extend([f"🗄️ {name}" for name in db_map_names])
+        if pgm_maps:
+            all_maps.extend([f"🗺️ {name}" for name in pgm_maps])
+        
+        if all_maps:
             map_name, ok = QInputDialog.getItem(
-                self, "Carregar Mapa", "Selecione um mapa para carregar:", map_names, 0, False
+                self, "Carregar Mapa", "Selecione um mapa para carregar:", all_maps, 0, False
             )
             if ok and map_name:
-                self.map_manager.load_map_by_name(map_name)
-                active_map = self.map_manager.get_active_map()
-                if active_map:
-                    self.current_map = active_map
-                    points_of_interest, forbidden_areas, _, _ = self.map_manager.load_active_map()
+                # Verifica se é um mapa PGM ou do banco
+                if map_name.startswith("🗺️ "):
+                    # É um mapa PGM
+                    pgm_name = map_name.replace("🗺️ ", "")
+                    pgm_path = pgm_dir / f"{pgm_name}.pgm"
+                    yaml_path = pgm_dir / f"{pgm_name}.yaml"
                     
-                    map_data = {
-                        'points_of_interest': points_of_interest,
-                        'forbidden_areas': forbidden_areas
-                    }
-                    self.map_widget.load_map(map_data)
-                    self._update_points_list()
-                    self._update_destination_combo()
-                    self._reload_forbidden_areas()
-                    self.status_label.setText(f"Mapa carregado: {active_map['nome']}")
-                    self._reset_robot_to_base()
+                    if pgm_path.exists():
+                        if self.map_widget.load_pgm_map(str(pgm_path), str(yaml_path) if yaml_path.exists() else None):
+                            self.status_label.setText(f"Mapa PGM carregado: {pgm_name}")
+                            QMessageBox.information(
+                                self,
+                                "Mapa Carregado",
+                                f"Mapa PGM carregado com sucesso!\n\n"
+                                f"Arquivo: {pgm_name}.pgm"
+                            )
+                        else:
+                            QMessageBox.warning(self, "Erro", "Não foi possível carregar o mapa PGM.")
+                    else:
+                        QMessageBox.warning(self, "Erro", f"Arquivo PGM não encontrado: {pgm_path}")
+                else:
+                    # É um mapa do banco de dados
+                    db_name = map_name.replace("🗄️ ", "")
+                    self.map_manager.load_map_by_name(db_name)
+                    active_map = self.map_manager.get_active_map()
+                    if active_map:
+                        self.current_map = active_map
+                        points_of_interest, forbidden_areas, _, _ = self.map_manager.load_active_map()
+                        
+                        map_data = {
+                            'points_of_interest': points_of_interest,
+                            'forbidden_areas': forbidden_areas
+                        }
+                        self.map_widget.load_map(map_data)
+                        self._update_points_list()
+                        self._update_destination_combo()
+                        self._reload_forbidden_areas()
+                        self.status_label.setText(f"Mapa carregado: {active_map['nome']}")
+                        self._reset_robot_to_base()
         else:
-            self.status_label.setText("Nenhum mapa encontrado. Crie um novo mapa.")
+            self.status_label.setText("Nenhum mapa encontrado. Crie um novo mapa ou processe um mapa do Aurora.")
             
     def _reset_robot_to_base(self):
         """Reseta o robô para a posição base com ângulo inicial."""
@@ -788,30 +827,66 @@ class MainWindow(QMainWindow):
         """Carrega mapa PGM como fundo do widget."""
         from pathlib import Path
         
-        # Abre diálogo para escolher arquivo PGM
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Carregar Mapa PGM",
-            str(Path("mapas/otimizados").absolute()),
-            "Arquivos PGM (*.pgm);;Todos os arquivos (*.*)"
-        )
+        # Lista mapas PGM disponíveis
+        pgm_dir = Path("mapas/otimizados")
+        pgm_maps = []
+        if pgm_dir.exists():
+            pgm_maps = [f.stem for f in pgm_dir.glob("*.pgm")]
         
-        if file_path:
-            # Tenta encontrar arquivo YAML correspondente
-            pgm_file = Path(file_path)
-            yaml_file = pgm_file.with_suffix('.yaml')
+        if pgm_maps:
+            # Mostra lista de mapas disponíveis
+            map_name, ok = QInputDialog.getItem(
+                self, "Carregar Mapa PGM", "Selecione um mapa PGM para carregar:", pgm_maps, 0, False
+            )
+            if ok and map_name:
+                pgm_path = pgm_dir / f"{map_name}.pgm"
+                yaml_path = pgm_dir / f"{map_name}.yaml"
+                
+                if self.map_widget.load_pgm_map(str(pgm_path), str(yaml_path) if yaml_path.exists() else None):
+                    self.status_label.setText(f"Mapa PGM carregado: {map_name}")
+                    QMessageBox.information(
+                        self,
+                        "Mapa Carregado",
+                        f"Mapa PGM carregado com sucesso!\n\n"
+                        f"Arquivo: {map_name}.pgm\n"
+                        f"Tamanho: {self.map_widget.map_image.width()}x{self.map_widget.map_image.height()} pixels"
+                    )
+                else:
+                    QMessageBox.warning(self, "Erro", "Não foi possível carregar o mapa PGM.")
+        else:
+            # Se não houver mapas na lista, abre diálogo de arquivo
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Carregar Mapa PGM",
+                str(pgm_dir.absolute()) if pgm_dir.exists() else ".",
+                "Arquivos PGM (*.pgm);;Todos os arquivos (*.*)"
+            )
             
-            # Carrega no MapWidget
-            if self.map_widget.load_pgm_map(str(pgm_file), str(yaml_file) if yaml_file.exists() else None):
+            if file_path:
+                # Tenta encontrar arquivo YAML correspondente
+                pgm_file = Path(file_path)
+                yaml_file = pgm_file.with_suffix('.yaml')
+                
+                # Carrega no MapWidget
+                if self.map_widget.load_pgm_map(str(pgm_file), str(yaml_file) if yaml_file.exists() else None):
+                    self.status_label.setText(f"Mapa PGM carregado: {pgm_file.stem}")
+                    QMessageBox.information(
+                        self,
+                        "Mapa Carregado",
+                        f"Mapa PGM carregado com sucesso!\n\n"
+                        f"Arquivo: {pgm_file.name}\n"
+                        f"Tamanho: {self.map_widget.map_image.width()}x{self.map_widget.map_image.height()} pixels"
+                    )
+                else:
+                    QMessageBox.warning(self, "Erro", "Não foi possível carregar o mapa PGM.")
+            else:
                 QMessageBox.information(
                     self,
-                    "Mapa Carregado",
-                    f"Mapa PGM carregado com sucesso!\n\n"
-                    f"Arquivo: {pgm_file.name}\n"
-                    f"Tamanho: {self.map_widget.map_image.width()}x{self.map_widget.map_image.height()} pixels"
+                    "Nenhum Mapa",
+                    "Nenhum mapa PGM encontrado em 'mapas/otimizados/'.\n\n"
+                    "Processe um mapa do Aurora primeiro usando:\n"
+                    "python3 converter_bmp_para_mapa.py"
                 )
-            else:
-                QMessageBox.warning(self, "Erro", "Não foi possível carregar o mapa PGM.")
     
     def _export_pois_json(self):
         """Exporta POIs para arquivo JSON."""

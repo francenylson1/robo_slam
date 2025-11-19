@@ -1,6 +1,7 @@
 """
 Gerador de Arquivos PGM e YAML
-Gera arquivos no formato ROS map (PGM + YAML) compatível com Slamtec C1.
+Gera arquivos PGM + YAML compatível com Slamtec C1.
+Formato padrão de mapas de ocupação (compatível com vários sistemas).
 """
 
 import numpy as np
@@ -17,7 +18,7 @@ class PGMYAMLGenerator:
     """
     Gera arquivos PGM (Portable Gray Map) e YAML para mapas de ocupação.
     
-    Formato compatível com ROS e Slamtec SLAMWARE.
+    Formato padrão de mapas de ocupação, compatível com Slamtec SLAMWARE.
     """
     
     def __init__(self, occupancy_grid: np.ndarray, 
@@ -51,7 +52,7 @@ class PGMYAMLGenerator:
         """
         try:
             # Converte valores de ocupação para escala 0-255
-            # ROS: 0 = ocupado, 255 = livre, 205 = desconhecido
+            # Padrão: 0 = ocupado, 255 = livre, 205 = desconhecido
             pgm_data = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
             
             # Áreas ocupadas (100) -> 0 (preto)
@@ -107,7 +108,7 @@ class PGMYAMLGenerator:
                 'image': pgm_filename,
                 'resolution': float(self.resolution),
                 'origin': [float(self.origin[0]), float(self.origin[1]), float(self.origin[2])],  # [x, y, yaw]
-                'negate': 0,  # 0 = não negar (padrão ROS)
+                'negate': 0,  # 0 = não negar (padrão)
                 'occupied_thresh': float(occupied_thresh),
                 'free_thresh': float(free_thresh)
             }
@@ -149,12 +150,12 @@ class PGMYAMLGenerator:
         else:
             return (False, pgm_path, yaml_path)
     
-    def convert_to_ros_format(self) -> np.ndarray:
+    def convert_to_standard_format(self) -> np.ndarray:
         """
-        Converte grid interno para formato ROS (0-100, -1 para desconhecido).
+        Converte grid interno para formato padrão (0-100, -1 para desconhecido).
         
         Returns:
-            Grid no formato ROS
+            Grid no formato padrão
         """
         # Já está no formato correto
         return self.occupancy_grid.copy()
