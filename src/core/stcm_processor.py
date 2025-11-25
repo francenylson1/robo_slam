@@ -139,56 +139,148 @@ class STCMProcessor:
     
     def _extract_floats_method(self, data: bytes) -> Optional[np.ndarray]:
         """
-        Tenta extrair pontos procurando por sequências de floats.
-        Método heurístico - pode não funcionar para todos os formatos.
+        Tenta extrair pontos usando a estrutura MapPointDesc do SDK Aurora.
+        
+        Estrutura MapPointDesc (44 bytes):
+        - id: uint64 (8 bytes)
+        - map_id: uint32 (4 bytes)
+        - padding: uint32 (4 bytes)
+        - timestamp: double (8 bytes)
+        - position: Vector3 (3 floats = 12 bytes) - x, y, z
+        - flags: uint32 (4 bytes)
+        - padding: uint32 (4 bytes)
         """
         import struct
+        import re
         
         points = []
-        i = 0
-        consecutive_floats = 0
-        current_point = []
         
-        # Procura por sequências de 3 floats consecutivos (x, y, z)
-        while i < len(data) - 12:  # Precisa de pelo menos 12 bytes (3 floats)
-            try:
-                # Tenta ler 3 floats consecutivos
-                x = struct.unpack('<f', data[i:i+4])[0]
-                y = struct.unpack('<f', data[i+4:i+8])[0]
-                z = struct.unpack('<f', data[i+8:i+12])[0]
-                
-                # Valida se são valores razoáveis para coordenadas
-                if (-1000 < x < 1000 and -1000 < y < 1000 and -10 < z < 10):
-                    current_point = [x, y, z]
-                    consecutive_floats = 3
-                    i += 12
+        # Método 1: Procura por seções de map points usando a estrutura completa
+        # Tamanho da estrutura: 44 bytes
+        STRUCT_SIZE = 44
+        POSITION_OFFSET = 24  # offset para position (após id, map_id, padding, timestamp)
+        
+        # Procura por padrões que indicam início de seção de map points
+        # Pode haver um contador antes dos dados
+        for search_start in range(0, min(len(data) - 1000, 100000), 1000):
+            i = search_start
+            
+            # Tenta encontrar sequências válidas de map points
+            consecutive_valid = 0
+            section_points = []
+            
+            while i < len(data) - STRUCT_SIZE:
+                try:
+                    # Lê a estrutura MapPointDesc
+                    # id (uint64)
+                    point_id = struct.unpack('<Q', data[i:i+8])[0]
+                    # map_id (uint32)
+                    map_id = struct.unpack('<I', data[i+8:i+12])[0]
+                    # timestamp (double) - pulando padding
+                    timestamp = struct.unpack('<d', data[i+16:i+24])[0]
+                    # position (3 floats)
+                    x = struct.unpack('<f', data[i+POSITION_OFFSET:i+POSITION_OFFSET+4])[0]
+                    y = struct.unpack('<f', data[i+POSITION_OFFSET+4:i+POSITION_OFFSET+8])[0]
+                    z = struct.unpack('<f', data[i+POSITION_OFFSET+8:i+POSITION_OFFSET+12])[0]
                     
-                    # Verifica se há mais pontos consecutivos
-                    while i < len(data) - 12:
-                        try:
-                            x2 = struct.unpack('<f', data[i:i+4])[0]
-                            y2 = struct.unpack('<f', data[i+4:i+8])[0]
-                            z2 = struct.unpack('<f', data[i+8:i+12])[0]
+                    # Valida se são coordenadas razoáveis
+                    # Mapas geralmente estão em metros, com ranges razoáveis
+                    if (-100 < x < 100 and -100 < y < 100 and -10 < z < 10 and
+                        not (x == 0 and y == 0 and z == 0) and
+                        point_id > 0 and map_id >= 0 and
+                        -1e10 < timestamp < 1e10):
+                        
+                        section_points.append([x, y, z])
+                        consecutive_valid += 1
+                        i += STRUCT_SIZE
+                        
+                        # Se encontrou muitos pontos consecutivos, provavelmente é uma seção válida
+                        if consecutive_valid >= 10:
+                            # Continua coletando pontos desta seção
+                            while i < len(data) - STRUCT_SIZE and len(section_points) < 100000:
+                                try:
+                                    x2 = struct.unpack('<f', data[i+POSITION_OFFSET:i+POSITION_OFFSET+4])[0]
+                                    y2 = struct.unpack('<f', data[i+POSITION_OFFSET+4:i+POSITION_OFFSET+8])[0]
+                                    z2 = struct.unpack('<f', data[i+POSITION_OFFSET+8:i+POSITION_OFFSET+12])[0]
+                                    
+                                    if (-100 < x2 < 100 and -100 < y2 < 100 and -10 < z2 < 10 and
+                                        not (x2 == 0 and y2 == 0 and z2 == 0)):
+                                        section_points.append([x2, y2, z2])
+                                        i += STRUCT_SIZE
+                                    else:
+                                        break
+                                except:
+                                    break
                             
-                            if (-1000 < x2 < 1000 and -1000 < y2 < 1000 and -10 < z2 < 10):
-                                points.append([x2, y2, z2])
-                                i += 12
-                                consecutive_floats += 3
-                            else:
+                            if len(section_points) >= 100:  # Mínimo de pontos válidos
+                                logger.info(f"✅ Encontrada seção de map points: {len(section_points)} pontos")
+                                points = section_points
                                 break
-                        except:
-                            break
-                    
-                    if len(points) > 0:
-                        points.insert(0, current_point)
-                        break  # Encontrou uma sequência válida
-                
-                i += 1
-            except:
-                i += 1
-                consecutive_floats = 0
+                    else:
+                        consecutive_valid = 0
+                        section_points = []
+                        i += 1
+                        
+                except:
+                    i += 1
+                    consecutive_valid = 0
+                    section_points = []
+            
+            if len(points) >= 100:
+                break
         
-        if len(points) > 100:  # Mínimo de pontos para considerar válido
+        # Método 2: Se não encontrou com estrutura completa, tenta método mais simples
+        # Procura por sequências de 3 floats consecutivos (apenas coordenadas)
+        if len(points) < 100:
+            logger.info("Tentando método alternativo: sequências de floats...")
+            points = []
+            i = 0
+            consecutive_valid = 0
+            temp_points = []
+            
+            while i < len(data) - 12:
+                try:
+                    x = struct.unpack('<f', data[i:i+4])[0]
+                    y = struct.unpack('<f', data[i+4:i+8])[0]
+                    z = struct.unpack('<f', data[i+8:i+12])[0]
+                    
+                    if (-100 < x < 100 and -100 < y < 100 and -10 < z < 10 and
+                        not (x == 0 and y == 0 and z == 0)):
+                        temp_points.append([x, y, z])
+                        consecutive_valid += 1
+                        i += 12
+                        
+                        if consecutive_valid >= 50:  # Encontrou sequência válida
+                            # Continua coletando
+                            while i < len(data) - 12 and len(temp_points) < 100000:
+                                try:
+                                    x2 = struct.unpack('<f', data[i:i+4])[0]
+                                    y2 = struct.unpack('<f', data[i+4:i+8])[0]
+                                    z2 = struct.unpack('<f', data[i+8:i+12])[0]
+                                    
+                                    if (-100 < x2 < 100 and -100 < y2 < 100 and -10 < z2 < 10 and
+                                        not (x2 == 0 and y2 == 0 and z2 == 0)):
+                                        temp_points.append([x2, y2, z2])
+                                        i += 12
+                                    else:
+                                        break
+                                except:
+                                    break
+                            
+                            if len(temp_points) >= 100:
+                                points = temp_points
+                                logger.info(f"✅ Encontrada sequência de coordenadas: {len(points)} pontos")
+                                break
+                    else:
+                        consecutive_valid = 0
+                        temp_points = []
+                        i += 1
+                except:
+                    i += 1
+                    consecutive_valid = 0
+                    temp_points = []
+        
+        if len(points) >= 100:
             return np.array(points, dtype=np.float32)
         
         return None

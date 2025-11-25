@@ -47,7 +47,7 @@ ROBOT_ADJUSTMENT_TURN_SPEED = 0.25 # Velocidade de giro para ajustes finos (lent
 # Constante legada - Manter por compatibilidade, mas com valor seguro
 ROBOT_FORWARD_SPEED = 0.30         # (LEGADO) Alinhado com ROBOT_SPEED (aumentado 20%)
 
-ROBOT_INITIAL_POSITION = (5.7, 11.5) # (x, y) em metros - posição central na parte inferior
+ROBOT_INITIAL_POSITION = (5.7, 0.0)  # (x, y) em metros - posição base inicial do robô (ajustado para dentro do mapa)
 ROBOT_INITIAL_ANGLE = 270            # graus - apontando para cima
 
 # Configurações de simulação

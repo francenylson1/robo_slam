@@ -1,12 +1,13 @@
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtCore import Qt, QPointF, QPoint
-from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QFont, QCursor, QPolygon, QImage
+from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QFont, QCursor, QPolygon, QImage, QTransform
 from src.core.config import MAP_WIDTH, MAP_HEIGHT, MAP_SCALE, ROBOT_INITIAL_POSITION, ROBOT_INITIAL_ANGLE, DATABASE_PATH, INTERFACE_ROBOT_SIZE, INTERFACE_DIRECTION_LENGTH
 import math
 import sys
 import os
 import sqlite3
 import yaml
+import numpy as np
 from pathlib import Path
 from typing import Dict, List, Tuple, Callable, Optional
 
@@ -49,6 +50,11 @@ class MapWidget(QWidget):
         self.map_origin = (0.0, 0.0)  # Origem do mapa (x, y)
         self.show_grid = True  # Se deve mostrar grid (pode desabilitar quando houver PGM)
         self.pgm_flip_vertical = True  # Se deve inverter verticalmente o PGM ao desenhar
+        # Posição do mapa PGM na tela (para conversões)
+        self._pgm_map_x_pos = 0
+        self._pgm_map_y_pos = 0
+        self._pgm_display_width = 0
+        self._pgm_display_height = 0
         
     def set_current_path(self, path: List[Tuple[float, float]]):
         """Define o caminho de navegação atual para ser desenhado."""
@@ -99,20 +105,43 @@ class MapWidget(QWidget):
         # Desenha os pontos de interesse
         for name, point_data in self.points_of_interest.items():
             x, y, point_type = point_data
-            screen_x = int(x * self.scale)
-            screen_y = int(y * self.scale)
             
-            print(f"DEBUG: Desenhando ponto {name} em ({x}, {y}) -> ({screen_x}, {screen_y})")
+            # Usa conversão que considera a origem do mapa PGM
+            if self.map_image is not None:
+                screen_x, screen_y = self._world_to_screen_with_origin(x, y)
+            else:
+                screen_x = int(x * self.scale)
+                screen_y = int(y * self.scale)
             
-            # Desenha o ponto
+            print(f"DEBUG: Desenhando POI '{name}' em ({x:.2f}, {y:.2f})m -> ({screen_x}, {screen_y})px")
+            
+            # Verifica se o ponto está dentro da área visível do widget
+            if screen_x < -50 or screen_x > self.width() + 50 or screen_y < -50 or screen_y > self.height() + 50:
+                print(f"⚠️  POI '{name}' está fora da área visível (fora do mapa?)")
+                continue
+            
+            # Desenha o ponto (círculo vermelho maior)
             painter.setPen(QPen(QColor(0, 0, 0), 2))
             painter.setBrush(QBrush(QColor(255, 0, 0)))
-            painter.drawEllipse(screen_x - 5, screen_y - 5, 10, 10)
+            painter.drawEllipse(screen_x - 8, screen_y - 8, 16, 16)
             
-            # Desenha o nome e tipo
-            painter.setPen(QPen(QColor(0, 0, 0)))
-            painter.setFont(QFont('Arial', 8))
-            painter.drawText(screen_x + 10, screen_y + 5, f"{name} ({point_type})")
+            # Desenha o nome e tipo com fundo para melhor legibilidade
+            painter.setPen(QPen(QColor(255, 255, 255), 1))
+            painter.setBrush(QBrush(QColor(0, 0, 0, 180)))  # Fundo semi-transparente preto
+            painter.setFont(QFont('Arial', 9, QFont.Weight.Bold))
+            
+            # Calcula tamanho do texto para criar fundo
+            text = f"{name} ({point_type})"
+            font_metrics = painter.fontMetrics()
+            text_width = font_metrics.width(text)
+            text_height = font_metrics.height()
+            
+            # Desenha fundo do texto
+            painter.drawRect(screen_x + 12, screen_y - text_height // 2, text_width + 4, text_height + 2)
+            
+            # Desenha o texto
+            painter.setPen(QPen(QColor(255, 255, 255)))
+            painter.drawText(screen_x + 14, screen_y + text_height // 2, text)
             
         # --- NOVO: Desenha o caminho da navegação ---
         self._draw_path(painter)
@@ -167,8 +196,13 @@ class MapWidget(QWidget):
             p1 = self.current_path[i]
             p2 = self.current_path[i+1]
             
-            screen_p1 = QPoint(int(p1[0] * self.scale), int(p1[1] * self.scale))
-            screen_p2 = QPoint(int(p2[0] * self.scale), int(p2[1] * self.scale))
+            # Converte coordenadas do mundo para tela considerando origem do mapa
+            if self.map_image is not None:
+                screen_p1 = QPoint(*self._world_to_screen_with_origin(p1[0], p1[1]))
+                screen_p2 = QPoint(*self._world_to_screen_with_origin(p2[0], p2[1]))
+            else:
+                screen_p1 = QPoint(int(p1[0] * self.scale), int(p1[1] * self.scale))
+                screen_p2 = QPoint(int(p2[0] * self.scale), int(p2[1] * self.scale))
             
             painter.drawLine(screen_p1, screen_p2)
         
@@ -196,8 +230,8 @@ class MapWidget(QWidget):
     def add_point_to_forbidden_area(self, x, y):
         """Adiciona um ponto à área proibida sendo desenhada."""
         if self.drawing_forbidden:
-            world_x = self._screen_to_world_x(x)
-            world_y = self._screen_to_world_y(y)
+            # Usa conversão que considera a origem do mapa PGM
+            world_x, world_y = self._screen_to_world_with_origin(x, y)
             self.current_forbidden_area.append((world_x, world_y))
             self.update()
             
@@ -214,14 +248,61 @@ class MapWidget(QWidget):
         # Limpa a área atual *depois* do callback ter sido processado
         self.current_forbidden_area = []
         
+    def _screen_to_world_with_origin(self, screen_x: int, screen_y: int) -> Tuple[float, float]:
+        """
+        Converte coordenadas da tela para coordenadas do mundo considerando a origem do mapa PGM.
+        
+        Args:
+            screen_x: Coordenada X em pixels (tela)
+            screen_y: Coordenada Y em pixels (tela)
+            
+        Returns:
+            Tupla (world_x, world_y) em metros
+        """
+        if self.map_image is None:
+            # Sem mapa PGM, usa conversão simples
+            return (screen_x / self.scale, screen_y / self.scale)
+        
+        # Calcula posição do mapa na tela
+        widget_width = self.width()
+        widget_height = self.height()
+        map_width_m = self.map_image.width() * self.map_resolution
+        map_height_m = self.map_image.height() * self.map_resolution
+        display_width = int(map_width_m * self.scale)
+        display_height = int(map_height_m * self.scale)
+        
+        map_x_pos = (widget_width - display_width) // 2
+        map_y_pos = (widget_height - display_height) // 2
+        
+        # Converte coordenada da tela para coordenada relativa ao mapa
+        rel_x = screen_x - map_x_pos
+        rel_y = screen_y - map_y_pos
+        
+        # Converte para pixels do PGM
+        scale_factor_x = display_width / self.map_image.width()
+        scale_factor_y = display_height / self.map_image.height()
+        
+        pgm_x = rel_x / scale_factor_x if scale_factor_x > 0 else 0
+        pgm_y = rel_y / scale_factor_y if scale_factor_y > 0 else 0
+        
+        # Inverte Y (PGM tem Y crescendo para baixo)
+        img_height = self.map_image.height()
+        pgm_y = img_height - pgm_y
+        
+        # Converte pixels do PGM para metros do mundo
+        world_x = self.map_origin[0] + (pgm_x * self.map_resolution)
+        world_y = self.map_origin[1] + (pgm_y * self.map_resolution)
+        
+        return (world_x, world_y)
+    
     def mousePressEvent(self, event):
         """Processa eventos de clique do mouse."""
         if event.button() == Qt.MouseButton.LeftButton:
             # Converte as coordenadas do clique para coordenadas do mundo
-            world_x = event.x() / self.scale
-            world_y = event.y() / self.scale
+            # Usa conversão que considera a origem do mapa PGM
+            world_x, world_y = self._screen_to_world_with_origin(event.x(), event.y())
             
-            print(f"DEBUG: Clique em ({world_x}, {world_y})")
+            print(f"DEBUG: Clique em tela ({event.x()}, {event.y()})px -> mundo ({world_x:.2f}, {world_y:.2f})m")
             
             if self.add_point_mode:
                 if self.point_clicked_callback:
@@ -263,11 +344,18 @@ class MapWidget(QWidget):
                 
             # Cria um polígono com as coordenadas da área
             try:
-                points = [QPoint(int(float(x) * self.scale), int(float(y) * self.scale)) for x, y in coordinates]
+                # Converte coordenadas do mundo para tela considerando origem do mapa
+                if self.map_image is not None:
+                    points = [QPoint(*self._world_to_screen_with_origin(float(x), float(y))) for x, y in coordinates]
+                    click_point = QPoint(*self._world_to_screen_with_origin(world_x, world_y))
+                else:
+                    points = [QPoint(int(float(x) * self.scale), int(float(y) * self.scale)) for x, y in coordinates]
+                    click_point = QPoint(int(world_x * self.scale), int(world_y * self.scale))
+                
                 polygon = QPolygon(points)
                 
                 # Verifica se o ponto está dentro do polígono
-                if polygon.containsPoint(QPoint(int(world_x * self.scale), int(world_y * self.scale)), Qt.FillRule.OddEvenFill):
+                if polygon.containsPoint(click_point, Qt.FillRule.OddEvenFill):
                     return area_id
             except (TypeError, ValueError) as e:
                 print(f"DEBUG: Erro ao verificar clique em área {area_id}: {e}")
@@ -337,10 +425,55 @@ class MapWidget(QWidget):
     def _draw_robot(self, painter: QPainter):
         """Desenha o robô no mapa."""
         x, y = self.robot_position
-        screen_x = int(x * self.scale)
-        screen_y = int(y * self.scale)
         
-        print(f"DEBUG: Desenhando robô em ({x}, {y}) -> ({screen_x}, {screen_y}) com ângulo {self.robot_angle}°")
+        print(f"🔍 DEBUG ROBÔ: Posição do robô: ({x:.2f}, {y:.2f})m")
+        print(f"🔍 DEBUG ROBÔ: Mapa PGM carregado: {self.map_image is not None}")
+        
+        # Usa conversão que considera a origem do mapa PGM
+        if self.map_image is not None:
+            print(f"🔍 DEBUG ROBÔ: Origem do mapa: {self.map_origin}")
+            print(f"🔍 DEBUG ROBÔ: Resolução do mapa: {self.map_resolution}m/pixel")
+            print(f"🔍 DEBUG ROBÔ: Tamanho do mapa: {self.map_image.width()}x{self.map_image.height()} pixels")
+            
+            # Verifica se a posição está dentro dos limites do mapa
+            map_width_m = self.map_image.width() * self.map_resolution
+            map_height_m = self.map_image.height() * self.map_resolution
+            map_min_x = self.map_origin[0]
+            map_max_x = self.map_origin[0] + map_width_m
+            map_min_y = self.map_origin[1]
+            map_max_y = self.map_origin[1] + map_height_m
+            
+            print(f"🔍 DEBUG ROBÔ: Limites do mapa: X=[{map_min_x:.2f}, {map_max_x:.2f}]m, Y=[{map_min_y:.2f}, {map_max_y:.2f}]m")
+            print(f"🔍 DEBUG ROBÔ: Robô dentro do mapa? X: {map_min_x <= x <= map_max_x}, Y: {map_min_y <= y <= map_max_y}")
+            
+            screen_x, screen_y = self._world_to_screen_with_origin(x, y)
+        else:
+            # Sem mapa PGM, usa conversão simples
+            screen_x = int(x * self.scale)
+            screen_y = int(y * self.scale)
+            print(f"🔍 DEBUG ROBÔ: Sem mapa PGM, usando escala simples: {self.scale} pixels/m")
+        
+        print(f"🔍 DEBUG ROBÔ: Posição na tela: ({screen_x}, {screen_y})px")
+        print(f"🔍 DEBUG ROBÔ: Tamanho do widget: {self.width()}x{self.height()}px")
+        print(f"🔍 DEBUG ROBÔ: Robô visível na tela? X: {0 <= screen_x <= self.width()}, Y: {0 <= screen_y <= self.height()}")
+        
+        # Verifica se o robô está dentro dos limites do mapa PGM
+        if self.map_image is not None:
+            map_width_m = self.map_image.width() * self.map_resolution
+            map_height_m = self.map_image.height() * self.map_resolution
+            map_min_x = self.map_origin[0]
+            map_max_x = self.map_origin[0] + map_width_m
+            map_min_y = self.map_origin[1]
+            map_max_y = self.map_origin[1] + map_height_m
+            
+            is_inside_map = (map_min_x <= x <= map_max_x and map_min_y <= y <= map_max_y)
+            
+            if not is_inside_map:
+                print(f"⚠️  AVISO: Robô em ({x:.2f}, {y:.2f})m está FORA do mapa PGM!")
+                print(f"⚠️  AVISO: Mapa cobre X=[{map_min_x:.2f}, {map_max_x:.2f}]m, Y=[{map_min_y:.2f}, {map_max_y:.2f}]m")
+                print(f"⚠️  AVISO: Robô será desenhado, mas pode não estar visível corretamente")
+        
+        print(f"✅ DEBUG ROBÔ: Desenhando robô em ({x:.2f}, {y:.2f})m -> ({screen_x}, {screen_y})px com ângulo {self.robot_angle}°")
         
         # Desenha o corpo do robô (círculo azul)
         painter.setPen(QPen(QColor(0, 0, 0), 2))
@@ -387,8 +520,13 @@ class MapWidget(QWidget):
     def _draw_base_marker(self, painter: QPainter):
         """Desenha um marcador para a posição base original"""
         x, y = self.base_position
-        screen_x = int(x * self.scale)
-        screen_y = int(y * self.scale)
+        
+        # Usa conversão que considera a origem do mapa PGM
+        if self.map_image is not None:
+            screen_x, screen_y = self._world_to_screen_with_origin(x, y)
+        else:
+            screen_x = int(x * self.scale)
+            screen_y = int(y * self.scale)
         
         # Desenha um quadrado verde para representar a base
         painter.setPen(QPen(QColor(0, 150, 0), 2))
@@ -410,8 +548,11 @@ class MapWidget(QWidget):
             if not coordinates or len(coordinates) < 2:
                 continue
 
-            # Converte as coordenadas do mundo para a tela
-            screen_points = [QPoint(int(float(x) * self.scale), int(float(y) * self.scale)) for x, y in coordinates]
+            # Converte as coordenadas do mundo para a tela considerando origem do mapa
+            if self.map_image is not None:
+                screen_points = [QPoint(*self._world_to_screen_with_origin(float(x), float(y))) for x, y in coordinates]
+            else:
+                screen_points = [QPoint(int(float(x) * self.scale), int(float(y) * self.scale)) for x, y in coordinates]
             
             # Define a cor e o pincel
             pen = QPen(QColor(255, 0, 0, 100), 2, Qt.PenStyle.SolidLine)
@@ -436,7 +577,10 @@ class MapWidget(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush) # Sem preenchimento para a área em criação
 
             try:
-                points = [QPoint(int(float(x) * self.scale), int(float(y) * self.scale)) for x, y in self.current_forbidden_area]
+                if self.map_image is not None:
+                    points = [QPoint(*self._world_to_screen_with_origin(float(x), float(y))) for x, y in self.current_forbidden_area]
+                else:
+                    points = [QPoint(int(float(x) * self.scale), int(float(y) * self.scale)) for x, y in self.current_forbidden_area]
                 
                 # Desenha as linhas que conectam os pontos
                 for i in range(len(points) - 1):
@@ -497,15 +641,24 @@ class MapWidget(QWidget):
                 print(f"ERRO: Arquivo PGM não encontrado: {pgm_path}")
                 return False
             
-            # Limpa mapa anterior se existir
-            if self.map_image:
-                self.map_image = None
+            # Limpa mapa anterior completamente
+            self.map_image = None
+            # Reseta dimensões do mapa para evitar conflitos
+            self.map_width = MAP_WIDTH
+            self.map_height = MAP_HEIGHT
             
             # Carrega imagem PGM
             self.map_image = QImage(str(pgm_file))
             if self.map_image.isNull():
                 print(f"ERRO: Não foi possível carregar imagem PGM: {pgm_path}")
                 return False
+            
+            # Converte para formato RGB32 para garantir compatibilidade
+            if self.map_image.format() != QImage.Format.Format_RGB32 and self.map_image.format() != QImage.Format.Format_ARGB32:
+                print(f"[map_widget] Convertendo PGM de formato {self.map_image.format()} para RGB32")
+                self.map_image = self.map_image.convertToFormat(QImage.Format.Format_RGB32)
+            
+            print(f"✅ DEBUG: Imagem PGM carregada: {self.map_image.width()}x{self.map_image.height()}, formato: {self.map_image.format()}")
             
             # Tenta carregar YAML para metadados
             if yaml_path is None:
@@ -521,9 +674,27 @@ class MapWidget(QWidget):
                     origin = metadata.get('origin', [0.0, 0.0, 0.0])
                     self.map_origin = (float(origin[0]), float(origin[1]))
                     
+                    # Verifica se precisa inverter cores (negate)
+                    negate = metadata.get('negate', 0)
+                    if negate == 1:
+                        # Inverte cores: 0 (preto) vira 255 (branco) e vice-versa
+                        print(f"[map_widget] Invertendo cores do PGM (negate=1)")
+                        # Cria imagem invertida pixel por pixel
+                        inverted = QImage(self.map_image.size(), QImage.Format.Format_RGB32)
+                        for y in range(self.map_image.height()):
+                            for x in range(self.map_image.width()):
+                                pixel = self.map_image.pixel(x, y)
+                                # Inverte: 255 - valor
+                                r = 255 - QColor(pixel).red()
+                                g = 255 - QColor(pixel).green()
+                                b = 255 - QColor(pixel).blue()
+                                inverted.setPixel(x, y, QColor(r, g, b).rgb())
+                        self.map_image = inverted
+                    
                     print(f"✅ Mapa PGM carregado: {self.map_image.width()}x{self.map_image.height()}")
                     print(f"   Resolução: {self.map_resolution}m/pixel")
                     print(f"   Origem: {self.map_origin}")
+                    print(f"   Negate: {negate}")
                 except Exception as e:
                     print(f"⚠️  Aviso: Erro ao carregar YAML: {e}")
                     print("   Usando valores padrão")
@@ -532,31 +703,55 @@ class MapWidget(QWidget):
             # Calcula escala para que o mapa caiba na tela
             if self.map_image.width() > 0 and self.map_image.height() > 0:
                 # Escala baseada na resolução do mapa
-                # 1 pixel do PGM = map_resolution metros
-                # Queremos mostrar em pixels na tela
-                # self.scale = pixels_por_metro
-                # Se o mapa tem width pixels e representa width * resolution metros
-                # Então precisamos de scale = pixels_na_tela / metros
-                # Ajusta para caber na tela mantendo proporção
                 map_width_m = self.map_image.width() * self.map_resolution
                 map_height_m = self.map_image.height() * self.map_resolution
                 
-                # Ajusta escala para caber na tela (com margem)
-                available_width = self.width() * 0.9
-                available_height = self.height() * 0.9
+                # Atualiza dimensões do mapa ANTES de calcular escala
+                self.map_width = map_width_m
+                self.map_height = map_height_m
                 
-                scale_x = available_width / map_width_m if map_width_m > 0 else self.scale
-                scale_y = available_height / map_height_m if map_height_m > 0 else self.scale
+                # Ajusta escala para caber na tela (com margem de 10%)
+                # Usa o tamanho atual do widget (pode ser 0 na primeira vez, então usa valores padrão)
+                widget_width = max(self.width(), 600)  # Mínimo 600px
+                widget_height = max(self.height(), 400)  # Mínimo 400px
                 
-                # Usa a menor escala para garantir que cabe
-                self.scale = min(scale_x, scale_y, self.scale)
+                available_width = widget_width * 0.9
+                available_height = widget_height * 0.9
                 
-            # Atualiza dimensões do mapa
-            self.map_width = map_width_m
-            self.map_height = map_height_m
+                scale_x = available_width / map_width_m if map_width_m > 0 else 50.0
+                scale_y = available_height / map_height_m if map_height_m > 0 else 50.0
+                
+                # Usa a menor escala para garantir que cabe completamente
+                new_scale = min(scale_x, scale_y)
+                
+                # Só atualiza se for um valor válido
+                if new_scale > 0 and not (np.isnan(new_scale) or np.isinf(new_scale)):
+                    self.scale = new_scale
+                
+                print(f"✅ Escala ajustada: {self.scale:.2f} pixels/m")
+                print(f"   Mapa: {map_width_m:.2f}m x {map_height_m:.2f}m")
+                print(f"   Widget: {widget_width}x{widget_height}px")
             
             # Desabilita o grid quando um PGM é carregado
             self.show_grid = False
+            
+            # Verifica se a posição inicial do robô está dentro do mapa
+            map_width_m = self.map_image.width() * self.map_resolution
+            map_height_m = self.map_image.height() * self.map_resolution
+            map_min_x = self.map_origin[0]
+            map_max_x = self.map_origin[0] + map_width_m
+            map_min_y = self.map_origin[1]
+            map_max_y = self.map_origin[1] + map_height_m
+            
+            rob_x, rob_y = self.robot_position
+            print(f"🔍 DEBUG MAPA: Mapa carregado - Origem: {self.map_origin}, Tamanho: {map_width_m:.2f}x{map_height_m:.2f}m")
+            print(f"🔍 DEBUG MAPA: Limites: X=[{map_min_x:.2f}, {map_max_x:.2f}]m, Y=[{map_min_y:.2f}, {map_max_y:.2f}]m")
+            print(f"🔍 DEBUG MAPA: Posição do robô: ({rob_x:.2f}, {rob_y:.2f})m")
+            
+            if not (map_min_x <= rob_x <= map_max_x and map_min_y <= rob_y <= map_max_y):
+                print(f"⚠️  AVISO: Posição do robô ({rob_x:.2f}, {rob_y:.2f})m está FORA do mapa!")
+                print(f"⚠️  AVISO: O mapa cobre X=[{map_min_x:.2f}, {map_max_x:.2f}]m, Y=[{map_min_y:.2f}, {map_max_y:.2f}]m")
+                print(f"💡 SUGESTÃO: Ajuste ROBOT_INITIAL_POSITION em config.py para uma posição dentro do mapa")
             
             self.update()  # Força redesenho
             return True
@@ -575,74 +770,151 @@ class MapWidget(QWidget):
         self.show_grid = True
         self.update()
     
+    def _world_to_screen_with_origin(self, world_x: float, world_y: float) -> Tuple[int, int]:
+        """
+        Converte coordenadas do mundo para coordenadas de tela considerando a origem do mapa PGM.
+        
+        Args:
+            world_x: Coordenada X em metros (sistema do mundo)
+            world_y: Coordenada Y em metros (sistema do mundo)
+            
+        Returns:
+            Tupla (screen_x, screen_y) em pixels
+        """
+        if self.map_image is None:
+            # Sem mapa PGM, usa conversão simples
+            return (int(world_x * self.scale), int(world_y * self.scale))
+        
+        # Calcula offset relativo à origem do mapa
+        offset_x = world_x - self.map_origin[0]
+        offset_y = world_y - self.map_origin[1]
+        
+        # Converte para pixels
+        screen_x = int(offset_x / self.map_resolution)
+        screen_y = int(offset_y / self.map_resolution)
+        
+        # O Y do PGM cresce para baixo, mas nosso sistema tem Y crescendo para cima
+        # Então invertemos Y relativo à altura do mapa
+        img_height = self.map_image.height()
+        screen_y = img_height - screen_y
+        
+        # Ajusta para a posição do mapa na tela
+        widget_width = self.width()
+        widget_height = self.height()
+        map_width_m = self.map_image.width() * self.map_resolution
+        map_height_m = self.map_image.height() * self.map_resolution
+        display_width = int(map_width_m * self.scale)
+        display_height = int(map_height_m * self.scale)
+        
+        map_x_pos = (widget_width - display_width) // 2
+        map_y_pos = (widget_height - display_height) // 2
+        
+        # Escala as coordenadas do PGM para a tela
+        scale_factor_x = display_width / self.map_image.width()
+        scale_factor_y = display_height / self.map_image.height()
+        
+        final_x = map_x_pos + int(screen_x * scale_factor_x)
+        final_y = map_y_pos + int(screen_y * scale_factor_y)
+        
+        return (final_x, final_y)
+    
     def _draw_pgm_map(self, painter: QPainter):
         """Desenha o mapa PGM como fundo."""
         if self.map_image is None:
+            print("⚠️  DEBUG PGM: map_image é None, não desenhando")
             return
         
         # Largura e altura do mapa em pixels (original)
         img_width = self.map_image.width()
         img_height = self.map_image.height()
         
+        if img_width <= 0 or img_height <= 0:
+            print(f"⚠️  DEBUG PGM: Imagem inválida: {img_width}x{img_height}")
+            return
+        
         # Largura e altura do mapa em metros
         map_width_m = img_width * self.map_resolution
         map_height_m = img_height * self.map_resolution
         
-        # Tamanho na tela (em pixels)
-        display_width = map_width_m * self.scale
-        display_height = map_height_m * self.scale
+        # Tamanho na tela (em pixels) baseado na escala atual
+        display_width = int(map_width_m * self.scale)
+        display_height = int(map_height_m * self.scale)
         
-        print(f"DEBUG PGM: Imagem original: {img_width}x{img_height} pixels")
-        print(f"DEBUG PGM: Tamanho em metros: {map_width_m:.2f}x{map_height_m:.2f}m")
-        print(f"DEBUG PGM: Tamanho na tela: {display_width:.1f}x{display_height:.1f} pixels")
-        print(f"DEBUG PGM: Widget size: {self.width()}x{self.height()} pixels")
-        print(f"DEBUG PGM: Scale: {self.scale} pixels/m")
-        print(f"DEBUG PGM: Origin: {self.map_origin}")
+        print(f"🔍 DEBUG PGM: Desenhando mapa")
+        print(f"   Imagem original: {img_width}x{img_height} pixels")
+        print(f"   Tamanho em metros: {map_width_m:.2f}m x {map_height_m:.2f}m")
+        print(f"   Escala: {self.scale:.2f} pixels/m")
+        print(f"   Tamanho na tela: {display_width}x{display_height} pixels")
         
         # Escala a imagem para o tamanho correto
         scaled_image = self.map_image.scaled(
-            int(display_width),
-            int(display_height),
+            display_width,
+            display_height,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
         
-        # Simplifica: desenha do canto superior esquerdo primeiro
-        # Depois podemos ajustar a posição baseada na origem
-        x_pos = 0
-        y_pos = 0
+        print(f"   Imagem escalada: {scaled_image.width()}x{scaled_image.height()} pixels")
         
-        # Se a origem não for (0,0), ajusta a posição
-        if self.map_origin[0] != 0.0 or self.map_origin[1] != 0.0:
-            # A origem do mapa está em coordenadas do mundo
-            # Converte para coordenadas de tela
-            origin_x_screen = self.map_origin[0] * self.scale
-            # Para Y: o widget tem origem no topo, então invertemos
-            origin_y_screen = self.height() - (self.map_origin[1] * self.scale)
-            
-            # Posiciona o mapa considerando a origem
-            x_pos = origin_x_screen
-            y_pos = origin_y_screen - display_height
-        else:
-            # Origem (0,0) - desenha do canto superior esquerdo
-            x_pos = 0
-            y_pos = 0
+        # Calcula posição para centralizar o mapa no widget
+        widget_width = self.width()
+        widget_height = self.height()
         
-        print(f"DEBUG PGM: Desenhando em posição: ({x_pos:.1f}, {y_pos:.1f})")
+        # Centraliza o mapa no widget
+        x_pos = (widget_width - display_width) // 2
+        y_pos = (widget_height - display_height) // 2
+        
+        print(f"   Widget: {widget_width}x{widget_height} pixels")
+        print(f"   Posição do mapa: ({x_pos}, {y_pos})")
+        
+        # Verifica alguns pixels da imagem original para debug
+        sample_x = min(10, scaled_image.width() - 1)
+        sample_y = min(10, scaled_image.height() - 1)
+        sample_pixel_orig = QColor(scaled_image.pixel(sample_x, sample_y))
+        print(f"   Pixel original ({sample_x}, {sample_y}): RGB({sample_pixel_orig.red()}, {sample_pixel_orig.green()}, {sample_pixel_orig.blue()})")
+        
+        # Verifica pixel no centro e nos cantos para entender a distribuição de cores
+        center_x = scaled_image.width() // 2
+        center_y = scaled_image.height() // 2
+        center_pixel = QColor(scaled_image.pixel(center_x, center_y))
+        print(f"   Pixel centro ({center_x}, {center_y}): RGB({center_pixel.red()}, {center_pixel.green()}, {center_pixel.blue()})")
+        
+        # PGM tem Y crescendo para baixo, mas precisamos inverter verticalmente
+        # Cria uma cópia invertida da imagem usando mirror vertical
+        flipped_image = scaled_image.mirrored(horizontal=False, vertical=True)
+        
+        # Verifica se a imagem tem tamanho válido
+        if flipped_image.width() <= 0 or flipped_image.height() <= 0:
+            print(f"⚠️  DEBUG PGM: Imagem invertida tem tamanho inválido: {flipped_image.width()}x{flipped_image.height()}")
+            flipped_image = scaled_image  # Usa imagem original como fallback
         
         # Desenha a imagem
         painter.save()
+        # Preenche fundo branco ANTES de desenhar o mapa (para garantir que áreas vazias sejam brancas)
+        painter.fillRect(0, 0, widget_width, widget_height, QColor(255, 255, 255))
         
-        if self.pgm_flip_vertical:
-            # Inverte verticalmente para corresponder ao nosso sistema de coordenadas
-            # O widget tem origem no topo, mas queremos origem embaixo
-            painter.translate(x_pos, y_pos + display_height)
-            painter.scale(1, -1)
-            painter.drawImage(0, 0, scaled_image)
-        else:
-            # Desenha sem inverter
-            painter.drawImage(int(x_pos), int(y_pos), scaled_image)
+        # Verifica se a imagem tem conteúdo válido antes de desenhar
+        if flipped_image.isNull():
+            print("⚠️  DEBUG PGM: Imagem invertida é NULL, não desenhando")
+            painter.restore()
+            return
+        
+        # Desenha a imagem invertida verticalmente (PGM tem Y crescendo para baixo)
+        # Usa a imagem invertida para corrigir a orientação
+        # IMPORTANTE: Desenha a imagem diretamente, sem composição
+        painter.setCompositionMode(QPainter.CompositionMode.SourceOver)
+        painter.drawImage(int(x_pos), int(y_pos), flipped_image)
+        
+        # Verifica se a imagem foi desenhada corretamente
+        print(f"✅ DEBUG PGM: Mapa desenhado em ({x_pos}, {y_pos}) com tamanho {display_width}x{display_height}")
+        print(f"   Imagem final: {flipped_image.width()}x{flipped_image.height()} pixels")
+        print(f"   Imagem não é NULL: {not flipped_image.isNull()}")
+        print(f"   Formato da imagem: {flipped_image.format()}")
         
         painter.restore()
         
-        print(f"DEBUG PGM: Mapa desenhado") 
+        # Armazena a posição do mapa para uso em conversões
+        self._pgm_map_x_pos = x_pos
+        self._pgm_map_y_pos = y_pos
+        self._pgm_display_width = display_width
+        self._pgm_display_height = display_height 

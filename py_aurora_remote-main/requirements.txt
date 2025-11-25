@@ -1,0 +1,12 @@
+# SLAMTEC Aurora SDK Python Bindings - Core Requirements
+# Minimal dependencies required for the SDK to function
+# Install with: pip install -r requirements.txt
+
+# Core numerical operations
+numpy>=1.19.0
+
+# Note: For running demos and examples, install:
+#   pip install -r requirements-demo.txt
+#
+# For development and package building, install:
+#   pip install -r requirements-dev.txt

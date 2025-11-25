@@ -4,8 +4,8 @@ Esta pasta contém toda a estrutura para gerenciamento, otimização e processam
 
 ## 📁 Estrutura de Pastas
 
-### `originais_aurora/`
-Mapas brutos gerados pelo sensor Aurora. Estes são os dados originais sem processamento.
+### `legacy/originais_aurora/`
+Repositório frio com varreduras brutas geradas pelo sensor Aurora. Estes dados não são usados diretamente pelo robô e servem apenas como referência para reconstruções futuras.
 
 **Formato esperado:**
 - Arquivos de varredura LIDAR
@@ -18,8 +18,8 @@ mapa_aurora_YYYYMMDD_HHMMSS.extensão
 Exemplo: mapa_aurora_20251119_143000.dat
 ```
 
-### `otimizados/`
-Mapas processados e otimizados para navegação, incluindo:
+### `c1/otimizados/`
+Mapas já convertidos para o ecossistema Slamtec C1 e prontos para testes internos, incluindo:
 - Redução de ruído
 - Interpolação de pontos
 - Calibração de escala
@@ -35,7 +35,7 @@ mapa_opt_[nome_ambiente]_v[versao].json
 Exemplo: mapa_opt_salao_principal_v1.json
 ```
 
-### `pois/`
+### `c1/pois/`
 Pontos de Interesse (POIs) - Localizações importantes para navegação:
 - Mesas
 - Pontos de entrega
@@ -61,7 +61,7 @@ Pontos de Interesse (POIs) - Localizações importantes para navegação:
 }
 ```
 
-### `areas_proibidas/`
+### `c1/areas_proibidas/`
 Definições de zonas onde o robô não deve navegar:
 - Áreas de risco
 - Zonas reservadas
@@ -89,16 +89,19 @@ Definições de zonas onde o robô não deve navegar:
 }
 ```
 
-### `templates/`
-Arquivos modelo para facilitar a criação de novos mapas e configurações.
+### `deploy_ready/`
+Pacotes finais aprovados para envio ao robô. Cada diretório deve conter o trio:
+- `mapa_c1.stcm`
+- `pois.json`
+- `layout.png`
 
 ## 🔄 Fluxo de Trabalho
 
 ```
-1. Sensor Aurora → originais_aurora/
-2. Processamento → otimizados/
-3. Configuração POIs → pois/
-4. Definição áreas → areas_proibidas/
+1. Sensor Aurora → `legacy/originais_aurora/`
+2. Pipeline Aurora Mapping Studio → `c1/otimizados/`
+3. Editor de POIs/Áreas → `c1/pois/` e `c1/areas_proibidas/`
+4. Validação C1 → `deploy_ready/`
 5. Integração → Sistema de Navegação
 ```
 
