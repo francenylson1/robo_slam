@@ -88,70 +88,75 @@ class MapWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # NOVO: Desenha mapa PGM como fundo (se carregado)
-        if self.map_image:
-            self._draw_pgm_map(painter)
-        
-        # Desenha o grid (opcional, pode desabilitar quando houver PGM)
-        if self.show_grid:
-            self._draw_grid(painter)
-        
-        # Desenha as áreas proibidas
-        self._draw_forbidden_areas(painter)
-        
-        # Desenha a área proibida que está sendo criada
-        self._draw_current_forbidden_area(painter)
-        
-        # Desenha os pontos de interesse
-        for name, point_data in self.points_of_interest.items():
-            x, y, point_type = point_data
+        try:
+            # NOVO: Desenha mapa PGM como fundo (se carregado)
+            if self.map_image:
+                self._draw_pgm_map(painter)
             
-            # Usa conversão que considera a origem do mapa PGM
-            if self.map_image is not None:
-                screen_x, screen_y = self._world_to_screen_with_origin(x, y)
-            else:
-                screen_x = int(x * self.scale)
-                screen_y = int(y * self.scale)
+            # Desenha o grid (opcional, pode desabilitar quando houver PGM)
+            if self.show_grid:
+                self._draw_grid(painter)
             
-            print(f"DEBUG: Desenhando POI '{name}' em ({x:.2f}, {y:.2f})m -> ({screen_x}, {screen_y})px")
+            # Desenha as áreas proibidas
+            self._draw_forbidden_areas(painter)
             
-            # Verifica se o ponto está dentro da área visível do widget
-            if screen_x < -50 or screen_x > self.width() + 50 or screen_y < -50 or screen_y > self.height() + 50:
-                print(f"⚠️  POI '{name}' está fora da área visível (fora do mapa?)")
-                continue
+            # Desenha a área proibida que está sendo criada
+            self._draw_current_forbidden_area(painter)
             
-            # Desenha o ponto (círculo vermelho maior)
-            painter.setPen(QPen(QColor(0, 0, 0), 2))
-            painter.setBrush(QBrush(QColor(255, 0, 0)))
-            painter.drawEllipse(screen_x - 8, screen_y - 8, 16, 16)
+            # Desenha os pontos de interesse
+            for name, point_data in self.points_of_interest.items():
+                x, y, point_type = point_data
+                
+                # Usa conversão que considera a origem do mapa PGM
+                if self.map_image is not None:
+                    screen_x, screen_y = self._world_to_screen_with_origin(x, y)
+                else:
+                    screen_x = int(x * self.scale)
+                    screen_y = int(y * self.scale)
+                
+                print(f"DEBUG: Desenhando POI '{name}' em ({x:.2f}, {y:.2f})m -> ({screen_x}, {screen_y})px")
+                
+                # Verifica se o ponto está dentro da área visível do widget
+                if screen_x < -50 or screen_x > self.width() + 50 or screen_y < -50 or screen_y > self.height() + 50:
+                    print(f"⚠️  POI '{name}' está fora da área visível (fora do mapa?)")
+                    continue
+                
+                # Desenha o ponto (círculo vermelho maior)
+                painter.setPen(QPen(QColor(0, 0, 0), 2))
+                painter.setBrush(QBrush(QColor(255, 0, 0)))
+                painter.drawEllipse(screen_x - 8, screen_y - 8, 16, 16)
+                
+                # Desenha o nome e tipo com fundo para melhor legibilidade
+                painter.setPen(QPen(QColor(255, 255, 255), 1))
+                painter.setBrush(QBrush(QColor(0, 0, 0, 180)))  # Fundo semi-transparente preto
+                painter.setFont(QFont('Arial', 9, QFont.Weight.Bold))
+                
+                # Calcula tamanho do texto para criar fundo
+                text = f"{name} ({point_type})"
+                font_metrics = painter.fontMetrics()
+                text_width = font_metrics.width(text)
+                text_height = font_metrics.height()
+                
+                # Desenha fundo do texto
+                painter.drawRect(screen_x + 12, screen_y - text_height // 2, text_width + 4, text_height + 2)
+                
+                # Desenha o texto
+                painter.setPen(QPen(QColor(255, 255, 255)))
+                painter.drawText(screen_x + 14, screen_y + text_height // 2, text)
             
-            # Desenha o nome e tipo com fundo para melhor legibilidade
-            painter.setPen(QPen(QColor(255, 255, 255), 1))
-            painter.setBrush(QBrush(QColor(0, 0, 0, 180)))  # Fundo semi-transparente preto
-            painter.setFont(QFont('Arial', 9, QFont.Weight.Bold))
+            # --- NOVO: Desenha o caminho da navegação ---
+            self._draw_path(painter)
             
-            # Calcula tamanho do texto para criar fundo
-            text = f"{name} ({point_type})"
-            font_metrics = painter.fontMetrics()
-            text_width = font_metrics.width(text)
-            text_height = font_metrics.height()
+            # --- NOVO: Desenha marcador da base (se habilitado) ---
+            if self.show_base_marker:
+                self._draw_base_marker(painter)
+                
+            # Desenha o robô
+            self._draw_robot(painter)
             
-            # Desenha fundo do texto
-            painter.drawRect(screen_x + 12, screen_y - text_height // 2, text_width + 4, text_height + 2)
-            
-            # Desenha o texto
-            painter.setPen(QPen(QColor(255, 255, 255)))
-            painter.drawText(screen_x + 14, screen_y + text_height // 2, text)
-            
-        # --- NOVO: Desenha o caminho da navegação ---
-        self._draw_path(painter)
-        
-        # --- NOVO: Desenha marcador da base (se habilitado) ---
-        if self.show_base_marker:
-            self._draw_base_marker(painter)
-            
-        # Desenha o robô
-        self._draw_robot(painter)
+        finally:
+            # Garante que o painter seja fechado corretamente
+            painter.end()
         
     def _draw_grid(self, painter: QPainter):
         """Desenha a grade do mapa."""
@@ -901,8 +906,8 @@ class MapWidget(QWidget):
         
         # Desenha a imagem invertida verticalmente (PGM tem Y crescendo para baixo)
         # Usa a imagem invertida para corrigir a orientação
-        # IMPORTANTE: Desenha a imagem diretamente, sem composição
-        painter.setCompositionMode(QPainter.CompositionMode.SourceOver)
+        # IMPORTANTE: Em PyQt5, CompositionMode usa underscore, não ponto
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
         painter.drawImage(int(x_pos), int(y_pos), flipped_image)
         
         # Verifica se a imagem foi desenhada corretamente
