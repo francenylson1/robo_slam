@@ -6,7 +6,8 @@ from .config import FORBIDDEN_AREA_INFLATION_RADIUS, ROBOT_WIDTH
 from shapely.geometry import Polygon, Point
 
 class PathFinder:
-    def __init__(self, width: int = 100, height: int = 100, grid_size: float = 0.1):
+    def __init__(self, width: int = 100, height: int = 100, grid_size: float = 0.1, 
+                 map_origin: Tuple[float, float] = (0.0, 0.0)):
         """
         Inicializa o PathFinder
         
@@ -14,13 +15,34 @@ class PathFinder:
             width: Largura do mapa em células
             height: Altura do mapa em células
             grid_size: Tamanho de cada célula em metros
+            map_origin: Origem do mapa em coordenadas do mundo (x, y) em metros
         """
         self.width = width
         self.height = height
         self.grid_size = grid_size
+        self.map_origin = map_origin  # Origem do mapa PGM
         self.forbidden_areas = []
         self.obstacle_grid = set()  # Cache para células com obstáculos
-        print(f"DEBUG: PathFinder inicializado - Dimensões: {width}x{height}, Grid: {grid_size}m")
+        print(f"DEBUG: PathFinder inicializado - Dimensões: {width}x{height}, Grid: {grid_size}m, Origem: {map_origin}")
+    
+    def update_map_config(self, width: int, height: int, grid_size: float, map_origin: Tuple[float, float]):
+        """
+        Atualiza a configuração do mapa (útil quando um mapa PGM é carregado).
+        
+        Args:
+            width: Nova largura do mapa em células
+            height: Nova altura do mapa em células
+            grid_size: Novo tamanho de cada célula em metros
+            map_origin: Nova origem do mapa em coordenadas do mundo (x, y) em metros
+        """
+        self.width = width
+        self.height = height
+        self.grid_size = grid_size
+        self.map_origin = map_origin
+        # Atualiza o cache de obstáculos com as novas dimensões
+        if self.forbidden_areas:
+            self._update_obstacle_grid()
+        print(f"DEBUG: PathFinder atualizado - Dimensões: {width}x{height}, Grid: {grid_size}m, Origem: {map_origin}")
         
     def set_forbidden_areas(self, areas: List[List[Tuple[float, float]]]):
         """Define as áreas proibidas e atualiza o cache de obstáculos"""
@@ -47,9 +69,9 @@ class PathFinder:
         # Itera por TODAS as células do mapa.
         for grid_x in range(self.width):
             for grid_y in range(self.height):
-                # Converte o centro da célula de grade para coordenadas do mundo.
-                world_x = (grid_x + 0.5) * self.grid_size
-                world_y = (grid_y + 0.5) * self.grid_size
+                # Converte o centro da célula de grade para coordenadas do mundo considerando a origem.
+                world_x = (grid_x + 0.5) * self.grid_size + self.map_origin[0]
+                world_y = (grid_y + 0.5) * self.grid_size + self.map_origin[1]
                 cell_point = Point(world_x, world_y)
                 
                 # Verifica se o ponto da célula está dentro de algum polígono inflado.
@@ -78,11 +100,20 @@ class PathFinder:
     def find_path(self, start: Tuple[float, float], goal: Tuple[float, float]) -> List[Tuple[float, float]]:
         """Encontra um caminho do ponto inicial ao objetivo evitando áreas proibidas usando A* otimizado"""
         print(f"DEBUG: Calculando caminho de {start} para {goal}")
+        print(f"DEBUG: Origem do mapa: {self.map_origin}")
         
-        # Converte coordenadas do mundo para coordenadas da grade
-        start_grid = (int(start[0] / self.grid_size), int(start[1] / self.grid_size))
-        goal_grid = (int(goal[0] / self.grid_size), int(goal[1] / self.grid_size))
+        # Converte coordenadas do mundo para coordenadas da grade considerando a origem do mapa
+        # Subtrai a origem para converter para coordenadas relativas ao mapa
+        start_relative_x = start[0] - self.map_origin[0]
+        start_relative_y = start[1] - self.map_origin[1]
+        goal_relative_x = goal[0] - self.map_origin[0]
+        goal_relative_y = goal[1] - self.map_origin[1]
         
+        # Converte para células da grade
+        start_grid = (int(start_relative_x / self.grid_size), int(start_relative_y / self.grid_size))
+        goal_grid = (int(goal_relative_x / self.grid_size), int(goal_relative_y / self.grid_size))
+        
+        print(f"DEBUG: Coordenadas relativas - Início: ({start_relative_x:.2f}, {start_relative_y:.2f})m, Fim: ({goal_relative_x:.2f}, {goal_relative_y:.2f})m")
         print(f"DEBUG: Coordenadas da grade - Início: {start_grid}, Fim: {goal_grid}")
         
         # Verifica se o objetivo está dentro dos limites do mapa
@@ -106,9 +137,13 @@ class PathFinder:
         path = self._astar_optimized(start_grid, goal_grid)
         
         if path:
-            # Converte de volta para coordenadas do mundo
-            world_path = [(x * self.grid_size, y * self.grid_size) for x, y in path]
+            # Converte de volta para coordenadas do mundo considerando a origem do mapa
+            world_path = [
+                (x * self.grid_size + self.map_origin[0], y * self.grid_size + self.map_origin[1]) 
+                for x, y in path
+            ]
             print(f"DEBUG: Caminho encontrado com {len(world_path)} pontos")
+            print(f"DEBUG: Primeiro ponto: {world_path[0]}, Último ponto: {world_path[-1]}")
             return world_path
         else:
             print("DEBUG: Nenhum caminho encontrado, retornando caminho direto")
@@ -292,10 +327,10 @@ class PathFinder:
     
     def _calculate_angle_between_points(self, p1: Tuple[int, int], p2: Tuple[int, int], p3: Tuple[int, int]) -> float:
         """Calcula o ângulo entre três pontos (p2 é o vértice)"""
-        # Converte para coordenadas do mundo
-        p1_world = (p1[0] * self.grid_size, p1[1] * self.grid_size)
-        p2_world = (p2[0] * self.grid_size, p2[1] * self.grid_size)
-        p3_world = (p3[0] * self.grid_size, p3[1] * self.grid_size)
+        # Converte para coordenadas do mundo considerando a origem do mapa
+        p1_world = (p1[0] * self.grid_size + self.map_origin[0], p1[1] * self.grid_size + self.map_origin[1])
+        p2_world = (p2[0] * self.grid_size + self.map_origin[0], p2[1] * self.grid_size + self.map_origin[1])
+        p3_world = (p3[0] * self.grid_size + self.map_origin[0], p3[1] * self.grid_size + self.map_origin[1])
         
         # Vetores dos dois lados
         v1 = (p1_world[0] - p2_world[0], p1_world[1] - p2_world[1])
@@ -319,10 +354,10 @@ class PathFinder:
     
     def _generate_intermediate_points(self, p1: Tuple[int, int], p2: Tuple[int, int], p3: Tuple[int, int], angle: float) -> List[Tuple[int, int]]:
         """Gera waypoints intermediários para suavizar curvas agudas"""
-        # Converte para coordenadas do mundo
-        p1_world = (p1[0] * self.grid_size, p1[1] * self.grid_size)
-        p2_world = (p2[0] * self.grid_size, p2[1] * self.grid_size)
-        p3_world = (p3[0] * self.grid_size, p3[1] * self.grid_size)
+        # Converte para coordenadas do mundo considerando a origem do mapa
+        p1_world = (p1[0] * self.grid_size + self.map_origin[0], p1[1] * self.grid_size + self.map_origin[1])
+        p2_world = (p2[0] * self.grid_size + self.map_origin[0], p2[1] * self.grid_size + self.map_origin[1])
+        p3_world = (p3[0] * self.grid_size + self.map_origin[0], p3[1] * self.grid_size + self.map_origin[1])
         
         # 🎯 SOLUÇÃO D: Dobrar NOVAMENTE pontos para navegação física mais precisa
         # QUANTO MAIS FECHADA A CURVA, MUITO MAIS PONTOS INTERMEDIÁRIOS
@@ -355,9 +390,9 @@ class PathFinder:
                 x = p2_world[0] + t_smooth * (p3_world[0] - p2_world[0])
                 y = p2_world[1] + t_smooth * (p3_world[1] - p2_world[1])
             
-            # Converte de volta para grid
-            grid_x = int(x / self.grid_size)
-            grid_y = int(y / self.grid_size)
+            # Converte de volta para grid considerando a origem do mapa
+            grid_x = int((x - self.map_origin[0]) / self.grid_size)
+            grid_y = int((y - self.map_origin[1]) / self.grid_size)
             
             # Verifica se o ponto está dentro dos limites e não é obstáculo
             if (0 <= grid_x < self.width and 0 <= grid_y < self.height and 
@@ -369,9 +404,9 @@ class PathFinder:
     
     def _can_skip_points(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
         """🎯 SOLUÇÃO B: Verifica se pode pular pontos intermediários (linha reta livre)"""
-        # Converte para coordenadas do mundo
-        start_world = (start[0] * self.grid_size, start[1] * self.grid_size)
-        end_world = (end[0] * self.grid_size, end[1] * self.grid_size)
+        # Converte para coordenadas do mundo considerando a origem do mapa
+        start_world = (start[0] * self.grid_size + self.map_origin[0], start[1] * self.grid_size + self.map_origin[1])
+        end_world = (end[0] * self.grid_size + self.map_origin[0], end[1] * self.grid_size + self.map_origin[1])
         
         # Verifica se a linha reta entre os pontos não passa por áreas proibidas
         # Usa amostragem para verificar pontos intermediários
@@ -382,8 +417,8 @@ class PathFinder:
             sample_x = start_world[0] + t * (end_world[0] - start_world[0])
             sample_y = start_world[1] + t * (end_world[1] - start_world[1])
             
-            # Converte de volta para grid
-            sample_grid = (int(sample_x / self.grid_size), int(sample_y / self.grid_size))
+            # Converte de volta para grid considerando a origem do mapa
+            sample_grid = (int((sample_x - self.map_origin[0]) / self.grid_size), int((sample_y - self.map_origin[1]) / self.grid_size))
             
             # Verifica se está em área proibida
             if self._is_in_forbidden_area(sample_grid[0], sample_grid[1]):
@@ -440,9 +475,9 @@ class PathFinder:
         
     def _line_intersects_obstacles(self, start: Tuple[float, float], end: Tuple[float, float]) -> bool:
         """Verifica se uma linha intersecta alguma área proibida"""
-        # Converte para coordenadas da grade
-        start_grid = (int(start[0] / self.grid_size), int(start[1] / self.grid_size))
-        end_grid = (int(end[0] / self.grid_size), int(end[1] / self.grid_size))
+        # Converte para coordenadas da grade considerando a origem do mapa
+        start_grid = (int((start[0] - self.map_origin[0]) / self.grid_size), int((start[1] - self.map_origin[1]) / self.grid_size))
+        end_grid = (int((end[0] - self.map_origin[0]) / self.grid_size), int((end[1] - self.map_origin[1]) / self.grid_size))
         
         # Usa o algoritmo de Bresenham para verificar todos os pontos da linha
         points = self._bresenham_line(start_grid, end_grid)

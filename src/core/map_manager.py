@@ -189,6 +189,47 @@ class MapManager:
 
         return points_of_interest, forbidden_areas, map_name, map_id
 
+    def get_map_data_by_name(self, map_name: str) -> tuple[dict, list, Optional[int]]:
+        """
+        Tenta carregar dados de um mapa pelo nome sem ativá-lo.
+        Retorna (points_of_interest, forbidden_areas, map_id) ou ({}, [], None) se não encontrar.
+        """
+        if not self.conn or not self.cursor:
+            print("Erro: Conexão com o banco de dados não estabelecida.")
+            return {}, [], None
+
+        points_of_interest = {}
+        forbidden_areas = []
+        map_id = None
+        
+        try:
+            # Busca o mapa pelo nome
+            self.cursor.execute("SELECT id FROM mapas WHERE nome = ?", (map_name,))
+            result = self.cursor.fetchone()
+            
+            if result:
+                map_id = result[0]
+                print(f"📂 Mapa '{map_name}' encontrado no banco (ID: {map_id})")
+                
+                # Carrega pontos de interesse
+                self.cursor.execute("SELECT nome, x, y, tipo FROM pontos_interesse WHERE mapa_id = ?", (map_id,))
+                for row in self.cursor.fetchall():
+                    name, x, y, point_type = row
+                    points_of_interest[name] = (x, y, point_type)
+                
+                # Carrega áreas proibidas com IDs
+                areas_with_ids = self.get_forbidden_areas_with_ids(map_id)
+                forbidden_areas = areas_with_ids
+                
+                print(f"   ✅ Carregados: {len(points_of_interest)} POIs, {len(forbidden_areas)} áreas proibidas")
+            else:
+                print(f"ℹ️  Mapa '{map_name}' não encontrado no banco (será criado ao salvar)")
+                
+        except sqlite3.Error as e:
+            print(f"Erro ao buscar dados do mapa: {e}")
+        
+        return points_of_interest, forbidden_areas, map_id
+
     def get_all_map_names(self) -> list[str]:
         """
         Retorna uma lista com os nomes de todos os mapas salvos.

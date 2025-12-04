@@ -45,10 +45,12 @@ class RobotNavigator(QObject):
         self.speed_multiplier = 1.0  # Fator de velocidade inicial (100%)
         
         # Inicializa o PathFinder com as dimensões do mapa do config e grid size consistente
+        # 🎯 ADAPTAÇÃO PARA MAPAS PGM: Inicializa com origem padrão (0,0), será atualizado quando PGM for carregado
         self.path_finder = PathFinder(
             width=int(MAP_WIDTH / MAP_GRID_SIZE),
             height=int(MAP_HEIGHT / MAP_GRID_SIZE),
-            grid_size=MAP_GRID_SIZE
+            grid_size=MAP_GRID_SIZE,
+            map_origin=(0.0, 0.0)  # Será atualizado quando mapa PGM for carregado
         )
         
         self.forbidden_areas = []
@@ -81,22 +83,8 @@ class RobotNavigator(QObject):
         self.final_approach_start_time = None
         self.final_approach_timeout = 25.0  # Aumentado de 15s para 25s para dar mais tempo ao PID
         
-        # === SISTEMAS AVANÇADOS DE CORREÇÃO ===
-        # Histórico de erro para correção adaptativa
-        self.navigation_error_history = []
-        self.total_distance_traveled = 0.0
-        
-        # Sistema de calibração dinâmica de wheelbase
-        self.wheelbase_calibration_data = {
-            'error_samples': [],
-            'distance_samples': [],
-            'dynamic_wheelbase': ROBOT_WHEEL_BASE_M
-        }
-        
-        # Histórico de deriva lateral para correção adaptativa
-        self.lateral_drift_history = []
-        
-        print(f"🎯 SISTEMAS AVANÇADOS: Inicializados históricos de erro e calibração")
+        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Flag para alternar entre navegação complexa e simples
+        self.use_direct_navigation = True  # True = navegação direta simples, False = pathfinding
         
         print(f"DEBUG: Posição inicial definida: {self.current_position}")
         print(f"DEBUG: Ângulo inicial definido: {self.current_angle}°")
@@ -106,56 +94,69 @@ class RobotNavigator(QObject):
         
         print(f"DEBUG: Área proibida configurada no navegador")
         
-    def reset_to_initial_state(self):
-        """Reseta o robô para o estado inicial"""
+    def reset_to_initial_state(self, preserve_position: bool = False):
+        """
+        Reseta o robô para o estado inicial.
+        
+        Args:
+            preserve_position: Se True, preserva a posição atual do robô (útil quando usando mapas PGM)
+        """
         print("🔄 ===== RESETANDO ROBÔ PARA ESTADO INICIAL =====")
-        print(f"🔄 Posição alvo: {ROBOT_INITIAL_POSITION}, ângulo alvo: {ROBOT_INITIAL_ANGLE}°")
+        print(f"🔄 Posição atual antes do reset: {self.current_position}")
+        print(f"🔄 Preservar posição: {preserve_position}")
         print(f"🔄 Estado anterior - navigation_active: {self.navigation_active}")
         print(f"🔄 Estado anterior - is_returning_to_base: {self.is_returning_to_base}")
         print(f"🔄 Estado anterior - navigation_state: {self.navigation_state}")
         
         # Preserva as áreas proibidas durante o reset
+        preserved_forbidden_areas = self.forbidden_areas.copy()
         
-        # 🎯 CORREÇÃO CRÍTICA: Reset completo de todas as variáveis de estado
-        self.current_position = ROBOT_INITIAL_POSITION
-        self.current_angle = ROBOT_INITIAL_ANGLE
-        self.current_target = None
+        # 🎯 ADAPTAÇÃO PARA MAPAS PGM: Preserva posição se solicitado
+        if not preserve_position:
+            # ETAPA 2: Correção do "Pulo" - NÃO reseta a posição/ângulo.
+            # A nova navegação deve começar da posição final real da navegação anterior.
+            # self.current_position = ROBOT_INITIAL_POSITION
+            # self.current_angle = ROBOT_INITIAL_ANGLE
+            pass
+        else:
+            print(f"🔄 Posição preservada: {self.current_position}")
+        
+        # Reseta variáveis de navegação
         self.navigation_active = False
-        self.is_returning_to_base = False
-        self.is_adjusting_final_angle = False
-        self.navigation_state = "IDLE"
-        self.speed_multiplier = 1.0
-        
-        # 🎯 NOVA CORREÇÃO: Reset de variáveis de loop e timeout
-        if hasattr(self, 'return_start_time'):
-            delattr(self, 'return_start_time')
-        if hasattr(self, 'last_positions'):
-            delattr(self, 'last_positions')
-        if hasattr(self, 'last_angles'):
-            delattr(self, 'last_angles')
-        
-        # Reset de variáveis de navegação
+        self.current_target = None
         self.path = []
         self.path_index = 0
-        self.current_path = []
-        self.current_path_index = 0
-        
-        # Reset de variáveis de precisão
-        self.precise_rotation_active = False
-        self.final_approach_start_time = None
-        self.arrival_time = None
+        self.is_adjusting_final_angle = False
+        self.is_returning_to_base = False  # RESETA ESTE VALOR
+        self.navigation_state = "IDLE"
+        self.progress = 0.0
+        self.start_time = None
+        self.estimated_time_remaining = 0.0
         self.is_paused_at_destination = False
         
-        # Reset de variáveis de controle
-        self.emergency_stop_active = False
-        self.last_position_update = time.time()
-        self.navigation_start_time = None
-        self.estimated_completion_time = None
+        # Reset de variáveis específicas
+        if hasattr(self, 'original_destination'):
+            delattr(self, 'original_destination')
+        self.final_approach_start_time = None
         
-        print("✅ RESET COMPLETO: Todas as variáveis de estado foram limpas")
-        print(f"✅ Posição resetada: {self.current_position}")
-        print(f"✅ Ângulo resetado: {self.current_angle}°")
-        print(f"✅ Estado resetado: {self.navigation_state}")
+        # 🎯 CORREÇÃO: Reseta contador de estabilidade ao resetar estado
+        if hasattr(self, '_orient_stability_counter'):
+            self._orient_stability_counter = 0
+        
+        # Restaura as áreas proibidas
+        self.forbidden_areas = preserved_forbidden_areas
+        self.path_finder.set_forbidden_areas(preserved_forbidden_areas)
+        
+        # Para os motores
+        self.motors.stop()
+        
+        print("✅ ===== RESET CONCLUÍDO =====")
+        print(f"✅ Posição resetada: {self.current_position}, Ângulo: {self.current_angle}°")
+        print(f"✅ navigation_active: {self.navigation_active}")
+        print(f"✅ is_returning_to_base: {self.is_returning_to_base}")
+        print(f"✅ navigation_state: {self.navigation_state}")
+        print(f"✅ Áreas proibidas preservadas: {len(self.forbidden_areas)}")
+        print("=" * 60)
         
     def set_speed_multiplier(self, multiplier: float):
         """
@@ -213,9 +214,6 @@ class RobotNavigator(QObject):
             return
 
         elif self.navigation_state == "ORIENTING_TO_TARGET":
-            # 🎯 CORREÇÃO: Tratamento diferenciado para orientação durante retorno
-            if self.is_returning_to_base:
-                print(f"DEBUG: ORIENTAÇÃO RETORNO: Posição {self.current_position}, Ângulo {self.current_angle:.1f}°")
             self._orient_towards_target()
 
         elif self.navigation_state == "NAVIGATING_TO_DESTINATION":
@@ -229,8 +227,6 @@ class RobotNavigator(QObject):
             self._handle_pause_at_destination()
 
         elif self.navigation_state == "RETURNING_TO_BASE":
-            # 🎯 CORREÇÃO: Logs específicos para debug do retorno
-            print(f"DEBUG: ESTADO RETURNING_TO_BASE: Posição {self.current_position}, Ângulo {self.current_angle:.1f}°")
             self._handle_return_to_base()
 
         elif self.navigation_state == "FINAL_APPROACH_BASE":
@@ -255,67 +251,68 @@ class RobotNavigator(QObject):
         self.current_target = None
         self.path = []
         self.path_index = 0
+        # 🎯 CORREÇÃO: Reseta contador de estabilidade ao finalizar navegação
+        if hasattr(self, '_orient_stability_counter'):
+            self._orient_stability_counter = 0
         print("DEBUG: === NAVEGAÇÃO FINALIZADA ===")
         
-    def _return_to_base_direct(self):
-        """🎯 SOLUÇÃO GENIAL: Retorno direto à base usando coordenadas conhecidas com sincronia melhorada"""
-        print("DEBUG: === RETORNO DIRETO À BASE ===")
-        print(f"DEBUG: Posição atual: {self.current_position}")
-        print(f"DEBUG: Base conhecida: {ROBOT_INITIAL_POSITION}")
-        print(f"DEBUG: Ângulo final desejado: {ROBOT_INITIAL_ANGLE}°")
+    def _calculate_and_execute_return_angle(self):
+        """Calcula o ângulo necessário para retornar à base e inicia o giro"""
+        print("DEBUG: === CALCULANDO ÂNGULO DE RETORNO ===")
         
-        # 🎯 CORREÇÃO CRÍTICA: Reset completo do estado para evitar loops
-        print("🔄 RESET_COMPLETO: Limpando estado anterior para evitar loops")
-        self.motors.stop()  # Para qualquer movimento em andamento
-        time.sleep(0.5)     # Pausa para estabilizar
+        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Se habilitada, usa navegação direta para retorno
+        if self.use_direct_navigation:
+            # Navegação direta: vai direto à base sem pathfinding
+            print("🎯 RETORNO DIRETA: Configurando navegação direta à base")
+            self.path = [self.current_position, self.base_position]
+            self.path_index = 0
+            self.current_target = self.base_position
+            self.is_returning_to_base = True
+            
+            # Calcula direção direta para a base
+            dx = self.base_position[0] - self.current_position[0]
+            dy = self.base_position[1] - self.current_position[1]
+            distance = math.sqrt(dx*dx + dy*dy)
+            target_angle = math.degrees(math.atan2(dy, dx))
+            
+            # Normaliza target_angle para [0, 360)
+            if target_angle < 0:
+                target_angle += 360
+            
+            # Normaliza ângulo atual para [0, 360)
+            current_angle_normalized = self.current_angle
+            if current_angle_normalized < 0:
+                current_angle_normalized += 360
+            
+            # Calcula erro angular
+            angle_error = (target_angle - current_angle_normalized + 180) % 360 - 180
+            
+            print(f"🎯 RETORNO DIRETA: Base em {self.base_position}, Distância: {distance:.2f}m")
+            print(f"🎯 RETORNO DIRETA: target_angle={target_angle:.1f}°, current={current_angle_normalized:.1f}°, erro={angle_error:.1f}°")
+            
+            # Se já está bem alinhado (tolerância de 10°), vai direto
+            if abs(angle_error) < 10.0:
+                print(f"🎯 RETORNO DIRETA: Já alinhado, iniciando movimento direto")
+                self.navigation_state = "RETURNING_TO_BASE"
+            else:
+                print(f"🔄 RETORNO DIRETA: Giro necessário de {angle_error:.1f}°")
+                self.navigation_state = "ORIENTING_TO_TARGET"
+            return
         
-        # 🎯 RESET TOTAL: Limpa todas as variáveis de estado
-        self.current_target = None
+        # Navegação com pathfinding (código original)
+        path_to_base = self.path_finder.find_path(self.current_position, self.base_position)
+        if not path_to_base or len(path_to_base) < 2:
+            print("ERRO: Não foi possível calcular o caminho de volta para a base.")
+            self._finalize_navigation()
+            return
+            
+        self.path = path_to_base
         self.path_index = 0
-        self.final_approach_start_time = None
-        self.is_adjusting_final_angle = False
-        self.is_paused_at_destination = False
-        
-        # 🎯 FASE 1: Calcular ângulo direto para a base (sem PathFinder!)
-        dx = ROBOT_INITIAL_POSITION[0] - self.current_position[0]
-        dy = ROBOT_INITIAL_POSITION[1] - self.current_position[1]
-        target_angle = math.degrees(math.atan2(dy, dx))
-        
-        # 🎯 NORMALIZA ângulo para -180 a +180
-        while target_angle > 180:
-            target_angle -= 360
-        while target_angle < -180:
-            target_angle += 360
-        
-        print(f"🧭 CÁLCULO_DIRETO: Ângulo para base = {target_angle:.1f}°")
-        
-        # 🎯 FASE 2: Configurar navegação direta (sem waypoints intermediários!)
+        self.current_target = self.path[0]
         self.is_returning_to_base = True
-        self.current_target = ROBOT_INITIAL_POSITION
-        self.path = [self.current_position, ROBOT_INITIAL_POSITION]  # Caminho direto!
-        self.path_index = 0
         
-        # 🎯 CORREÇÃO CRÍTICA: Usar estado correto para retorno!
-        # ANTES: navigation_state = "NAVIGATING_TO_DESTINATION" ← ESTADO INCORRETO!
-        # AGORA: navigation_state = "RETURNING_TO_BASE" ← ESTADO CORRETO!
-        print("🚀 NAVEGAÇÃO_DIRETA: Indo direto à base com estado RETURNING_TO_BASE!")
-        self.navigation_state = "RETURNING_TO_BASE"
-        
-        # 🎯 VERIFICAÇÃO FINAL: Confirma que o estado está correto
-        print(f"✅ ESTADO_CONFIRMADO: {self.navigation_state}")
-        print(f"✅ RETORNANDO: {self.is_returning_to_base}")
-        print(f"✅ ALVO: {self.current_target}")
-        print(f"✅ CAMINHO: {self.path}")
-        print(f"✅ ÂNGULO_ALVO: {target_angle:.1f}°")
-        
-        # 🎯 NOVO: Verifica se precisa de orientação prévia
-        angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
-        if angle_error > 90:  # Se está muito desalinhado
-            print(f"⚠️ ORIENTAÇÃO_PRÉVIA: Robô {angle_error:.1f}° desalinhado, iniciando orientação")
-            self.navigation_state = "ORIENTING_TO_TARGET"
-        else:
-            print(f"✅ ORIENTAÇÃO_OK: Robô {angle_error:.1f}° alinhado, navegação direta")
-            self.navigation_state = "RETURNING_TO_BASE"
+        print("🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → ORIENTING_TO_TARGET (para retorno)")
+        self.navigation_state = "ORIENTING_TO_TARGET"
 
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
@@ -368,31 +365,28 @@ class RobotNavigator(QObject):
         self.path_finder.set_forbidden_areas(areas)
         print(f"DEBUG: {len(areas)} áreas proibidas configuradas no navegador")
 
-    def navigate_to_destination_only(self, destination: Tuple[float, float]) -> None:
-        """Navega apenas até o destino e para lá (sem retorno automático)"""
-        print(f"DEBUG: ===== NAVEGAÇÃO APENAS AO DESTINO =====")
+    def navigate_to_and_return(self, destination: Tuple[float, float]) -> None:
+        """Navega até o destino e retorna à base (compatível com mapas PGM)"""
+        print(f"DEBUG: ===== NAVEGAÇÃO {'DIRETA SIMPLES' if self.use_direct_navigation else 'INTELIGENTE'} =====")
         print(f"DEBUG: Destino: {destination}")
         print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
+        print(f"DEBUG: Base position: {self.base_position}")
         
-        self.reset_to_initial_state()
-        
-        # === RESET DOS SISTEMAS DE CORREÇÃO AVANÇADOS ===
-        # Zera contadores de distância e calibração para nova navegação
-        self.total_distance_traveled = 0.0
-        if hasattr(self, 'wheelbase_calibration_data'):
-            self.wheelbase_calibration_data['error_samples'] = []
-            self.wheelbase_calibration_data['distance_samples'] = []
-        if hasattr(self, 'lateral_drift_history'):
-            self.lateral_drift_history = []
-        
-        print(f"🎯 RESET AVANÇADO: Sistemas de correção reinicializados para nova navegação")
+        # Preserva a posição atual ao fazer reset (importante para mapas PGM)
+        self.reset_to_initial_state(preserve_position=True)
         
         self.navigation_active = True
         self.start_time = time.time()
         self.is_returning_to_base = False
-        self.should_return_to_base = False
+        self.should_return_to_base = True  # Habilita retorno automático
         self.final_approach_start_time = None
         
+        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Se habilitada, usa navegação direta sem pathfinding
+        if self.use_direct_navigation:
+            self._navigate_direct_simple(destination)
+            return
+        
+        # Navegação com pathfinding (código original)
         path_to_destination = self.path_finder.find_path(self.current_position, destination)
         if not path_to_destination or len(path_to_destination) < 2:
             print("DEBUG: ERRO - Não foi possível encontrar caminho para o destino")
@@ -415,68 +409,87 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
         
-        # 🎯 CORREÇÃO FINAL: Tolerância ultra-permissiva para máxima precisão
-        # Se o robô já está bem alinhado (tolerância de 25°), pula a orientação
-        if angle_error < 25.0:
+        # 🎯 CORREÇÃO APRIMORADA: Tolerância ainda mais permissiva para evitar loops
+        # Se o robô já está bem alinhado (tolerância de 20°), pula a orientação
+        if angle_error < 20.0:
             print(f"🎯 PULO INTELIGENTE: Destino já alinhado (erro: {angle_error:.1f}°), iniciando navegação direta")
             self.navigation_state = "NAVIGATING_TO_DESTINATION"
         else:
             print(f"🔄 MUDANÇA DE FASE: IDLE → ORIENTING_TO_TARGET (erro: {angle_error:.1f}°)")
             self.navigation_state = "ORIENTING_TO_TARGET"
-
-    def navigate_to_and_return(self, destination: Tuple[float, float]) -> None:
-        """🎯 NAVEGAÇÃO INTELIGENTE: Usa A* se houver áreas proibidas, senão usa navegação direta"""
-        print(f"DEBUG: ===== NAVEGAÇÃO INTELIGENTE =====")
-        print(f"DEBUG: Destino: {destination}")
-        print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
-        print(f"DEBUG: Áreas proibidas configuradas: {len(self.forbidden_areas)}")
-
-        self.reset_to_initial_state()
-
-        self.navigation_active = True
-        self.start_time = time.time()
-        self.is_returning_to_base = False
-        self.should_return_to_base = False  # 🎯 DESATIVA retorno automático
-        self.final_approach_start_time = None
-
-        # 🎯 SOLUTION E: SEMPRE usar PathFinder para POI (não apenas quando há áreas proibidas)
-        print(f"🎯 SOLUTION E: Forçando uso do PathFinder para POI com curvas suaves...")
-        try:
-            path_to_destination = self.path_finder.find_path(self.current_position, destination)
-            if path_to_destination and len(path_to_destination) >= 2:
-                self.path = path_to_destination
-                self.path_index = 0
-                self.original_destination = destination
-                self.destination_index = len(path_to_destination) - 1
-                self.current_target = self.path[0]
-                print(f"✅ A* SUCESSO: Caminho calculado com {len(self.path)} pontos")
-                print(f"✅ CAMINHO COM CURVAS SUAVES E WAYPOINTS INTERMEDIÁRIOS!")
-                print(f"✅ O ROBÔ VAI SEGUIR TODOS OS WAYPOINTS (NÃO VAI CORTAR CAMINHO)!")
-            else:
-                print(f"⚠️ A* falhou, usando navegação direta (fallback)")
-                self._setup_direct_navigation(destination)
-        except Exception as e:
-            print(f"⚠️ ERRO no PathFinder: {e}. Usando navegação direta (fallback)")
-            self._setup_direct_navigation(destination)
-
-        # 🎯 Cálculo do ângulo para o primeiro target
-        dx = self.current_target[0] - self.current_position[0]
-        dy = self.current_target[1] - self.current_position[1]
-        target_angle = math.degrees(math.atan2(dy, dx))
-        angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
-
-        # 🎯 FORÇA navegação direta SEM orientação prévia
-        print(f"🚀 NAVEGAÇÃO INICIADA: Indo ao destino!")
-        self.navigation_state = "NAVIGATING_TO_DESTINATION"
-
-    def _setup_direct_navigation(self, destination: Tuple[float, float]) -> None:
-        """Configura navegação direta (método auxiliar para manter código limpo)"""
-        self.path = [self.current_position, destination]
-        self.path_index = 0
+    
+    def _navigate_direct_simple(self, destination: Tuple[float, float]) -> None:
+        """
+        🎯 NAVEGAÇÃO DIRETA SIMPLES: Vai direto ao POI sem pathfinding.
+        UNIFICAÇÃO: Usa a mesma lógica que funciona para mapas não PGM.
+        """
+        print(f"🎯 NAVEGAÇÃO DIRETA SIMPLES ATIVADA (UNIFICADA)")
+        print(f"🔍 DEBUG: Destino direto: {destination}")
+        print(f"🔍 DEBUG: Posição atual: {self.current_position}")
+        print(f"🔍 DEBUG: Ângulo atual: {self.current_angle}°")
+        print(f"🔍 DEBUG: Origem do mapa (PathFinder): {self.path_finder.map_origin}")
+        
+        # 🎯 UNIFICAÇÃO: Normaliza o ângulo atual para [0, 360) para cálculos corretos
+        # O ângulo pode estar em [-180, 180] devido à normalização da odometria
+        current_angle_normalized = self.current_angle
+        if current_angle_normalized < 0:
+            current_angle_normalized += 360
+        
+        # Define o destino como alvo único (sem waypoints intermediários)
         self.original_destination = destination
-        self.destination_index = 1
         self.current_target = destination
-        print(f"🎯 NAVEGAÇÃO DIRETA: Caminho simplificado com apenas 2 pontos (atual → destino)")
+        self.path = [self.current_position, destination]  # Caminho mínimo: origem -> destino
+        self.path_index = 0
+        
+        # 🎯 UNIFICAÇÃO: Calcula direção direta para o destino
+        # 🎯 CRÍTICO: Usa coordenadas do mundo diretamente (mesma lógica dos mapas não-PGM)
+        # As coordenadas já estão em metros do mundo, independente do tipo de mapa
+        dx = destination[0] - self.current_position[0]
+        dy = destination[1] - self.current_position[1]
+        distance = math.sqrt(dx*dx + dy*dy)
+        target_angle = math.degrees(math.atan2(dy, dx))
+        
+        # Normaliza target_angle para [0, 360)
+        if target_angle < 0:
+            target_angle += 360
+        
+        # Calcula erro angular considerando ambos os ângulos em [0, 360)
+        angle_error = (target_angle - current_angle_normalized + 180) % 360 - 180
+        
+        print(f"🔍 CÁLCULO DE DIREÇÃO (UNIFICADO - MESMA LÓGICA DOS MAPAS NÃO-PGM):")
+        print(f"   Posição atual: ({self.current_position[0]:.3f}, {self.current_position[1]:.3f})m")
+        print(f"   Destino: ({destination[0]:.3f}, {destination[1]:.3f})m")
+        print(f"   dx = {dx:.3f}m (destino_x - atual_x)")
+        print(f"   dy = {dy:.3f}m (destino_y - atual_y)")
+        print(f"   atan2({dy:.3f}, {dx:.3f}) = {target_angle:.2f}° (normalizado)")
+        print(f"   Distância até destino: {distance:.2f}m")
+        print(f"   Ângulo alvo calculado: {target_angle:.1f}°")
+        print(f"   Ângulo atual do robô: {self.current_angle:.1f}° (raw) -> {current_angle_normalized:.1f}° (normalizado)")
+        print(f"   Erro angular: {angle_error:.1f}°")
+        
+        # 🎯 DIAGNÓSTICO: Verifica se o erro angular está muito grande (sugere problema de coordenadas)
+        if abs(angle_error) > 150:
+            print(f"⚠️ ATENÇÃO: Erro angular muito grande ({angle_error:.1f}°)!")
+            print(f"⚠️ Isso sugere que o sistema de coordenadas pode estar invertido")
+            print(f"⚠️ Ou o ângulo inicial do robô está incorreto")
+            print(f"⚠️ Verificando se há problema de origem do mapa...")
+            print(f"⚠️ Origem do mapa: {self.path_finder.map_origin}")
+            print(f"⚠️ Posição atual: {self.current_position}")
+            print(f"⚠️ Destino: {destination}")
+            print(f"⚠️ Diferença: dx={dx:.3f}m, dy={dy:.3f}m")
+        
+        # 🎯 UNIFICAÇÃO: Usa a mesma tolerância que funciona nos mapas não-PGM
+        # Se já está bem alinhado (tolerância de 10°), vai direto
+        if abs(angle_error) < 10.0:
+            print(f"🎯 JÁ ALINHADO: Iniciando movimento direto (erro: {angle_error:.1f}°)")
+            self.navigation_state = "NAVIGATING_TO_DESTINATION"
+        else:
+            print(f"🔄 ORIENTANDO: Giro necessário de {angle_error:.1f}°")
+            if angle_error > 0:
+                print(f"   → Girar para DIREITA (sentido horário)")
+            else:
+                print(f"   → Girar para ESQUERDA (sentido anti-horário)")
+            self.navigation_state = "ORIENTING_TO_TARGET"
 
     def get_navigation_status(self) -> dict:
         """Retorna o status atual da navegação"""
@@ -513,388 +526,194 @@ class RobotNavigator(QObject):
         return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2) 
 
     def _orient_towards_target(self):
+        """
+        🎯 LÓGICA SIMPLES DE ORIENTAÇÃO COM ESTABILIDADE:
+        1. Qual minha direção atual? -> current_angle_normalized
+        2. Qual a direção que devo ir? -> target_angle_normalized  
+        3. Qual a diferença entre elas? -> angle_error
+        4. O que devo fazer: girar para esquerda ou direita?
+           - Se angle_error > 0: girar para direita (sentido horário)
+           - Se angle_error < 0: girar para esquerda (sentido anti-horário)
+        5. CORREÇÃO: Adiciona estabilidade para evitar oscilação
+        """
         if self.current_target is None:
             return
 
-        # 🎯 CORREÇÃO CRÍTICA: Sistema anti-travamento durante orientação
-        current_time = time.time()
-        if not hasattr(self, 'orientation_start_time'):
-            self.orientation_start_time = current_time
-            self.orientation_attempts = 0
-            print("🔄 ORIENTAÇÃO: Iniciando contador de tempo")
+        # 🎯 CORREÇÃO: Define tolerância ANTES de usar
+        tolerance = 15.0  # Tolerância aumentada para evitar oscilação (era 10°)
+        stability_threshold = 5  # Número de iterações consecutivas dentro da tolerância
         
-        # 🎯 TIMEOUT DE ORIENTAÇÃO: Se demorar mais de 10s, força movimento
-        if current_time - self.orientation_start_time > 10.0:
-            print("⚠️ TIMEOUT ORIENTAÇÃO: Demorou mais de 10s, forçando movimento!")
-            self._force_orientation_movement()
-            return
+        # Inicializa contador de estabilidade se não existir
+        if not hasattr(self, '_orient_stability_counter'):
+            self._orient_stability_counter = 0
 
-        # 🎯 CORREÇÃO CRÍTICA: Contador de tentativas para quebrar loop infinito
-        if not hasattr(self, 'orientation_attempts'):
-            self.orientation_attempts = 0
-        
-        # 🎯 QUEBRA LOOP INFINITO: Após 3 tentativas, força movimento direto
-        if self.orientation_attempts >= 3:
-            print("🚨 LOOP INFINITO DETECTADO: 3 tentativas de orientação, forçando movimento direto!")
-            self._force_direct_movement()
-            return
-
+        # 1. Calcula direção para o alvo
         dx = self.current_target[0] - self.current_position[0]
         dy = self.current_target[1] - self.current_position[1]
-        target_angle = math.degrees(math.atan2(dy, dx))
-        angle_error = (target_angle - self.current_angle + 180) % 360 - 180
-
-        # 🎯 SOLUÇÃO B: Tolerância mais permissiva para curvas
-        # Se o robô está navegando com múltiplos waypoints (curvas), aumenta tolerância
-        if len(self.path) > 2:
-            # 🎯 CURVAS: Tolerância mais permissiva para evitar travamento
-            if self.is_returning_to_base:
-                tolerance = 15.0  # Aumentado de 8° para 15° durante curvas
-            else:
-                tolerance = 20.0  # Aumentado de 12° para 20° durante curvas
-            print(f"🎯 CURVA DETECTADA: Tolerância aumentada para {tolerance}°")
-        else:
-            # 🎯 NAVEGAÇÃO DIRETA: Mantém tolerância original
-            if self.is_returning_to_base:
-                tolerance = 8.0  # Tolerância original para retorno
-            else:
-                tolerance = 12.0  # Tolerância original para ida
-            print(f"🎯 NAVEGAÇÃO DIRETA: Tolerância padrão {tolerance}°")
-
-        if abs(angle_error) <= tolerance:
-            print(f"✅ ORIENTAÇÃO CONCLUÍDA: Erro: {angle_error:.1f}° (tolerância: {tolerance}°)")
-            self.navigation_state = "NAVIGATING_TO_DESTINATION"
-            self.orientation_start_time = None
-            self.orientation_attempts = 0
-            return
-        else:
-            # 🎯 SOLUÇÃO B: Movimento mais suave durante curvas
-            if len(self.path) > 2:
-                # 🎯 CURVAS: Movimento mais lento e suave
-                turn_speed = 15.0  # Reduzido para movimento mais suave
-                print(f"🔄 CURVA: Movimento suave - Velocidade: {turn_speed}%")
-            else:
-                # 🎯 NAVEGAÇÃO DIRETA: Velocidade normal
-                turn_speed = 25.0  # Velocidade padrão
-                print(f"🔄 DIREÇÃO: Movimento normal - Velocidade: {turn_speed}%")
-
-            # Aplica o movimento de orientação
+        target_angle_raw = math.degrees(math.atan2(dy, dx))
+        
+        # Normaliza target_angle para [0, 360)
+        target_angle_normalized = target_angle_raw
+        if target_angle_normalized < 0:
+            target_angle_normalized += 360
+        
+        # 2. Normaliza direção atual para [0, 360)
+        current_angle_normalized = self.current_angle
+        if current_angle_normalized < 0:
+            current_angle_normalized += 360
+        
+        # 3. Calcula diferença angular (erro)
+        # Retorna o menor caminho entre os dois ângulos [-180, 180]
+        angle_error = (target_angle_normalized - current_angle_normalized + 180) % 360 - 180
+        
+        # Log detalhado (apenas a cada 10 chamadas para não poluir)
+        if not hasattr(self, '_orient_log_counter'):
+            self._orient_log_counter = 0
+        self._orient_log_counter += 1
+        
+        if self._orient_log_counter % 10 == 0 or abs(angle_error) < tolerance:
+            print(f"🔄 ORIENTAÇÃO SIMPLES:")
+            print(f"   Direção atual: {self.current_angle:.1f}° (raw) -> {current_angle_normalized:.1f}° (normalizado)")
+            print(f"   Direção alvo: {target_angle_raw:.1f}° (raw) -> {target_angle_normalized:.1f}° (normalizado)")
+            print(f"   Diferença (erro): {angle_error:.1f}°")
+            print(f"   Contador de estabilidade: {self._orient_stability_counter}/{stability_threshold}")
             if angle_error > 0:
-                self.motors.set_speed(turn_speed, -turn_speed)  # Gira esquerda
+                print(f"   Ação: Girar para DIREITA (sentido horário) {abs(angle_error):.1f}°")
+            elif angle_error < 0:
+                print(f"   Ação: Girar para ESQUERDA (sentido anti-horário) {abs(angle_error):.1f}°")
             else:
-                self.motors.set_speed(-turn_speed, turn_speed)  # Gira direita
-            
-            self.orientation_attempts += 1
-            print(f"🔄 ORIENTAÇÃO: Tentativa {self.orientation_attempts}/3 - Erro: {angle_error:.1f}°")
+                print(f"   Ação: Já alinhado!")
 
-    def _force_orientation_movement(self):
-        """🚨 MOVIMENTO FORÇADO: Força o robô a sair do travamento durante orientação"""
-        print("🚨 FORÇANDO MOVIMENTO DURANTE ORIENTAÇÃO!")
-        
-        # Para qualquer movimento atual
-        self.motors.stop()
-        time.sleep(0.5)
-        
-        # Calcula direção para o alvo
-        dx = self.current_target[0] - self.current_position[0]
-        dy = self.current_target[1] - self.current_position[1]
-        target_angle = math.degrees(math.atan2(dy, dx))
-        angle_error = (target_angle - self.current_angle + 180) % 360 - 180
-        
-        print(f"🚨 FORÇA: Ângulo para alvo: {target_angle:.1f}°, Erro: {angle_error:.1f}°")
-        
-        # Força movimento com velocidade baixa
-        if abs(angle_error) < 30:  # Se está mais ou menos apontado
-            print("🚨 FORÇA: Movendo direto para o alvo")
-            # Velocidade baixa para frente
-            force_speed = 10  # 10% da potência máxima
-            self.motors.set_speed(force_speed, force_speed)
+        # 🎯 CORREÇÃO: Verifica estabilidade antes de mudar de estado
+        # Só muda de estado se o erro estiver dentro da tolerância por várias iterações consecutivas
+        if abs(angle_error) < tolerance:
+            self._orient_stability_counter += 1
+            if self._orient_stability_counter >= stability_threshold:
+                # Estável! Pode mudar de estado
+                self.motors.stop()
+                state_key = "RETURNING_TO_BASE" if self.is_returning_to_base else "NAVIGATING_TO_DESTINATION"
+                print(f"✅ ALINHADO E ESTÁVEL: Erro {abs(angle_error):.1f}° < {tolerance}° por {stability_threshold} iterações → Iniciando navegação")
+                self._orient_stability_counter = 0  # Reset contador
+                self.navigation_state = state_key
+                return
+            else:
+                # Ainda não estável, mas está dentro da tolerância - para de girar mas não muda de estado
+                self.motors.stop()
+                return
         else:
-            print("🚨 FORÇA: Girando para alinhar")
-            # Gira para alinhar com velocidade baixa
-            if angle_error > 0:
-                self.motors.set_speed(15, -15)  # Gira direita
-            else:
-                self.motors.set_speed(-15, 15)  # Gira esquerda
-        
-        # Reseta o timer de orientação
-        self.orientation_start_time = time.time()
+            # Erro fora da tolerância - reset contador e continua girando
+            self._orient_stability_counter = 0
 
-    def _force_direct_movement(self):
-        """🚨 MOVIMENTO DIRETO: Força o robô a ir direto para o alvo sem orientação"""
-        print("🚨 FORÇANDO MOVIMENTO DIRETO - QUEBRANDO LOOP INFINITO!")
+        # 4. Calcula velocidade angular proporcional ao erro
+        # 🎯 CORREÇÃO: Ganho reduzido para evitar overshoot e oscilação
+        # Ganho adaptativo: menor quando o erro é pequeno
+        if abs(angle_error) < 20.0:
+            gain = 0.8  # Ganho baixo para ajustes finos
+        elif abs(angle_error) < 45.0:
+            gain = 1.0  # Ganho médio
+        else:
+            gain = 1.2  # Ganho normal para erros grandes
         
-        # Para qualquer movimento atual
-        self.motors.stop()
-        time.sleep(0.5)
+        angular_speed_rads = math.radians(angle_error) * gain
+        angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
+
+        # Velocidade linear é zero durante a orientação
+        v = 0.0
+        w = angular_speed_rads
+        L = ROBOT_WHEEL_BASE_M
         
-        # Calcula direção para o alvo
-        dx = self.current_target[0] - self.current_position[0]
-        dy = self.current_target[1] - self.current_position[1]
-        target_angle = math.degrees(math.atan2(dy, dx))
-        angle_error = (target_angle - self.current_angle + 180) % 360 - 180
+        # Calcula velocidades das rodas
+        left_wheel_speed_ms = v + (w * L) / 2.0
+        right_wheel_speed_ms = v - (w * L) / 2.0
         
-        print(f"🚨 MOVIMENTO DIRETO: Ângulo para alvo: {target_angle:.1f}°, Erro: {angle_error:.1f}°")
+        # Converte para TPS
+        left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+        right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
-        # Se o erro de ângulo for muito grande, faz uma correção rápida
-        if abs(angle_error) > 60:
-            print("🚨 MOVIMENTO DIRETO: Erro muito grande, corrigindo ângulo rapidamente")
-            correction_time = abs(angle_error) / 90.0  # Tempo baseado no erro
-            if angle_error > 0:
-                self.motors.set_speed(25, -25)  # Gira direita
-            else:
-                self.motors.set_speed(-25, 25)  # Gira esquerda
-            time.sleep(correction_time)
-            self.motors.stop()
+        # 🎯 CORREÇÃO: Velocidade mínima adaptativa - menor quando o erro é pequeno
+        if abs(angle_error) < 15.0:
+            MIN_TURN_TPS = 4.0  # Velocidade muito baixa para ajustes finos
+        elif abs(angle_error) < 30.0:
+            MIN_TURN_TPS = 6.0  # Velocidade baixa
+        else:
+            MIN_TURN_TPS = 8.0  # Velocidade normal
         
-        # Agora move direto para o alvo
-        print("🚨 MOVIMENTO DIRETO: Indo direto para o alvo")
-        direct_speed = 20  # 20% da potência máxima
-        self.motors.set_speed(direct_speed, direct_speed)
+        if 0 < abs(left_tps) < MIN_TURN_TPS:
+            left_tps = MIN_TURN_TPS * (1 if left_tps > 0 else -1)
+        if 0 < abs(right_tps) < MIN_TURN_TPS:
+            right_tps = MIN_TURN_TPS * (1 if right_tps > 0 else -1)
         
-        # Reseta todos os timers e contadores
-        if hasattr(self, 'orientation_start_time'):
-            delattr(self, 'orientation_start_time')
-        if hasattr(self, 'orientation_attempts'):
-            delattr(self, 'orientation_attempts')
-        
-        # Força mudança para navegação direta
-        self.navigation_state = "RETURNING_TO_BASE"
+        if self._orient_log_counter % 10 == 0:
+            print(f"   Velocidades: left_tps={left_tps:.1f}, right_tps={right_tps:.1f} (ganho={gain:.2f}, min_tps={MIN_TURN_TPS:.1f})")
+        self.motors.set_target_speed(left_tps, right_tps)
 
     def _move_towards_target(self):
         if self.current_target is None:
             self.motors.set_target_speed(0, 0)
             return
 
-        # 🎯 CORREÇÃO PRINCIPAL: Verifica se há caminho definido para seguir
-        if hasattr(self, 'path') and len(self.path) > 1 and hasattr(self, 'path_index'):
-            # 🎯 NAVEGAÇÃO POR CAMINHO: Segue o caminho traçado waypoint por waypoint
-            target_for_movement = self._get_path_following_target()
-            if target_for_movement:
-                dx = target_for_movement[0] - self.current_position[0]
-                dy = target_for_movement[1] - self.current_position[1]
-            else:
-                # Fallback para navegação direta
-                dx = self.current_target[0] - self.current_position[0]
-                dy = self.current_target[1] - self.current_position[1]
-        else:
-            # 🎯 NAVEGAÇÃO DIRETA: Quando não há caminho definido
-            dx = self.current_target[0] - self.current_position[0]
-            dy = self.current_target[1] - self.current_position[1]
-            
+        dx = self.current_target[0] - self.current_position[0]
+        dy = self.current_target[1] - self.current_position[1]
+        distance = math.sqrt(dx*dx + dy*dy)
         target_angle = math.degrees(math.atan2(dy, dx))
-        angle_error = (target_angle - self.current_angle + 180) % 360 - 180
-
-        # 🎯 NOVA CORREÇÃO: Sistema de detecção de padrões circulares
-        if self.is_returning_to_base:
-            if not hasattr(self, 'last_positions'):
-                self.last_positions = []
-                self.last_angles = []
-            
-            # Armazena as últimas 5 posições e ângulos
-            self.last_positions.append(self.current_position)
-            self.last_angles.append(self.current_angle)
-            
-            if len(self.last_positions) > 5:
-                self.last_positions.pop(0)
-                self.last_angles.pop(0)
-            
-            # 🎯 DETECÇÃO DE LOOP: Se as posições se repetem, há um loop
-            if len(self.last_positions) == 5:
-                # Calcula se está girando em círculo
-                center_x = sum(pos[0] for pos in self.last_positions) / 5
-                center_y = sum(pos[1] for pos in self.last_positions) / 5
-                radius = sum(math.sqrt((pos[0] - center_x)**2 + (pos[1] - center_y)**2) for pos in self.last_positions) / 5
-                
-                if radius < 0.3:  # Se o raio for menor que 30cm, provavelmente está em loop
-                    print(f"⚠️ ALERTA LOOP DETECTADO: Raio {radius:.2f}m < 0.3m - Forçando orientação!")
-                    self.navigation_state = "ORIENTING_TO_TARGET"
-                    self.motors.stop()
-                    return
-
-        # 🎯 VERIFICAÇÃO DE SEGURANÇA: Evita loops circulares durante retorno
-        if self.is_returning_to_base and abs(angle_error) > 90:
-            print(f"⚠️ ALERTA: Ângulo de erro muito grande ({angle_error:.1f}°) durante retorno!")
-            print(f"⚠️ Posição atual: {self.current_position}, Alvo: {self.current_target}")
-            print(f"⚠️ Ângulo atual: {self.current_angle:.1f}°, Ângulo alvo: {target_angle:.1f}°")
-            
-            # 🎯 CORREÇÃO: Força orientação antes de mover para evitar loops
-            print("🔄 CORREÇÃO: Forçando orientação antes do movimento para evitar loops")
-            self.navigation_state = "ORIENTING_TO_TARGET"
-            return
-
-        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Sistema de compensação em tempo real
-        if not hasattr(self, 'lateral_drift_history'):
-            self.lateral_drift_history = []
-            self.last_target_angle = target_angle
-            
-        # 🎯 DETECÇÃO DE DERIVA LATERAL AVANÇADA: Sistema adaptativo baseado na distância
-        angle_change = abs(target_angle - getattr(self, 'last_target_angle', target_angle))
         
-        # === CORREÇÃO BASEADA NA DISTÂNCIA PERCORRIDA ===
-        # Aplica correção mais agressiva conforme a distância aumenta
-        distance_traveled = getattr(self, 'total_distance_traveled', 0.0)
-        distance_factor = 1.0 + (distance_traveled * 0.15)  # 15% mais agressivo por metro
+        # 🎯 CORREÇÃO: Normaliza target_angle para [0, 360) para cálculos consistentes
+        if target_angle < 0:
+            target_angle += 360
         
-        if angle_change < 8.0:  # Monitora deriva em navegação mais ampla
-            self.lateral_drift_history.append(angle_error)
-            if len(self.lateral_drift_history) > 15:  # Histórico maior para melhor análise
-                self.lateral_drift_history.pop(0)
-                
-            # 🎯 CALCULA DERIVA MÉDIA: Detecção ultra-sensível com fator de distância
-            if len(self.lateral_drift_history) >= 3:  # Menos amostras necessárias
-                avg_drift = sum(self.lateral_drift_history) / len(self.lateral_drift_history)
-                
-                # Limiar adaptativo baseado na distância (mais sensível em distâncias longas)
-                adaptive_threshold = max(0.8, 1.5 - (distance_traveled * 0.2))  # Reduz limiar com distância
-                
-                if abs(avg_drift) > adaptive_threshold:
-                    # Correção progressiva: mais agressiva em distâncias longas
-                    base_correction = avg_drift * 0.25
-                    drift_correction = base_correction * distance_factor
-                    print(f"🎯 DERIVA ADAPTATIVA: {avg_drift:.1f}° média, distância {distance_traveled:.1f}m, correção {drift_correction:.3f} (fator {distance_factor:.2f})")
-                else:
-                    drift_correction = 0.0
-            else:
-                drift_correction = 0.0
-        else:
-            drift_correction = 0.0
-            
-        self.last_target_angle = target_angle
+        # Normaliza ângulo atual para [0, 360) também
+        current_angle_normalized = self.current_angle
+        if current_angle_normalized < 0:
+            current_angle_normalized += 360
+        
+        # Calcula erro angular (diferença mínima entre os dois ângulos)
+        angle_error = (target_angle - current_angle_normalized + 180) % 360 - 180
 
-        # 🎯 CORREÇÃO CURVAS MELHORADA: Sistema adaptativo para curvas fechadas
-        if hasattr(self, 'path') and len(self.path) > 2 and not self.is_returning_to_base:
-            # 🎯 NAVEGAÇÃO COM CURVAS: Controle ultra-adaptativo para curvas fechadas
-            abs_angle_error = abs(angle_error)
-            
-            if abs_angle_error > 60:  # Curvas extremamente fechadas (>60°)
-                # Para curvas muito fechadas, para e reorienta primeiro
-                print(f"🔄 CURVA EXTREMA ({abs_angle_error:.1f}°): Forçando reorientação")
-                self.navigation_state = "ORIENTING_TO_TARGET"
-                self.motors.stop()
-                return
-            elif abs_angle_error > 45:  # Curvas muito fechadas (45-60°)
-                angle_factor = 0.2  # Velocidade muito baixa
-                angular_factor = 0.8  # Controle angular muito suave
-                print(f"🎯 CURVA MUITO FECHADA ({abs_angle_error:.1f}°): Velocidade mínima")
-            elif abs_angle_error > 30:  # Curvas fechadas (30-45°)
-                angle_factor = 0.4  # Velocidade baixa
-                angular_factor = 1.0  # Controle angular suave
-                print(f"🎯 CURVA FECHADA ({abs_angle_error:.1f}°): Velocidade baixa")
-            elif abs_angle_error > 15:  # Curvas moderadas (15-30°)
-                angle_factor = 0.6  # Velocidade moderada
-                angular_factor = 1.3  # Controle angular equilibrado
-                print(f"🎯 CURVA MODERADA ({abs_angle_error:.1f}°): Velocidade moderada")
-            else:  # Curvas suaves (<15°)
-                angle_factor = 0.8  # Velocidade quase normal
-                angular_factor = 1.8  # Controle angular normal
-                print(f"🎯 CURVA SUAVE ({abs_angle_error:.1f}°): Velocidade normal")
-            
-            linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
-            angular_speed_rads = math.radians(angle_error) * angular_factor
-            print(f"🎯 CURVA: Linear: {linear_speed_ms:.2f}, Angular: {math.degrees(angular_speed_rads):.1f}°")
+        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Logs detalhados para debug
+        if self.use_direct_navigation:
+            print(f"🎯 NAV_DIRETA: dist={distance:.2f}m, target_ang={target_angle:.1f}°, curr_ang={current_angle_normalized:.1f}° (orig={self.current_angle:.1f}°), err={angle_error:.1f}°")
+
+        # 🎯 CRÍTICO: Se o erro angular for muito grande (>90°), não move para frente
+        # Isso evita movimento para trás
+        if abs(angle_error) > 90.0:
+            print(f"⚠️ ERRO ANGULAR GRANDE ({angle_error:.1f}°): Apenas girando, sem movimento linear")
+            linear_speed_ms = 0.0
         else:
-            # 🎯 NAVEGAÇÃO NORMAL: Velocidade padrão
             angle_factor = max(0.0, math.cos(math.radians(angle_error)))
             linear_speed_ms = MAX_LINEAR_SPEED_MS * self.speed_multiplier * angle_factor
-            
-            # 🎯 CORREÇÃO DEFINITIVA: Movimento angular diferenciado para ida vs retorno
-            if self.is_returning_to_base:
-                # RETORNO: Angular ULTRA suave para eliminar loops totalmente
-                angular_speed_rads = math.radians(angle_error) * 0.2  # Reduzido de 1.8 para 0.2 (11x mais suave!)
-                print(f"🔄 RETORNO SUAVE: Angular reduzido drasticamente (fator 0.2) para erro {angle_error:.1f}°")
-            else:
-                # IDA: Mantém controle angular normal para preservar precisão
-                angular_speed_rads = math.radians(angle_error) * 1.8
         
+        angular_speed_rads = math.radians(angle_error) * 1.8
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = linear_speed_ms
         w = angular_speed_rads
         L = ROBOT_WHEEL_BASE_M
         
-        # 🎯 CINEMÁTICA DIFERENCIAL PADRÃO: Restaurada após correção do wheelbase
-        # Para giro à esquerda (w > 0): roda esquerda mais lenta, direita mais rápida
-        # Para giro à direita (w < 0): roda esquerda mais rápida, direita mais lenta
-        left_wheel_speed_ms = v + (w * L) / 2.0   # RESTAURADO: Fórmula padrão
-        right_wheel_speed_ms = v - (w * L) / 2.0  # RESTAURADO: Fórmula padrão
+        left_wheel_speed_ms = v + (w * L) / 2.0
+        right_wheel_speed_ms = v - (w * L) / 2.0
+        
+        # 🎯 CRÍTICO: Garantir que as velocidades das rodas não sejam negativas
+        # Se forem negativas, significa que o robô tentaria ir para trás
+        if left_wheel_speed_ms < 0 or right_wheel_speed_ms < 0:
+            print(f"⚠️ VELOCIDADE NEGATIVA DETECTADA: left={left_wheel_speed_ms:.3f}, right={right_wheel_speed_ms:.3f}")
+            # Se há erro angular significativo, apenas gira
+            if abs(angle_error) > 10.0:
+                linear_speed_ms = 0.0
+                v = 0.0
+                left_wheel_speed_ms = (w * L) / 2.0
+                right_wheel_speed_ms = -(w * L) / 2.0
+            else:
+                # Se o erro é pequeno mas ainda há velocidade negativa, para tudo
+                left_wheel_speed_ms = 0.0
+                right_wheel_speed_ms = 0.0
         
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
-        # === CORREÇÃO BÁSICA E EFETIVA PARA DERIVA ===
-        # Sistema simplificado baseado no padrão conhecido de deriva para direita
-        
-        # 🎯 CORREÇÃO PREVENTIVA MODERADA: Compensa deriva conhecida para direita
-        # Baseado nos testes: versão estável moderada
-        preventive_correction = 0.12  # 12% de correção preventiva moderada
-        
-        # Aplica correção preventiva moderada: aumenta motor esquerdo, reduz motor direito
-        left_tps *= (1.0 + preventive_correction)   # Motor esquerdo 12% mais rápido
-        right_tps *= (1.0 - preventive_correction * 0.75)  # Motor direito 9% mais lento
-        
-        print(f"🎯 CORREÇÃO PREVENTIVA MODERADA: L+{preventive_correction*100:.1f}%, R-{preventive_correction*75:.1f}%")
-        
-        # 🎯 CORREÇÃO ADAPTATIVA DE DERIVA: Moderada para deriva significativa
-        if abs(drift_correction) > 0.0015:  # Threshold moderado
-            # Correção moderada baseada na deriva detectada
-            correction_factor = drift_correction * 0.5  # Fator moderado
-            
-            if drift_correction > 0:  # Desvio para direita detectado
-                right_tps *= (1.0 - abs(correction_factor))
-                print(f"🎯 DERIVA DETECTADA MODERADA: Reduzindo motor direito em {abs(correction_factor)*100:.1f}%")
-            else:  # Desvio para esquerda detectado
-                left_tps *= (1.0 + correction_factor)  # correction_factor é negativo
-                print(f"🎯 DERIVA DETECTADA MODERADA: Reduzindo motor esquerdo em {abs(correction_factor)*100:.1f}%")
-        
-        # 🎯 CORREÇÃO PROGRESSIVA MODERADA: Aumenta correção gradualmente em navegações longas
-        if hasattr(self, 'total_distance_traveled') and self.total_distance_traveled > 130.0:  # Após 1.30m
-            # Correção progressiva moderada que cresce com a distância
-            distance_factor = min(0.15, (self.total_distance_traveled - 130.0) * 0.015)  # Máximo 15%, 1.5% por 10cm
-            
-            # Aplica correção adicional otimizada para compensar erro acumulativo
-            left_tps *= (1.0 + distance_factor * 1.0)   # Boost otimizado no motor esquerdo
-            right_tps *= (1.0 - distance_factor * 0.6)  # Redução otimizada no motor direito
-            
-            print(f"🎯 CORREÇÃO PROGRESSIVA MODERADA: {self.total_distance_traveled:.1f}cm, L+{distance_factor*100:.1f}%, R-{distance_factor*60:.1f}%")
+        if self.use_direct_navigation:
+            print(f"🎯 NAV_DIRETA: v={v:.3f}m/s, w={w:.3f}rad/s, left_tps={left_tps:.1f}, right_tps={right_tps:.1f}")
         
         self.motors.set_target_speed(left_tps, right_tps)
-
-    def _get_path_following_target(self) -> Optional[Tuple[float, float]]:
-        """🎯 NOVA FUNÇÃO: Calcula o próximo ponto do caminho para seguir adequadamente as curvas"""
-        if not hasattr(self, 'path') or not self.path or not hasattr(self, 'path_index'):
-            return None
-            
-        # 🎯 LOOK-AHEAD: Olha alguns pontos à frente para suavizar curvas
-        look_ahead_distance = 0.3  # 30cm à frente
-        current_distance = 0.0
-        
-        # Começa do waypoint atual
-        for i in range(self.path_index, len(self.path)):
-            if i == self.path_index:
-                continue  # Pula o waypoint atual
-                
-            # Calcula distância do ponto atual até este waypoint
-            prev_point = self.path[i-1] if i > 0 else self.current_position
-            current_point = self.path[i]
-            
-            segment_distance = math.sqrt(
-                (current_point[0] - prev_point[0])**2 + 
-                (current_point[1] - prev_point[1])**2
-            )
-            current_distance += segment_distance
-            
-            # 🎯 ENCONTROU PONTO LOOK-AHEAD: Retorna este ponto
-            if current_distance >= look_ahead_distance:
-                print(f"🎯 LOOK-AHEAD: Seguindo ponto {i}/{len(self.path)} a {current_distance:.2f}m")
-                return current_point
-                
-        # 🎯 FALLBACK: Se não encontrou ponto look-ahead, usa o waypoint atual
-        if self.path_index < len(self.path):
-            print(f"🎯 FALLBACK: Usando waypoint atual {self.path_index}/{len(self.path)}")
-            return self.path[self.path_index]
-            
-        return None
 
     def _stable_final_approach(self, final_target: Tuple[float, float]):
         if final_target is None:
@@ -939,66 +758,21 @@ class RobotNavigator(QObject):
         return False
 
     def _adjust_final_angle(self):
-        """🎯 CORREÇÃO: Ajuste preciso do ângulo final para 270° na base com sincronia melhorada"""
         angle_diff = (ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180
         
-        print(f"🎯 AJUSTE_FINAL: Ângulo atual {self.current_angle:.1f}°, Alvo {ROBOT_INITIAL_ANGLE}°, Diferença {angle_diff:.1f}°")
-        
-        # 🎯 TOLERÂNCIA mais restritiva para máxima precisão
-        if abs(angle_diff) > 0.5:  # Reduzido de 1.0° para 0.5° para maior precisão
-            # 🎯 CORREÇÃO: Cálculo mais preciso da velocidade de giro
-            if abs(angle_diff) > 45: 
-                turn_value = min(0.5, abs(angle_diff) / 45.0)  # Mais suave para giros grandes
-            elif abs(angle_diff) > 20: 
-                turn_value = min(0.4, abs(angle_diff) / 40.0)  # Suave para giros médios
-            elif abs(angle_diff) > 5: 
-                turn_value = min(0.35, abs(angle_diff) / 35.0)  # Preciso para ajustes finos
-            else: 
-                turn_value = min(0.25, abs(angle_diff) / 30.0)  # Muito preciso para ajustes mínimos
+        if abs(angle_diff) > 1.0:
+            if abs(angle_diff) > 30: turn_value = min(0.8, abs(angle_diff) / 25.0)
+            elif abs(angle_diff) > 10: turn_value = min(0.6, abs(angle_diff) / 30.0)
+            else: turn_value = min(0.4, abs(angle_diff) / 35.0)
                 
-            # 🎯 CORREÇÃO: Direção do giro corrigida com logs detalhados
             if angle_diff > 0:
-                # Precisa girar no sentido horário (para a direita)
                 left_speed = turn_value * 100
                 right_speed = -turn_value * 100
-                print(f"🔄 GIRANDO_DIREITA: left={left_speed:.0f}, right={right_speed:.0f} (ângulo: +{angle_diff:.1f}°)")
             else:
-                # Precisa girar no sentido anti-horário (para a esquerda)
                 left_speed = -turn_value * 100
                 right_speed = turn_value * 100
-                print(f"🔄 GIRANDO_ESQUERDA: left={left_speed:.0f}, right={right_speed:.0f} (ângulo: {angle_diff:.1f}°)")
-                
-            # 🎯 APLICA movimento com controle de tempo para precisão
             self.motors.set_speed(left_speed, right_speed)
-            
-            # 🎯 CALCULA tempo de giro baseado no ângulo e velocidade
-            # Fórmula: tempo = ângulo / (velocidade_angular * fator_correção)
-            base_turn_time = abs(angle_diff) / (turn_value * 100 * 0.8)  # Fator 0.8 para compensar atrito
-            turn_time = max(0.1, min(2.0, base_turn_time))  # Limita entre 0.1s e 2.0s
-            
-            print(f"🎯 TEMPO_GIRO: {turn_time:.2f}s para {abs(angle_diff):.1f}° com velocidade {turn_value:.2f}")
-            
-            # 🎯 PARA automaticamente após o tempo calculado
-            import threading
-            def stop_after_time():
-                time.sleep(turn_time)
-                self.motors.stop()
-                # 🎯 VERIFICA se o ângulo está correto após o giro
-                final_angle_diff = (ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180
-                if abs(final_angle_diff) <= 0.5:
-                    print(f"✅ ÂNGULO_FINAL_CORRETO: {self.current_angle:.1f}° (diferença: {final_angle_diff:.1f}°)")
-                    self._finalize_navigation()
-                else:
-                    print(f"⚠️ ÂNGULO_FINAL_INCORRETO: {self.current_angle:.1f}° (diferença: {final_angle_diff:.1f}°) - tentando novamente")
-                    # 🎯 TENTA ajuste novamente se necessário
-                    time.sleep(0.5)  # Pausa para estabilizar
-                    self._adjust_final_angle()
-            
-            # 🚀 INICIA thread para parada automática
-            threading.Thread(target=stop_after_time, daemon=True).start()
-            
         else:
-            print(f"✅ ÂNGULO_FINAL_CORRETO: {self.current_angle:.1f}° (diferença: {angle_diff:.1f}°)")
             self._finalize_navigation()
 
     def _get_next_waypoint_info(self):
@@ -1010,38 +784,14 @@ class RobotNavigator(QObject):
         """
         Atualiza a posição e ângulo do robô baseado na odometria.
         Durante giros precisos, atualiza apenas o ângulo para manter sincronização correta.
-        NOVA VERSÃO: Correção de erro acumulativo baseada na distância percorrida
         """
         ticks_data = self.motors.get_and_reset_ticks()
         if not ticks_data:
             return
 
         left_ticks, right_ticks = ticks_data.get('left', 0), ticks_data.get('right', 0)
-        
-        # === CORREÇÃO DE ERRO ACUMULATIVO BASEADA NA DISTÂNCIA ===
-        # Aplica fatores de correção progressivos para compensar erro em distâncias longas
-        
-        # Calcula distância total percorrida desde o início da navegação
-        if not hasattr(self, 'total_distance_traveled'):
-            self.total_distance_traveled = 0.0
-            
-        # Distâncias brutas dos encoders
-        dist_left_raw = (left_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
-        dist_right_raw = (right_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
-        
-        # Fator de correção progressivo baseado na distância total percorrida
-        # Aumenta a correção conforme a distância aumenta para compensar acúmulo de erro
-        distance_correction_factor = 1.0 + (self.total_distance_traveled * 0.002)  # 0.2% por metro
-        
-        # Aplica correção progressiva
-        dist_left = dist_left_raw * distance_correction_factor
-        dist_right = dist_right_raw * distance_correction_factor
-        
-        # Atualiza distância total percorrida
-        delta_distance_raw = (dist_left_raw + dist_right_raw) / 2.0
-        self.total_distance_traveled += abs(delta_distance_raw)
-        
-        # Cálculos de odometria com correção aplicada
+        dist_left = (left_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
+        dist_right = (right_ticks / TICKS_PER_REVOLUTION) * ROBOT_WHEEL_CIRCUMFERENCE_M
         delta_distance = (dist_left + dist_right) / 2.0
         delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
@@ -1058,44 +808,6 @@ class RobotNavigator(QObject):
             delta_x = delta_distance * math.cos(angle_rad)
             delta_y = delta_distance * math.sin(angle_rad)
             self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
-            
-            # === COLETA DE DADOS PARA CORREÇÃO ADAPTATIVA ===
-            # Calcula erro lateral se há um alvo ativo
-            if self.current_target and self.navigation_active:
-                # Calcula erro lateral em relação à linha ideal até o alvo
-                target_dx = self.current_target[0] - self.current_position[0]
-                target_dy = self.current_target[1] - self.current_position[1]
-                
-                if abs(target_dx) > 0.01 or abs(target_dy) > 0.01:  # Evita divisão por zero
-                    # Vetor unitário da direção ideal
-                    target_distance = math.sqrt(target_dx**2 + target_dy**2)
-                    ideal_direction = (target_dx / target_distance, target_dy / target_distance)
-                    
-                    # Calcula erro lateral (perpendicular à direção ideal)
-                    lateral_error = abs(target_dx * math.sin(math.radians(self.current_angle)) - 
-                                      target_dy * math.cos(math.radians(self.current_angle)))
-                    
-                    # Adiciona ao histórico de erro (mantém últimas 20 amostras)
-                    self.navigation_error_history.append(lateral_error * 100)  # Converte para cm
-                    if len(self.navigation_error_history) > 20:
-                        self.navigation_error_history.pop(0)
-                    
-                    # Adiciona à deriva lateral (mantém últimas 15 amostras)
-                    angle_to_target = math.degrees(math.atan2(target_dy, target_dx))
-                    angle_error = (angle_to_target - self.current_angle + 180) % 360 - 180
-                    self.lateral_drift_history.append(angle_error)
-                    if len(self.lateral_drift_history) > 15:
-                        self.lateral_drift_history.pop(0)
-                    
-                    # Coleta dados para calibração de wheelbase
-                    if len(self.wheelbase_calibration_data['error_samples']) < 50:
-                        self.wheelbase_calibration_data['error_samples'].append(abs(angle_error))
-                        self.wheelbase_calibration_data['distance_samples'].append(self.total_distance_traveled)
-            
-            # Debug da correção de erro acumulativo
-            if self.total_distance_traveled > 0 and int(self.total_distance_traveled * 10) % 10 == 0:  # A cada 1m
-                avg_error = sum(self.navigation_error_history[-5:]) / min(5, len(self.navigation_error_history)) if self.navigation_error_history else 0
-                print(f"📊 ODOMETRY_CORRECTION: Distância: {self.total_distance_traveled:.2f}m, Fator: {distance_correction_factor:.4f}, Erro médio: {avg_error:.1f}cm")
         else:
             # GIRO PRECISO: Atualiza APENAS o ângulo (posição permanece fixa)
             # Durante giros precisos, a posição não é modificada para manter sincronização correta
@@ -1119,6 +831,29 @@ class RobotNavigator(QObject):
 
     def stop(self):
         print("INFO: Comando de parada recebido pelo navegador.")
+        # 🎯 CORREÇÃO: Se estiver em orientação e o erro for pequeno, força transição para navegação
+        if self.navigation_state == "ORIENTING_TO_TARGET" and self.current_target is not None:
+            dx = self.current_target[0] - self.current_position[0]
+            dy = self.current_target[1] - self.current_position[1]
+            target_angle_raw = math.degrees(math.atan2(dy, dx))
+            target_angle_normalized = target_angle_raw
+            if target_angle_normalized < 0:
+                target_angle_normalized += 360
+            current_angle_normalized = self.current_angle
+            if current_angle_normalized < 0:
+                current_angle_normalized += 360
+            angle_error = (target_angle_normalized - current_angle_normalized + 180) % 360 - 180
+            
+            # Se o erro for pequeno (< 30°), força transição para navegação
+            if abs(angle_error) < 30.0:
+                print(f"🔄 PARAR: Forçando transição de orientação para navegação (erro: {angle_error:.1f}°)")
+                self.motors.stop()
+                state_key = "RETURNING_TO_BASE" if self.is_returning_to_base else "NAVIGATING_TO_DESTINATION"
+                self.navigation_state = state_key
+                if hasattr(self, '_orient_stability_counter'):
+                    self._orient_stability_counter = 0
+                return
+        
         self._finalize_navigation()
         
     def _handle_navigation_to_destination(self):
@@ -1128,170 +863,104 @@ class RobotNavigator(QObject):
 
         distance_to_target = self._calculate_distance(self.current_position, self.current_target)
 
+        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Se habilitada, usa lógica simplificada
+        if self.use_direct_navigation:
+            # Na navegação direta, o destino é sempre self.original_destination
+            # Não há waypoints intermediários, então vamos direto ao destino
+            
+            # 🎯 CORREÇÃO: Usa tolerância maior para navegação direta (mesma dos mapas não PGM)
+            # A tolerância padrão (0.20m) pode ser muito restritiva
+            arrival_tolerance = 0.15  # 15cm - mesma tolerância que funciona nos mapas não PGM
+            
+            if distance_to_target < arrival_tolerance:
+                print(f"🎯 DESTINO ALCANÇADO: Distância {distance_to_target:.3f}m < {arrival_tolerance}m")
+                self._transition_to_paused_at_destination()
+                return
+            
+            # Log periódico para debug (a cada 10 atualizações)
+            if not hasattr(self, '_nav_log_counter'):
+                self._nav_log_counter = 0
+            self._nav_log_counter += 1
+            if self._nav_log_counter % 10 == 0:
+                print(f"🎯 NAV_DIRETA: Distância até destino: {distance_to_target:.3f}m (tolerância: {arrival_tolerance}m)")
+            
+            # Move direto ao destino (sem waypoints intermediários)
+            self._move_towards_target()
+            return
+
+        # Navegação com pathfinding (código original)
         is_near_final_destination = (self.path_index >= len(self.path) - 1)
 
-        # 🎯 CORREÇÃO CURVAS: Tolerância ajustada para não pular waypoints importantes
-        if len(self.path) > 2:
-            # 🎯 CURVAS: Tolerância menor para seguir waypoints precisamente
-            arrival_tolerance = 0.15  # Reduzido de 0.20 para 0.15m para maior precisão
-            print(f"🎯 CURVA: Tolerância precisa {arrival_tolerance}m")
-        else:
-            # 🎯 NAVEGAÇÃO DIRETA: Tolerância padrão
-            arrival_tolerance = 0.12  # Tolerância original
-            print(f"🎯 DIRETA: Tolerância padrão {arrival_tolerance}m")
-
-        if is_near_final_destination and distance_to_target < arrival_tolerance:
+        if is_near_final_destination and distance_to_target < 0.15:
             self.navigation_state = "FINAL_APPROACH_DESTINATION"
             self.current_target = self.original_destination
             return
 
-        if distance_to_target < arrival_tolerance:
-            # 🎯 SOLUÇÃO B: Transição mais suave entre waypoints
-            print(f"🎯 WAYPOINT ALCANÇADO: {self.path_index + 1}/{len(self.path)}")
-            
-            # Avança para o próximo waypoint
+        if distance_to_target < 0.12:
             self.path_index += 1
             if self.path_index < len(self.path):
                 self.current_target = self.path[self.path_index]
-                print(f"🎯 PRÓXIMO WAYPOINT: {self.current_target}")
-                
-                # 🎯 SOLUÇÃO B: Pausa breve para estabilizar entre waypoints
-                if len(self.path) > 2:
-                    print("🎯 CURVA: Pausa de estabilização entre waypoints")
-                    time.sleep(0.5)  # Pausa de 0.5s para estabilizar
-                
-                # 🎯 SOLUÇÃO B: Verifica se precisa reorientar para o próximo waypoint
-                dx = self.current_target[0] - self.current_position[0]
-                dy = self.current_target[1] - self.current_position[1]
-                target_angle = math.degrees(math.atan2(dy, dx))
-                angle_error = abs((target_angle - self.current_angle + 180) % 360 - 180)
-                
-                # 🎯 SOLUÇÃO B: Se mudança de direção é grande, reorienta
-                if angle_error > 30.0:  # Tolerância para reorientação
-                    print(f"🎯 CURVA: Mudança de direção grande ({angle_error:.1f}°), reorientando...")
-                    self.navigation_state = "ORIENTING_TO_TARGET"
-                    return
-                else:
-                    print(f"🎯 CURVA: Mudança de direção pequena ({angle_error:.1f}°), continuando...")
-                    self.navigation_state = "NAVIGATING_TO_DESTINATION"
             else:
                 self.navigation_state = "FINAL_APPROACH_DESTINATION"
+                self.current_target = self.original_destination
+            return
         
         self._move_towards_target()
 
     def _handle_return_to_base(self):
-        """🎯 MANIPULADOR ROBUSTO DE RETORNO: Evita loops de 360° com verificações de segurança"""
-        if self.current_target is None or self.current_position is None or not self.path:
-            print("DEBUG: _handle_return_to_base: Parâmetros inválidos, finalizando navegação")
+        if self.current_target is None or self.current_position is None:
             self._finalize_navigation()
             return
-
-        # 🎯 NOVA CORREÇÃO: Sistema de timeout para prevenir loops infinitos
-        current_time = time.time()
-        if not hasattr(self, 'return_start_time'):
-            self.return_start_time = current_time
-            print("🔄 RETORNO: Iniciando contador de tempo")
-        
-        # 🎯 VERIFICAÇÃO DE TIMEOUT: Se demorar mais de 30s, força parada para evitar loop
-        if current_time - self.return_start_time > 30.0:
-            print("⚠️ TIMEOUT RETORNO: Demorou mais de 30s, forçando parada para evitar loop")
-            self.motors.stop()
-            self._finalize_navigation()
-            return
-
-        # 🎯 CORREÇÃO CRÍTICA: Sistema anti-paralisia
-        if not hasattr(self, 'last_position_check'):
-            self.last_position_check = self.current_position
-            self.last_position_check_time = current_time
-            self.stuck_counter = 0
-        
-        # Verifica se está parado no mesmo lugar
-        position_change = self._calculate_distance(self.current_position, self.last_position_check)
-        time_since_last_check = current_time - self.last_position_check_time
-        
-        if time_since_last_check > 2.0:  # A cada 2 segundos
-            if position_change < 0.01:  # Se moveu menos de 1cm
-                self.stuck_counter += 1
-                print(f"⚠️ ALERTA PARALISIA: Robô parado há {self.stuck_counter * 2}s (movimento: {position_change:.3f}m)")
-                
-                if self.stuck_counter >= 3:  # Se ficou parado por 6+ segundos
-                    print("🚨 PARALISIA DETECTADA: Forçando movimento de emergência!")
-                    self._force_movement_emergency()
-                    self.stuck_counter = 0
-            else:
-                self.stuck_counter = 0
-                print(f"✅ MOVIMENTO DETECTADO: {position_change:.3f}m em {time_since_last_check:.1f}s")
-            
-            self.last_position_check = self.current_position
-            self.last_position_check_time = current_time
 
         distance_to_target = self._calculate_distance(self.current_position, self.current_target)
-        is_near_base = (self.path_index >= len(self.path) - 1)
         
-        print(f"DEBUG: RETORNO: Distância à base: {distance_to_target:.3f}m, Próximo da base: {is_near_base}")
-
-        # 🎯 VERIFICAÇÃO DE SEGURANÇA: Evita loops infinitos
-        if distance_to_target < 0.05:  # Se chegou muito perto (5cm)
-            print("DEBUG: RETORNO: Chegou muito perto da base, iniciando aproximação final")
-            self.navigation_state = "FINAL_APPROACH_BASE"
-            self.current_target = self.path[-1]
-            self.final_approach_start_time = None 
+        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Se habilitada, usa lógica simplificada
+        if self.use_direct_navigation:
+            # Na navegação direta, o destino de retorno é sempre self.base_position
+            # Não há waypoints intermediários, então vamos direto à base
+            
+            # 🎯 CORREÇÃO: Usa tolerância maior para navegação direta (mesma dos mapas não PGM)
+            arrival_tolerance = 0.15  # 15cm - mesma tolerância que funciona nos mapas não PGM
+            
+            if distance_to_target < arrival_tolerance:
+                print(f"🎯 BASE ALCANÇADA: Distância {distance_to_target:.3f}m < {arrival_tolerance}m")
+                self.navigation_state = "FINAL_APPROACH_BASE"
+                self.final_approach_start_time = None
+                return
+            
+            # Log periódico para debug (a cada 10 atualizações)
+            if not hasattr(self, '_return_log_counter'):
+                self._return_log_counter = 0
+            self._return_log_counter += 1
+            if self._return_log_counter % 10 == 0:
+                print(f"🎯 RETORNO_BASE: Distância até base: {distance_to_target:.3f}m (tolerância: {arrival_tolerance}m)")
+            
+            # Move direto à base (sem waypoints intermediários)
+            self._move_towards_target()
             return
 
+        # Navegação com pathfinding (código original)
+        if not self.path:
+            self._finalize_navigation()
+            return
+            
+        is_near_base = (self.path_index >= len(self.path) - 1)
+
         if is_near_base and distance_to_target < 0.15:
-            print("DEBUG: RETORNO: Iniciando aproximação final à base")
             self.navigation_state = "FINAL_APPROACH_BASE"
             self.current_target = self.path[-1]
             self.final_approach_start_time = None 
             return
 
         if distance_to_target < NAVIGATION_GOAL_TOLERANCE:
-            print(f"DEBUG: RETORNO: Chegou ao waypoint {self.path_index}, próximo: {self.path_index + 1}")
             self.path_index += 1
             if self.path_index < len(self.path):
                 self.current_target = self.path[self.path_index]
-                print(f"DEBUG: RETORNO: Novo alvo: {self.current_target}")
             else:
-                print("DEBUG: RETORNO: Todos os waypoints completados, iniciando ajuste de ângulo final")
                 self._start_final_angle_adjustment()
             return
         
-        # 🎯 MOVIMENTO DIRETO: Sem orientação prévia para evitar loops
-        print(f"DEBUG: RETORNO: Movendo direto à base (distância: {distance_to_target:.3f}m)")
         self._move_towards_target()
-
-    def _force_movement_emergency(self):
-        """🚨 MOVIMENTO DE EMERGÊNCIA: Força o robô a sair da paralisia"""
-        print("🚨 INICIANDO MOVIMENTO DE EMERGÊNCIA!")
-        
-        # Para qualquer movimento atual
-        self.motors.stop()
-        time.sleep(0.5)
-        
-        # Calcula direção para a base
-        dx = self.current_target[0] - self.current_position[0]
-        dy = self.current_target[1] - self.current_position[1]
-        target_angle = math.degrees(math.atan2(dy, dx))
-        angle_error = (target_angle - self.current_angle + 180) % 360 - 180
-        
-        print(f"🚨 EMERGÊNCIA: Ângulo para base: {target_angle:.1f}°, Erro: {angle_error:.1f}°")
-        
-        # Força movimento direto com velocidade baixa
-        if abs(angle_error) < 45:  # Se está mais ou menos apontado para a base
-            print("🚨 EMERGÊNCIA: Movendo direto para a base")
-            # Velocidade baixa para frente
-            emergency_speed = 15  # 15% da potência máxima
-            self.motors.set_speed(emergency_speed, emergency_speed)
-        else:
-            print("🚨 EMERGÊNCIA: Girando para alinhar com a base")
-            # Gira para alinhar
-            if angle_error > 0:
-                self.motors.set_speed(20, -20)  # Gira direita
-            else:
-                self.motors.set_speed(-20, 20)  # Gira esquerda
-        
-        # Reseta o timeout para dar tempo do movimento de emergência
-        self.return_start_time = time.time()
 
     def _transition_to_paused_at_destination(self):
         self.motors.stop()
@@ -1300,169 +969,9 @@ class RobotNavigator(QObject):
         self.is_paused_at_destination = True
 
     def _handle_pause_at_destination(self):
-        """🎯 MANIPULADOR DE PAUSA: Controla a transição para retorno à base"""
-        if self.arrival_time is None:
-            print("DEBUG: PAUSA: arrival_time não definido")
-            return
-            
-        time_elapsed = time.time() - self.arrival_time
-        print(f"DEBUG: PAUSA: Tempo decorrido: {time_elapsed:.1f}s / {self.arrival_pause_time}s")
-        
-        if time_elapsed > self.arrival_pause_time:
-            print("DEBUG: PAUSA: Tempo de pausa concluído, verificando se deve retornar")
+        if self.arrival_time is not None and (time.time() - self.arrival_time > self.arrival_pause_time):
             self.is_paused_at_destination = False
-            
             if self.should_return_to_base:
-                print("🎯 INICIANDO RETORNO AUTOMÁTICO: Chamando _return_to_base_direct()")
-                self._return_to_base_direct()  # 🎯 SUA SOLUÇÃO GENIAL: Retorno direto!
+                self._calculate_and_execute_return_angle()
             else:
-                print("DEBUG: PAUSA: Retorno automático desabilitado, finalizando navegação")
                 self._finalize_navigation()
-        else:
-            # Ainda em pausa
-            remaining_time = self.arrival_pause_time - time_elapsed
-            print(f"DEBUG: PAUSA: Aguardando mais {remaining_time:.1f}s antes do retorno")
-
-    def manual_turn_left(self):
-        """🔄 GIRO MANUAL ESQUERDA: Gira o robô 180° para a esquerda usando PID"""
-        print("🔄 GIRO MANUAL: Girando 180° para a esquerda")
-        
-        # Para qualquer movimento atual
-        self.motors.stop()
-        time.sleep(0.3)
-        
-        # 🎯 CORREÇÃO: Usa sistema PID para giro mais preciso
-        turn_angle = 180.0  # graus - ALTERADO DE 22° PARA 180°
-        
-        # 🎯 GIRO ESQUERDA com PID: Velocidades em TPS para controle preciso
-        # Para girar ESQUERDA: motor esquerdo negativo, direito positivo
-        left_tps = -25.0   # TPS negativo para giro esquerda (reduzido para maior precisão)
-        right_tps = 25.0   # TPS positivo para giro esquerda (reduzido para maior precisão)
-        
-        print(f"🔄 GIRO MANUAL PID: Aplicando TPS {left_tps}/{right_tps} para giro de {turn_angle}°")
-        
-        # Define direção precisa para odometria durante giro
-        self.motors.set_precise_rotation_direction(-1, 1)  # Esquerda: E(-), D(+)
-        
-        # Aplica velocidade via PID
-        self.motors.set_target_speed(left_tps, right_tps)
-        
-        # 🎯 CORREÇÃO: Tempo calculado para 180° (proporcionalmente maior)
-        # Tempo base de 0.7s para 22° = 0.7 * (180/22) = 5.7s aproximadamente
-        turn_time = 5.8  # Tempo ajustado para 180°
-        print(f"🔄 GIRO MANUAL PID: Tempo de giro: {turn_time}s")
-        
-        # Aguarda o tempo calculado
-        time.sleep(turn_time)
-        
-        # Para os motores e limpa direção precisa
-        self.motors.stop()
-        self.motors.clear_precise_rotation_direction()
-        
-        # Atualiza o ângulo do robô
-        self.current_angle = (self.current_angle - turn_angle) % 360
-        print(f"🔄 GIRO MANUAL PID: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
-
-    def manual_turn_right(self):
-        """🔄 GIRO MANUAL DIREITA: Gira o robô 180° para a direita usando PID"""
-        print("🔄 GIRO MANUAL: Girando 180° para a direita")
-        
-        # Para qualquer movimento atual
-        self.motors.stop()
-        time.sleep(0.3)
-        
-        # 🎯 CORREÇÃO: Usa sistema PID para giro mais preciso
-        turn_angle = 180.0  # graus - ALTERADO DE 22° PARA 180°
-        
-        # 🎯 GIRO DIREITA com PID: Velocidades em TPS para controle preciso
-        # Para girar DIREITA: motor esquerdo positivo, direito negativo
-        left_tps = 25.0    # TPS positivo para giro direita (reduzido para maior precisão)
-        right_tps = -25.0  # TPS negativo para giro direita (reduzido para maior precisão)
-        
-        print(f"🔄 GIRO MANUAL PID: Aplicando TPS {left_tps}/{right_tps} para giro de {turn_angle}°")
-        
-        # Define direção precisa para odometria durante giro
-        self.motors.set_precise_rotation_direction(1, -1)  # Direita: E(+), D(-)
-        
-        # Aplica velocidade via PID
-        self.motors.set_target_speed(left_tps, right_tps)
-        
-        # 🎯 CORREÇÃO: Tempo calculado para 180° (proporcionalmente maior)
-        # Tempo base de 0.7s para 22° = 0.7 * (180/22) = 5.7s aproximadamente
-        turn_time = 5.8  # Tempo ajustado para 180°
-        print(f"🔄 GIRO MANUAL PID: Tempo de giro: {turn_time}s")
-        
-        # Aguarda o tempo calculado
-        time.sleep(turn_time)
-        
-        # Para os motores e limpa direção precisa
-        self.motors.stop()
-        self.motors.clear_precise_rotation_direction()
-        
-        # Atualiza o ângulo do robô
-        self.current_angle = (self.current_angle + turn_angle) % 360
-        print(f"🔄 GIRO MANUAL PID: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
-
-    def manual_turn_custom(self, angle_degrees, direction='left'):
-        """🔄 GIRO MANUAL PERSONALIZADO: Gira o robô um ângulo específico"""
-        print(f"🔄 GIRO MANUAL: Girando {angle_degrees}° para {direction}")
-        
-        # Para qualquer movimento atual
-        self.motors.stop()
-        time.sleep(0.2)
-        
-        # 🎯 CORREÇÃO: Força aumentada para giro efetivo
-        # 🎯 VELOCIDADE AUMENTADA: 60% da potência máxima para giro efetivo
-        
-        # 🎯 CORREÇÃO CRÍTICA: Direção corrigida após correção da cinemática
-        # Aplica giro na direção especificada
-        if direction.lower() == 'left':
-            # Para girar ESQUERDA: motor esquerdo para frente, direito para trás
-            left_speed = 60   # Motor esquerdo para FRENTE
-            right_speed = -60 # Motor direito para TRÁS
-            self.current_angle = (self.current_angle - abs(angle_degrees)) % 360
-        else:  # right
-            # Para girar DIREITA: motor esquerdo para trás, direito para frente
-            left_speed = -60  # Motor esquerdo para TRÁS
-            right_speed = 60  # Motor direito para FRENTE
-            self.current_angle = (self.current_angle + abs(angle_degrees)) % 360
-        
-        print(f"🔄 GIRO MANUAL: Aplicando velocidade {left_speed}/{right_speed} para giro de {angle_degrees}°")
-        self.motors.set_speed(left_speed, right_speed)
-        
-        # 🎯 TEMPO CALCULADO: Baseado na velocidade real dos motores
-        # Para ângulos maiores, tempo proporcional
-        base_time = 0.8  # Tempo base para 22°
-        turn_time = (abs(angle_degrees) / 22.0) * base_time
-        print(f"🔄 GIRO MANUAL: Tempo de giro: {turn_time:.2f}s")
-        
-        # Aguarda o tempo calculado
-        time.sleep(turn_time)
-        
-        # Para os motores
-        self.motors.stop()
-        
-        print(f"🔄 GIRO MANUAL: Giro concluído. Novo ângulo: {self.current_angle:.1f}°")
-
-    def return_to_base_manual(self):
-        """🏠 RETORNO MANUAL: Navega para a base após giro manual com debug completo"""
-        print("🏠 RETORNO_MANUAL: Método chamado - iniciando verificação")
-        print(f"🏠 RETORNO_MANUAL: Estado atual: {self.navigation_state}")
-        print(f"🏠 RETORNO_MANUAL: Posição atual: {self.current_position}")
-        print(f"🏠 RETORNO_MANUAL: Ângulo atual: {self.current_angle:.1f}°")
-        
-        # Verifica se o robô está em um estado válido para retorno
-        if self.navigation_state in ["IDLE", "PAUSED_AT_DESTINATION"]:
-            print("✅ RETORNO_MANUAL: Estado válido, iniciando retorno à base")
-            # Inicia o retorno à base
-            self._return_to_base_direct()
-        else:
-            print("⚠️ RETORNO_MANUAL: Robô não está em estado válido para retorno")
-            print(f"   Estado atual: {self.navigation_state}")
-            print("🔄 RETORNO_MANUAL: Forçando reset para estado válido")
-            # Força reset para estado válido
-            self.reset_to_initial_state()
-            print(f"🔄 RETORNO_MANUAL: Estado após reset: {self.navigation_state}")
-            self._return_to_base_direct()
-        
-        print(f"🏠 RETORNO_MANUAL: Método concluído - Estado final: {self.navigation_state}")

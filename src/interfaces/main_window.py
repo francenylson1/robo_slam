@@ -467,6 +467,9 @@ class MainWindow(QMainWindow):
         # Inicializa o navegador
         self.navigator = RobotNavigator()
         
+        # Callback para atualizar PathFinder quando mapa PGM é carregado
+        self._path_finder_initialized = False
+        
         # Conecta o sinal de atualização de posição do navegador ao slot da UI
         self.navigator.position_updated.connect(self._update_robot_position_on_map)
 
@@ -482,16 +485,36 @@ class MainWindow(QMainWindow):
         # Não carrega mapas antigos do banco de dados
         self._prompt_load_pgm_on_startup()
         
-        # Garante que o robô está na posição inicial correta após carregar o mapa
-        # Isso é importante porque o mapa PGM pode ter sido carregado antes do robô ser inicializado
+        # 🎯 CORREÇÃO: Se um mapa PGM foi carregado, NÃO força ROBOT_INITIAL_POSITION
+        # A posição já foi definida por _set_robot_initial_position_from_pgm()
         print(f"🔍 DEBUG INICIAL: Posição inicial do robô configurada: {ROBOT_INITIAL_POSITION}")
         print(f"🔍 DEBUG INICIAL: Posição do robô no widget: {self.map_widget.robot_position}")
-        if self.map_widget.robot_position != ROBOT_INITIAL_POSITION:
-            print(f"⚠️  AVISO: Posição do robô no widget ({self.map_widget.robot_position}) difere da config ({ROBOT_INITIAL_POSITION})")
-            print(f"🔧 CORREÇÃO: Atualizando posição do robô no widget para {ROBOT_INITIAL_POSITION}")
-            self.map_widget.robot_position = ROBOT_INITIAL_POSITION
-            self.map_widget.base_position = ROBOT_INITIAL_POSITION
-            self.map_widget.update()
+        print(f"🔍 DEBUG INICIAL: Mapa PGM carregado? {self.map_widget.map_image is not None}")
+        
+        # 🎯 UNIFICAÇÃO: Garante que o PathFinder e o robô estejam configurados corretamente
+        if self.map_widget.map_image is None:
+            # Mapa NÃO PGM: Usa configuração padrão do config.py
+            print(f"🔧 Mapa NÃO PGM detectado - usando configuração padrão")
+            if self.map_widget.robot_position != ROBOT_INITIAL_POSITION:
+                print(f"⚠️  AVISO: Posição do robô no widget ({self.map_widget.robot_position}) difere da config ({ROBOT_INITIAL_POSITION})")
+                print(f"🔧 CORREÇÃO: Atualizando posição do robô no widget para {ROBOT_INITIAL_POSITION}")
+                self.map_widget.robot_position = ROBOT_INITIAL_POSITION
+                self.map_widget.base_position = ROBOT_INITIAL_POSITION
+                self.navigator.current_position = ROBOT_INITIAL_POSITION
+                self.navigator.base_position = ROBOT_INITIAL_POSITION
+                self.map_widget.update()
+            
+            # Garante que o PathFinder está usando a configuração padrão
+            from src.core.config import MAP_WIDTH, MAP_HEIGHT, MAP_GRID_SIZE
+            print(f"🔧 PathFinder configurado para mapa NÃO PGM:")
+            print(f"   Dimensões: {int(MAP_WIDTH / MAP_GRID_SIZE)}x{int(MAP_HEIGHT / MAP_GRID_SIZE)} células")
+            print(f"   Tamanho: {MAP_WIDTH}m x {MAP_HEIGHT}m")
+            print(f"   Grid size: {MAP_GRID_SIZE}m/célula")
+            print(f"   Origem: (0.0, 0.0)")
+        else:
+            # Mapa PGM: Já foi configurado por _update_path_finder_for_pgm_map()
+            print(f"✅ Mapa PGM carregado - usando posição calculada do PGM: {self.map_widget.robot_position}")
+            print(f"✅ PathFinder já atualizado para mapa PGM")
         
         # Timer para o loop de atualização principal
         self.update_timer = QTimer(self)
@@ -844,12 +867,23 @@ class MainWindow(QMainWindow):
         )
         
         if reply == QMessageBox.Yes:
-            success = self.map_manager.delete_forbidden_area(area_id)
+            # Remove do widget local primeiro (mesma lógica dos POIs)
+            widget_removed = self.map_widget.remove_forbidden_area(area_id)
             
-            if success:
+            # Remove do banco de dados
+            db_removed = self.map_manager.delete_forbidden_area(area_id)
+            
+            if widget_removed and db_removed:
+                # Atualiza a interface
                 self._reload_forbidden_areas()
                 self._mark_unsaved_changes()
                 QMessageBox.information(self, "Sucesso", f"Área '{area_name}' excluída com sucesso!")
+            elif widget_removed:
+                # Se removeu do widget mas não do banco, ainda considera sucesso parcial
+                # e recarrega do banco para sincronizar
+                self._reload_forbidden_areas()
+                self._mark_unsaved_changes()
+                QMessageBox.warning(self, "Aviso", f"Área '{area_name}' removida da interface, mas houve problema ao remover do banco de dados.")
             else:
                 QMessageBox.warning(self, "Erro", f"Erro ao excluir a área '{area_name}'!")
 
@@ -875,13 +909,24 @@ class MainWindow(QMainWindow):
         pgm_maps = []
         pgm_map_paths = {}  # Dicionário para mapear nome -> caminho completo
         
+        # Procura em src/c1_scanner/C1_mapas_processados/*/ (mapas processados do C1)
+        c1_processed_dir = Path("src/c1_scanner/C1_mapas_processados")
+        if c1_processed_dir.exists():
+            for map_subdir in c1_processed_dir.iterdir():
+                if map_subdir.is_dir():
+                    for pgm_file in map_subdir.glob("*.pgm"):
+                        map_name = f"C1/{map_subdir.name}/{pgm_file.stem}"  # Prefixo C1 para identificação
+                        pgm_maps.append(map_name)
+                        pgm_map_paths[map_name] = pgm_file
+        
         # Procura em mapas/otimizados (padrão)
         pgm_dir_default = Path("mapas/otimizados")
         if pgm_dir_default.exists():
             for pgm_file in pgm_dir_default.glob("*.pgm"):
                 map_name = pgm_file.stem
-                pgm_maps.append(map_name)
-                pgm_map_paths[map_name] = pgm_file
+                if map_name not in pgm_map_paths:  # Evita duplicatas
+                    pgm_maps.append(map_name)
+                    pgm_map_paths[map_name] = pgm_file
         
         # Procura em data/pipeline_runs/*/map2d (gerados pelo pipeline)
         pipeline_runs_dir = Path("data/pipeline_runs")
@@ -922,13 +967,59 @@ class MainWindow(QMainWindow):
                 pgm_path = pgm_map_paths[map_name]
                 yaml_path = pgm_path.with_suffix('.yaml')
                 
+                # Autosave do mapa anterior antes de carregar novo
+                if self.has_unsaved_changes and self.autosave_enabled:
+                    self._perform_autosave(show_message=False)
+                
                 # Limpa mapa anterior completamente antes de carregar novo
                 self.map_widget.clear_pgm_map()
                 self.map_widget.points_of_interest = {}
                 self.map_widget.forbidden_areas = []
                 
                 if self.map_widget.load_pgm_map(str(pgm_path), str(yaml_path) if yaml_path.exists() else None):
-                    self.status_label.setText(f"Mapa PGM carregado: {pgm_path.stem}")
+                    # Define o nome do mapa no widget para uso no autosave
+                    map_name = pgm_path.stem
+                    self.map_widget.map_name = map_name
+                    
+                    # Atualiza PathFinder com as dimensões e origem do mapa PGM
+                    self._update_path_finder_for_pgm_map()
+                    
+                    # Tenta carregar POIs e áreas proibidas do banco de dados
+                    try:
+                        # Carrega dados do banco usando o nome do mapa (sem ativar)
+                        points_of_interest, forbidden_areas, map_id = self.map_manager.get_map_data_by_name(map_name)
+                        
+                        if points_of_interest or forbidden_areas:
+                            # Se encontrou dados salvos, carrega no widget
+                            map_data = {
+                                'points_of_interest': points_of_interest,
+                                'forbidden_areas': forbidden_areas
+                            }
+                            self.map_widget.load_map(map_data)
+                            self._update_points_list()
+                            self._update_destination_combo()
+                            self._reload_forbidden_areas()
+                            print(f"✅ Carregados do banco: {len(points_of_interest)} POIs e {len(forbidden_areas)} áreas proibidas")
+                        else:
+                            print(f"ℹ️  Nenhum dado salvo encontrado para o mapa '{map_name}'")
+                        
+                        # Define current_map com o ID do banco se encontrado
+                        if map_id:
+                            self.current_map = {'nome': map_name, 'id': map_id}
+                        else:
+                            self.current_map = {'nome': map_name, 'id': None}
+                    except Exception as e:
+                        print(f"⚠️  Erro ao carregar dados do banco: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        # Continua mesmo se houver erro ao carregar do banco
+                        self.current_map = {'nome': map_name, 'id': None}
+                    
+                    self.status_label.setText(f"Mapa PGM carregado: {map_name}")
+                    # Reseta flag de alterações não salvas ao carregar novo mapa
+                    self.has_unsaved_changes = False
+                    # Define posição inicial do robô baseada no mapa PGM (X=62, Y=213 em pixels)
+                    self._set_robot_initial_position_from_pgm(62, 213)
                     # Não mostra mensagem de sucesso para não interromper o fluxo
                     # Apenas atualiza o status
                 else:
@@ -948,6 +1039,10 @@ class MainWindow(QMainWindow):
         )
         
         if file_path:
+            # Autosave do mapa anterior antes de carregar novo
+            if self.has_unsaved_changes and self.autosave_enabled:
+                self._perform_autosave(show_message=False)
+            
             # Limpa mapa anterior completamente antes de carregar novo
             self.map_widget.clear_pgm_map()
             self.map_widget.points_of_interest = {}
@@ -959,7 +1054,48 @@ class MainWindow(QMainWindow):
             
             # Carrega no MapWidget
             if self.map_widget.load_pgm_map(str(pgm_file), str(yaml_file) if yaml_file.exists() else None):
-                self.status_label.setText(f"Mapa PGM carregado: {pgm_file.stem}")
+                # Define o nome do mapa no widget para uso no autosave
+                map_name = pgm_file.stem
+                self.map_widget.map_name = map_name
+                
+                # 🎯 CRÍTICO: Atualiza o PathFinder ANTES de carregar POIs e áreas proibidas
+                # Isso garante que o PathFinder está configurado corretamente para o mapa PGM
+                self._update_path_finder_for_pgm_map()
+                
+                # Tenta carregar POIs e áreas proibidas do banco de dados
+                try:
+                    # Carrega dados do banco usando o nome do mapa
+                    points_of_interest, forbidden_areas, loaded_map_name, map_id = self.map_manager.load_map_by_name(map_name)
+                    
+                    if points_of_interest or forbidden_areas:
+                        # Se encontrou dados salvos, carrega no widget
+                        map_data = {
+                            'points_of_interest': points_of_interest,
+                            'forbidden_areas': forbidden_areas
+                        }
+                        self.map_widget.load_map(map_data)
+                        self._update_points_list()
+                        self._update_destination_combo()
+                        self._reload_forbidden_areas()
+                        print(f"✅ Carregados do banco: {len(points_of_interest)} POIs e {len(forbidden_areas)} áreas proibidas")
+                    else:
+                        print(f"ℹ️  Nenhum dado salvo encontrado para o mapa '{map_name}'")
+                    
+                    # Define current_map com o ID do banco se encontrado
+                    if map_id:
+                        self.current_map = {'nome': map_name, 'id': map_id}
+                    else:
+                        self.current_map = {'nome': map_name, 'id': None}
+                except Exception as e:
+                    print(f"⚠️  Erro ao carregar dados do banco: {e}")
+                    # Continua mesmo se houver erro ao carregar do banco
+                    self.current_map = {'nome': map_name, 'id': None}
+                
+                self.status_label.setText(f"Mapa PGM carregado: {map_name}")
+                # Reseta flag de alterações não salvas ao carregar novo mapa
+                self.has_unsaved_changes = False
+                # Define posição inicial do robô baseada no mapa PGM (X=62, Y=213 em pixels)
+                self._set_robot_initial_position_from_pgm(62, 213)
                 # Não mostra mensagem de sucesso para não interromper o fluxo
             else:
                 QMessageBox.warning(self, "Erro", "Não foi possível carregar o mapa PGM.")
@@ -1184,8 +1320,26 @@ class MainWindow(QMainWindow):
         if self.navigation_active:
             QMessageBox.information(self, "Navegação", "O robô já está navegando.")
             return
-            
-        self.navigator.reset_to_initial_state()
+        
+        # Sincroniza posição atual do widget com o navegador antes de iniciar
+        # Isso garante que a posição do robô no navegador está correta
+        widget_pos = self.map_widget.robot_position
+        widget_angle = self.map_widget.robot_angle
+        widget_base = self.map_widget.base_position
+        
+        print(f"🚀 NAVEGAÇÃO: Sincronizando posição antes de iniciar...")
+        print(f"🚀 NAVEGAÇÃO: Widget - Posição: {widget_pos}, Ângulo: {widget_angle}°, Base: {widget_base}")
+        print(f"🚀 NAVEGAÇÃO: Navegador ANTES - Posição: {self.navigator.current_position}, Ângulo: {self.navigator.current_angle}°, Base: {self.navigator.base_position}")
+        
+        self.navigator.current_position = widget_pos
+        self.navigator.current_angle = widget_angle
+        self.navigator.base_position = widget_base
+        
+        print(f"🚀 NAVEGAÇÃO: Navegador APÓS - Posição: {self.navigator.current_position}, Ângulo: {self.navigator.current_angle}°, Base: {self.navigator.base_position}")
+        
+        # Preserva a posição atual ao fazer reset (importante para mapas PGM)
+        # 🎯 ADAPTAÇÃO: A versão estável suporta preserve_position
+        self.navigator.reset_to_initial_state(preserve_position=True)
         self.navigator.is_adjusting_final_angle = False
         self.navigator.is_returning_to_base = False
         self.navigator.navigation_state = "IDLE"
@@ -1205,10 +1359,28 @@ class MainWindow(QMainWindow):
         if not destination:
             QMessageBox.warning(self, "Erro", f"Destino '{destination_name}' não encontrado.")
             return
+        
+        # Extrai coordenadas do destino (pode ser tupla de 2 ou 3 elementos)
+        if isinstance(destination, tuple):
+            if len(destination) >= 2:
+                dest_x, dest_y = destination[0], destination[1]
+                destination = (dest_x, dest_y)
+        
+        print(f"🚀 NAVEGAÇÃO: Destino selecionado: {destination}")
+        print(f"🚀 NAVEGAÇÃO: Posição atual: {self.navigator.current_position}")
+        print(f"🚀 NAVEGAÇÃO: Base position: {self.navigator.base_position}")
+        print(f"🚀 NAVEGAÇÃO: Mapa PGM carregado? {self.map_widget.map_image is not None}")
+        if self.map_widget.map_image:
+            print(f"🚀 NAVEGAÇÃO: Origem do mapa PGM: {self.map_widget.map_origin}")
+            print(f"🚀 NAVEGAÇÃO: Resolução do mapa PGM: {self.map_widget.map_resolution}m/pixel")
+        print(f"🚀 NAVEGAÇÃO: PathFinder - Origem: {self.navigator.path_finder.map_origin}, Grid: {self.navigator.path_finder.grid_size}m")
             
         try:
             # 🚀 NOVA FASE: Navegação automática completa (ida + volta)
+            print(f"🚀 CHAMANDO navigate_to_and_return com destino: {destination}")
+            print(f"🚀 Estado ANTES: navigation_active={self.navigator.navigation_active}, state={self.navigator.navigation_state}")
             self.navigator.navigate_to_and_return(destination)
+            print(f"🚀 Estado DEPOIS: navigation_active={self.navigator.navigation_active}, state={self.navigator.navigation_state}")
             self.navigation_active = True
             
             if hasattr(self.navigator, 'path') and self.navigator.path:
@@ -1242,14 +1414,25 @@ class MainWindow(QMainWindow):
         
     def _perform_autosave(self, show_message=False):
         """Executa o autosave automático."""
-        if not self.autosave_enabled or not self.has_unsaved_changes:
+        # Permite salvar mesmo se autosave estiver desabilitado (útil ao fechar)
+        if not self.has_unsaved_changes:
+            print("💾 Autosave: Nenhuma alteração para salvar")
             return
             
         try:
+            # Tenta usar o nome do mapa atual ou do mapa PGM carregado
             if self.current_map:
                 map_name = self.current_map['nome']
+            elif self.map_widget.map_name:
+                map_name = self.map_widget.map_name
             else:
+                # Usa o nome do arquivo PGM se disponível, ou gera um nome automático
                 map_name = f"Mapa_Auto_{int(time.time())}"
+                print(f"💾 Autosave: Usando nome automático: {map_name}")
+            
+            print(f"💾 Autosave: Salvando mapa '{map_name}'...")
+            print(f"   POIs: {len(self.map_widget.points_of_interest)}")
+            print(f"   Áreas proibidas: {len(self.map_widget.forbidden_areas)}")
                 
             self.map_manager.save_map(
                 map_name,
@@ -1264,10 +1447,15 @@ class MainWindow(QMainWindow):
             if "(*)" in current_status:
                 self.status_label.setText(current_status.replace(" (*)", ""))
             
+            print(f"✅ Autosave: Mapa '{map_name}' salvo com sucesso!")
+            
             if show_message:
                 QMessageBox.information(self, "Autosave", f"Mapa '{map_name}' salvo automaticamente!")
                 
         except Exception as e:
+            print(f"❌ Erro no Autosave: {str(e)}")
+            import traceback
+            traceback.print_exc()
             if show_message:
                 QMessageBox.warning(self, "Erro no Autosave", f"Erro ao salvar automaticamente: {str(e)}")
                 
@@ -1304,13 +1492,19 @@ class MainWindow(QMainWindow):
             
     def closeEvent(self, event):
         """Limpa recursos ao fechar a janela."""
-        if not self._check_unsaved_changes():
-            event.ignore()
-            return
-            
-        if self.autosave_enabled and self.has_unsaved_changes:
-            self._perform_autosave(show_message=False)
-            
+        # Primeiro, tenta salvar automaticamente se houver alterações
+        if self.has_unsaved_changes:
+            if self.autosave_enabled:
+                # Autosave habilitado: salva automaticamente
+                print("💾 Autosave: Salvando alterações antes de fechar...")
+                self._perform_autosave(show_message=False)
+            else:
+                # Autosave desabilitado: pergunta ao usuário
+                if not self._check_unsaved_changes():
+                    event.ignore()
+                    return
+        
+        # Limpa recursos
         self.navigator.motors.cleanup()
         self.map_manager.close()
         event.accept()
@@ -1326,6 +1520,145 @@ class MainWindow(QMainWindow):
     def _on_area_clicked(self, area_id: int):
         """Callback para quando uma área proibida é clicada."""
         pass
+    
+    def _update_path_finder_for_pgm_map(self):
+        """
+        Atualiza o PathFinder com as dimensões e origem do mapa PGM carregado.
+        UNIFICAÇÃO: Garante que o PathFinder funcione igual para mapas PGM e não PGM.
+        """
+        if self.map_widget.map_image is None:
+            print("⚠️  AVISO: Mapa PGM não carregado, PathFinder não atualizado")
+            print("🔧 PathFinder usando configuração padrão do config.py")
+            return
+        
+        # Calcula dimensões do mapa em metros
+        map_width_m = self.map_widget.map_image.width() * self.map_widget.map_resolution
+        map_height_m = self.map_widget.map_image.height() * self.map_widget.map_resolution
+        
+        # 🎯 UNIFICAÇÃO: Usa o mesmo grid_size do config.py para consistência
+        # Isso garante que a navegação funcione igual para mapas PGM e não PGM
+        from src.core.config import MAP_GRID_SIZE
+        grid_size = MAP_GRID_SIZE  # Usa 0.1m (10cm) como padrão, não a resolução do PGM
+        
+        # Calcula dimensões em células usando o grid_size unificado
+        width_cells = int(map_width_m / grid_size)
+        height_cells = int(map_height_m / grid_size)
+        
+        # 🎯 CRÍTICO: Para mapas PGM, a origem pode ser diferente de (0,0)
+        # Mas vamos garantir que as coordenadas sejam consistentes
+        map_origin = self.map_widget.map_origin
+        
+        # Atualiza o PathFinder
+        self.navigator.path_finder.update_map_config(
+            width=width_cells,
+            height=height_cells,
+            grid_size=grid_size,
+            map_origin=map_origin
+        )
+        
+        print(f"🔧 PathFinder atualizado para mapa PGM (UNIFICADO):")
+        print(f"   Dimensões: {width_cells}x{height_cells} células")
+        print(f"   Tamanho físico: {map_width_m:.2f}m x {map_height_m:.2f}m")
+        print(f"   Grid size: {grid_size}m/célula (UNIFICADO - mesmo dos mapas não PGM)")
+        print(f"   Origem do mapa: {map_origin}")
+        print(f"   Resolução PGM: {self.map_widget.map_resolution}m/pixel (apenas para visualização)")
+    
+    def _set_robot_initial_position_from_pgm(self, pgm_x: int, pgm_y: int):
+        """
+        Define a posição inicial do robô baseada em coordenadas de pixels do mapa PGM.
+        
+        Args:
+            pgm_x: Coordenada X em pixels do mapa PGM
+            pgm_y: Coordenada Y em pixels do mapa PGM
+        """
+        if self.map_widget.map_image is None:
+            print("⚠️  AVISO: Mapa PGM não carregado, usando posição padrão")
+            return
+        
+        # Converte pixels do PGM para coordenadas do mundo
+        # 🎯 CORREÇÃO: O mapa PGM já foi processado pelo main_scanner.py
+        # e está na orientação correta (Y crescendo para cima, como nosso sistema)
+        # NÃO precisamos inverter Y!
+        world_x = self.map_widget.map_origin[0] + (pgm_x * self.map_widget.map_resolution)
+        world_y = self.map_widget.map_origin[1] + (pgm_y * self.map_widget.map_resolution)
+        
+        print(f"🔧 Definindo posição inicial do robô:")
+        print(f"   PGM pixels: ({pgm_x}, {pgm_y})")
+        print(f"   Mundo: ({world_x:.2f}, {world_y:.2f})m")
+        print(f"   ✅ Sem inversão de Y (mapa já processado pelo main_scanner.py)")
+        print(f"   Resolução: {self.map_widget.map_resolution}m/pixel")
+        print(f"   Origem do mapa: {self.map_widget.map_origin}")
+        
+        # 🎯 VERIFICAÇÃO CRÍTICA: Testa a conversão reversa (mundo -> tela)
+        # Isso garante que a posição visual corresponde à posição usada na navegação
+        screen_x, screen_y = self.map_widget._world_to_screen_with_origin(world_x, world_y)
+        print(f"🔧 VERIFICAÇÃO REVERSA (mundo -> tela):")
+        print(f"   Mundo: ({world_x:.2f}, {world_y:.2f})m")
+        print(f"   Tela: ({screen_x}, {screen_y})px")
+        print(f"   Tamanho do widget: {self.map_widget.width()}x{self.map_widget.height()}px")
+        
+        # 🎯 VERIFICAÇÃO: Compara com a posição esperada visualmente
+        # Se o usuário vê o robô em uma posição diferente, isso indica problema de conversão
+        print(f"🔧 COMPARAÇÃO COM MAPAS NÃO-PGM:")
+        from src.core.config import ROBOT_INITIAL_POSITION
+        print(f"   Posição base em mapas não-PGM: {ROBOT_INITIAL_POSITION}m")
+        print(f"   Posição base em mapas PGM: ({world_x:.2f}, {world_y:.2f})m")
+        print(f"   Diferença: ({world_x - ROBOT_INITIAL_POSITION[0]:.2f}, {world_y - ROBOT_INITIAL_POSITION[1]:.2f})m")
+        
+        # 🎯 VERIFICAÇÃO: Garante que a posição está dentro dos limites do mapa
+        map_width_m = self.map_widget.map_image.width() * self.map_widget.map_resolution
+        map_height_m = self.map_widget.map_image.height() * self.map_widget.map_resolution
+        map_min_x = self.map_widget.map_origin[0]
+        map_max_x = map_min_x + map_width_m
+        map_min_y = self.map_widget.map_origin[1]
+        map_max_y = map_min_y + map_height_m
+        
+        # Verifica se a posição está dentro do mapa
+        if world_x < map_min_x or world_x > map_max_x or world_y < map_min_y or world_y > map_max_y:
+            print(f"⚠️  AVISO: Posição inicial ({world_x:.2f}, {world_y:.2f})m está FORA do mapa!")
+            print(f"⚠️  Limites do mapa: X=[{map_min_x:.2f}, {map_max_x:.2f}]m, Y=[{map_min_y:.2f}, {map_max_y:.2f}]m")
+            print(f"⚠️  Ajustando para o centro do mapa...")
+            # Ajusta para o centro do mapa
+            world_x = map_min_x + (map_width_m / 2.0)
+            world_y = map_min_y + (map_height_m / 2.0)
+            print(f"✅ Posição ajustada para: ({world_x:.2f}, {world_y:.2f})m")
+        
+        # Atualiza posição do robô em TODOS os lugares
+        print(f"🔧 ANTES da atualização:")
+        print(f"   map_widget.robot_position: {self.map_widget.robot_position}")
+        print(f"   navigator.current_position: {self.navigator.current_position}")
+        print(f"   navigator.base_position: {self.navigator.base_position}")
+        
+        self.map_widget.robot_position = (world_x, world_y)
+        self.map_widget.base_position = (world_x, world_y)
+        self.navigator.current_position = (world_x, world_y)
+        self.navigator.base_position = (world_x, world_y)
+        
+        # 🎯 CRÍTICO: Define também o ângulo inicial do robô
+        # UNIFICAÇÃO: Usa o mesmo ângulo inicial que funciona para mapas não PGM
+        from src.core.config import ROBOT_INITIAL_ANGLE
+        # Normaliza o ângulo para [-180, 180] para compatibilidade com a odometria
+        initial_angle_normalized = ROBOT_INITIAL_ANGLE
+        if initial_angle_normalized > 180:
+            initial_angle_normalized -= 360
+        
+        self.map_widget.robot_angle = initial_angle_normalized
+        self.navigator.current_angle = initial_angle_normalized
+        
+        print(f"🔧 Ângulo inicial (UNIFICADO): {ROBOT_INITIAL_ANGLE}° -> {initial_angle_normalized}° (normalizado para [-180, 180])")
+        print(f"🔧 Posição inicial (UNIFICADA): ({world_x:.2f}, {world_y:.2f})m")
+        print(f"🔧 Origem do mapa: {self.map_widget.map_origin}")
+        
+        print(f"🔧 DEPOIS da atualização:")
+        print(f"   map_widget.robot_position: {self.map_widget.robot_position}")
+        print(f"   navigator.current_position: {self.navigator.current_position}")
+        print(f"   navigator.base_position: {self.navigator.base_position}")
+        
+        self.map_widget.update()
+        
+        print(f"✅ Posição inicial do robô definida: ({world_x:.2f}, {world_y:.2f})m")
+        print(f"✅ Ângulo inicial do robô definido: {ROBOT_INITIAL_ANGLE}°")
+        print(f"✅ Verificação: Posição dentro do mapa? X: {map_min_x <= world_x <= map_max_x}, Y: {map_min_y <= world_y <= map_max_y}")
 
     def _on_speed_profile_changed(self):
         """Chamado quando o perfil de velocidade é alterado."""
@@ -1733,7 +2066,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
             return
         
-        base_position = ROBOT_INITIAL_POSITION
+        # 🎯 CORREÇÃO: Usa base_position do widget/navegador (pode ser diferente para mapas PGM)
+        base_position = self.map_widget.base_position if hasattr(self.map_widget, 'base_position') and self.map_widget.base_position else ROBOT_INITIAL_POSITION
+        if hasattr(self.navigator, 'base_position') and self.navigator.base_position:
+            base_position = self.navigator.base_position
+        
         current_pos = self.navigator.current_position
         current_angle = self.navigator.current_angle
         
@@ -1776,22 +2113,35 @@ class MainWindow(QMainWindow):
             print(f"🏠 RETORNO_BASE: Usuário confirmou - iniciando processo")
             
             try:
-                # 🔄 RESET do estado para garantir navegação limpa
+                # 🔄 RESET do estado para garantir navegação limpa (preserva posição para mapas PGM)
                 print("🏠 RETORNO_BASE: Resetando estado do navegador")
-                self.navigator.reset_to_initial_state()
+                self.navigator.reset_to_initial_state(preserve_position=True)
                 
-                # 🔧 PRESERVA posição e ângulo atuais
-                print("🏠 RETORNO_BASE: Preservando posição e ângulo atuais")
+                # 🔧 GARANTE que posição e ângulo atuais estão corretos
+                print("🏠 RETORNO_BASE: Sincronizando posição e ângulo atuais")
                 self.navigator.current_position = current_pos
                 self.navigator.current_angle = current_angle
+                self.navigator.base_position = base_position
                 
                 print(f"🏠 RETORNO_BASE: Estado após reset - Posição: {self.navigator.current_position}, Ângulo: {self.navigator.current_angle:.1f}°")
                 
-                # 🚀 INICIA retorno manual que chama _return_to_base_direct
-                print("🏠 RETORNO_BASE: Chamando return_to_base_manual()")
-                self.navigator.return_to_base_manual()
+                # 🚀 INICIA retorno usando método da versão estável
+                print("🏠 RETORNO_BASE: Calculando caminho de retorno...")
+                path_to_base = self.navigator.path_finder.find_path(current_pos, base_position)
+                if path_to_base and len(path_to_base) >= 2:
+                    self.navigator.path = path_to_base
+                    self.navigator.path_index = 0
+                    self.navigator.current_target = self.navigator.path[0]
+                    self.navigator.is_returning_to_base = True
+                    self.navigator.navigation_state = "ORIENTING_TO_TARGET"
+                    self.navigator.navigation_active = True
+                    print(f"🏠 RETORNO_BASE: Caminho calculado com {len(path_to_base)} pontos")
+                else:
+                    print("⚠️ RETORNO_BASE: Erro ao calcular caminho de retorno")
+                    QMessageBox.warning(self, "Erro", "Não foi possível calcular o caminho de retorno à base.")
+                    return
                 
-                print(f"🏠 RETORNO_BASE: return_to_base_manual() executado - Estado: {self.navigator.navigation_state}")
+                print(f"🏠 RETORNO_BASE: Navegação de retorno iniciada - Estado: {self.navigator.navigation_state}")
                 
                 # 🔄 ATIVA navegação e atualiza interface
                 print("🏠 RETORNO_BASE: Ativando navegação na interface")

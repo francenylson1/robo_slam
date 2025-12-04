@@ -290,9 +290,9 @@ class MapWidget(QWidget):
         pgm_x = rel_x / scale_factor_x if scale_factor_x > 0 else 0
         pgm_y = rel_y / scale_factor_y if scale_factor_y > 0 else 0
         
-        # Inverte Y (PGM tem Y crescendo para baixo)
-        img_height = self.map_image.height()
-        pgm_y = img_height - pgm_y
+        # 🎯 CORREÇÃO: O mapa PGM já foi processado pelo main_scanner.py
+        # e está na orientação correta (Y crescendo para cima, como nosso sistema)
+        # NÃO precisamos inverter Y!
         
         # Converte pixels do PGM para metros do mundo
         world_x = self.map_origin[0] + (pgm_x * self.map_resolution)
@@ -794,14 +794,12 @@ class MapWidget(QWidget):
         offset_x = world_x - self.map_origin[0]
         offset_y = world_y - self.map_origin[1]
         
-        # Converte para pixels
+        # Converte para pixels do PGM
+        # 🎯 CORREÇÃO: O mapa PGM já foi processado pelo main_scanner.py
+        # e está na orientação correta (Y crescendo para cima, como nosso sistema)
+        # NÃO precisamos inverter Y!
         screen_x = int(offset_x / self.map_resolution)
         screen_y = int(offset_y / self.map_resolution)
-        
-        # O Y do PGM cresce para baixo, mas nosso sistema tem Y crescendo para cima
-        # Então invertemos Y relativo à altura do mapa
-        img_height = self.map_image.height()
-        screen_y = img_height - screen_y
         
         # Ajusta para a posição do mapa na tela
         widget_width = self.width()
@@ -884,14 +882,10 @@ class MapWidget(QWidget):
         center_pixel = QColor(scaled_image.pixel(center_x, center_y))
         print(f"   Pixel centro ({center_x}, {center_y}): RGB({center_pixel.red()}, {center_pixel.green()}, {center_pixel.blue()})")
         
-        # PGM tem Y crescendo para baixo, mas precisamos inverter verticalmente
-        # Cria uma cópia invertida da imagem usando mirror vertical
-        flipped_image = scaled_image.mirrored(horizontal=False, vertical=True)
-        
-        # Verifica se a imagem tem tamanho válido
-        if flipped_image.width() <= 0 or flipped_image.height() <= 0:
-            print(f"⚠️  DEBUG PGM: Imagem invertida tem tamanho inválido: {flipped_image.width()}x{flipped_image.height()}")
-            flipped_image = scaled_image  # Usa imagem original como fallback
+        # 🎯 CORREÇÃO: O mapa PGM já foi processado pelo main_scanner.py
+        # (rotação + espelhamento horizontal), então está na orientação correta
+        # NÃO precisamos inverter verticalmente novamente!
+        # Usa a imagem escalada diretamente, sem inversão
         
         # Desenha a imagem
         painter.save()
@@ -899,22 +893,22 @@ class MapWidget(QWidget):
         painter.fillRect(0, 0, widget_width, widget_height, QColor(255, 255, 255))
         
         # Verifica se a imagem tem conteúdo válido antes de desenhar
-        if flipped_image.isNull():
-            print("⚠️  DEBUG PGM: Imagem invertida é NULL, não desenhando")
+        if scaled_image.isNull():
+            print("⚠️  DEBUG PGM: Imagem escalada é NULL, não desenhando")
             painter.restore()
             return
         
-        # Desenha a imagem invertida verticalmente (PGM tem Y crescendo para baixo)
-        # Usa a imagem invertida para corrigir a orientação
-        # IMPORTANTE: Em PyQt5, CompositionMode usa underscore, não ponto
+        # Desenha a imagem diretamente (sem inversão vertical)
+        # O mapa já está na orientação correta após processamento pelo main_scanner.py
         painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
-        painter.drawImage(int(x_pos), int(y_pos), flipped_image)
+        painter.drawImage(int(x_pos), int(y_pos), scaled_image)
         
         # Verifica se a imagem foi desenhada corretamente
         print(f"✅ DEBUG PGM: Mapa desenhado em ({x_pos}, {y_pos}) com tamanho {display_width}x{display_height}")
-        print(f"   Imagem final: {flipped_image.width()}x{flipped_image.height()} pixels")
-        print(f"   Imagem não é NULL: {not flipped_image.isNull()}")
-        print(f"   Formato da imagem: {flipped_image.format()}")
+        print(f"   Imagem final: {scaled_image.width()}x{scaled_image.height()} pixels")
+        print(f"   Imagem não é NULL: {not scaled_image.isNull()}")
+        print(f"   Formato da imagem: {scaled_image.format()}")
+        print(f"   ✅ Mapa desenhado SEM inversão vertical (já processado pelo main_scanner.py)")
         
         painter.restore()
         
