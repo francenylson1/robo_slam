@@ -230,7 +230,9 @@ class RobotNavigator(QObject):
             self._handle_return_to_base()
 
         elif self.navigation_state == "FINAL_APPROACH_BASE":
-            if self._stable_final_approach(self.path[-1]):
+            # 🎯 CORREÇÃO: Usa base_position diretamente para consistência
+            base_target = self.base_position if self.use_direct_navigation else (self.path[-1] if self.path else self.base_position)
+            if self._stable_final_approach(base_target):
                 self._start_final_angle_adjustment()
 
         elif self.navigation_state == "ADJUSTING_FINAL_ANGLE":
@@ -735,14 +737,70 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
 
-        if total_distance <= 0.25:  # Aumentado de 0.15 para 0.25 metros (25cm)
+        # 🎯 AJUSTE FINO DE PRECISÃO: Tolerância reduzida para chegar mais perto (3cm)
+        final_tolerance = 0.03  # 3cm - precisão máxima ultra-fina
+        if total_distance <= final_tolerance:
+            precision_percent = (1.0 - (total_distance / 0.08)) * 100  # Calcula % de precisão (baseado em 8cm = 100%)
+            print(f"🎯 DESTINO ALCANÇADO COM PRECISÃO MÁXIMA ULTRA-FINA:")
+            print(f"   Distância: {total_distance*100:.1f}cm (tolerância: {final_tolerance*100:.0f}cm)")
+            print(f"   Precisão: {precision_percent:.1f}%")
+            print(f"   Posição robô: ({self.current_position[0]:.3f}, {self.current_position[1]:.3f})")
+            print(f"   Destino: ({final_target[0]:.3f}, {final_target[1]:.3f})")
             self.motors.stop()
             self.final_approach_start_time = None
             return True
 
-        linear_speed_ms = 0.0 if abs(angle_diff) > 5.0 else min(MAX_LINEAR_SPEED_MS * 0.85, total_distance / 1.5)  # Aumentado de 0.7 para 0.85
+        # 🎯 VELOCIDADE ADAPTATIVA ULTRA-PRECISA: Reduz velocidade conforme se aproxima
+        # Quanto mais perto, mais devagar para maior precisão (ajustado para 3cm)
+        if total_distance < 0.05:  # Ultra perto (< 5cm) - velocidade muito baixa
+            speed_factor = 0.25  # 25% da velocidade máxima - muito conservador
+            angle_tolerance = 2.0  # Tolerância angular muito restritiva
+        elif total_distance < 0.08:  # Muito perto (5-8cm)
+            speed_factor = 0.35  # 35% da velocidade máxima
+            angle_tolerance = 2.5  # Tolerância angular restritiva
+        elif total_distance < 0.12:  # Próximo (8-12cm)
+            speed_factor = 0.50  # 50% da velocidade máxima
+            angle_tolerance = 3.0
+        elif total_distance < 0.18:  # Aproximando (12-18cm)
+            speed_factor = 0.65  # 65% da velocidade máxima
+            angle_tolerance = 4.0
+        else:  # Ainda longe (> 18cm)
+            speed_factor = 0.80  # 80% da velocidade máxima
+            angle_tolerance = 5.0
+
+        # Log periódico para monitorar aproximação (a cada 20 iterações)
+        if not hasattr(self, '_final_approach_log_counter'):
+            self._final_approach_log_counter = 0
+        self._final_approach_log_counter += 1
+        if self._final_approach_log_counter % 20 == 0:
+            precision_percent = (1.0 - (total_distance / 0.20)) * 100  # % baseado em 20cm = 100%
+            print(f"🎯 APROXIMAÇÃO FINAL ULTRA-PRECISA: Distância {total_distance*100:.1f}cm, Precisão: {max(0, precision_percent):.1f}%, Velocidade: {speed_factor*100:.0f}%")
+
+        # 🎯 VELOCIDADE LINEAR ULTRA-PRECISA: Reduz ainda mais quando muito perto
+        # Usa distância como fator adicional para suavizar ainda mais a aproximação
+        if total_distance < 0.05:
+            # Ultra perto: velocidade baseada na distância restante (muito conservador)
+            distance_factor = total_distance / 0.05  # Normaliza para 0-1
+            linear_speed_ms = 0.0 if abs(angle_diff) > angle_tolerance else min(
+                MAX_LINEAR_SPEED_MS * speed_factor * distance_factor, 
+                total_distance / 0.8  # Divisor menor = velocidade mais baixa
+            )
+        else:
+            # Normal: velocidade padrão adaptativa
+            linear_speed_ms = 0.0 if abs(angle_diff) > angle_tolerance else min(
+                MAX_LINEAR_SPEED_MS * speed_factor, 
+                total_distance / 1.2
+            )
         
-        angular_speed_rads = math.radians(angle_diff) * 2.5
+        # 🎯 VELOCIDADE ANGULAR ULTRA-PRECISA: Ganho reduzido quando muito perto
+        if total_distance < 0.05:
+            angular_gain = 1.8  # Ganho mais baixo para ajustes finos
+        elif total_distance < 0.08:
+            angular_gain = 2.0  # Ganho moderado
+        else:
+            angular_gain = 2.5  # Ganho normal
+        
+        angular_speed_rads = math.radians(angle_diff) * angular_gain
         angular_speed_rads = max(-MAX_ANGULAR_SPEED_RADS, min(MAX_ANGULAR_SPEED_RADS, angular_speed_rads))
 
         v = linear_speed_ms
@@ -868,14 +926,27 @@ class RobotNavigator(QObject):
             # Na navegação direta, o destino é sempre self.original_destination
             # Não há waypoints intermediários, então vamos direto ao destino
             
-            # 🎯 CORREÇÃO: Usa tolerância maior para navegação direta (mesma dos mapas não PGM)
-            # A tolerância padrão (0.20m) pode ser muito restritiva
-            arrival_tolerance = 0.15  # 15cm - mesma tolerância que funciona nos mapas não PGM
-            
-            if distance_to_target < arrival_tolerance:
-                print(f"🎯 DESTINO ALCANÇADO: Distância {distance_to_target:.3f}m < {arrival_tolerance}m")
-                self._transition_to_paused_at_destination()
+            # 🎯 AJUSTE FINO DE PRECISÃO ULTRA-FINA: Tolerância reduzida para chegar mais perto do POI (3cm)
+            # Fase 1: Quando está longe (> 0.20m), usa tolerância normal
+            # Fase 2: Quando está perto (< 0.20m), entra em aproximação final ultra-precisa
+            if distance_to_target > 0.20:
+                # Ainda longe, continua navegação normal
+                pass
+            elif distance_to_target > 0.06:
+                # Próximo (6-20cm), entra em aproximação final ultra-precisa
+                print(f"🎯 APROXIMAÇÃO FINAL ULTRA-PRECISA: Distância {distance_to_target*100:.1f}cm, entrando em modo preciso")
+                self.navigation_state = "FINAL_APPROACH_DESTINATION"
+                self.current_target = self.original_destination
+                self.final_approach_start_time = None
                 return
+            else:
+                # Muito perto (< 6cm), verifica se chegou (tolerância 3cm)
+                arrival_tolerance = 0.03  # 3cm - tolerância final ultra-fina
+                if distance_to_target < arrival_tolerance:
+                    precision_percent = (1.0 - (distance_to_target / 0.08)) * 100
+                    print(f"🎯 DESTINO ALCANÇADO COM PRECISÃO ULTRA-FINA: Distância {distance_to_target*100:.1f}cm < {arrival_tolerance*100:.0f}cm, Precisão: {precision_percent:.1f}%")
+                    self._transition_to_paused_at_destination()
+                    return
             
             # Log periódico para debug (a cada 10 atualizações)
             if not hasattr(self, '_nav_log_counter'):
@@ -919,14 +990,26 @@ class RobotNavigator(QObject):
             # Na navegação direta, o destino de retorno é sempre self.base_position
             # Não há waypoints intermediários, então vamos direto à base
             
-            # 🎯 CORREÇÃO: Usa tolerância maior para navegação direta (mesma dos mapas não PGM)
-            arrival_tolerance = 0.15  # 15cm - mesma tolerância que funciona nos mapas não PGM
-            
-            if distance_to_target < arrival_tolerance:
-                print(f"🎯 BASE ALCANÇADA: Distância {distance_to_target:.3f}m < {arrival_tolerance}m")
+            # 🎯 AJUSTE FINO DE PRECISÃO ULTRA-FINA: Mesma lógica de precisão para retorno à base (3cm)
+            if distance_to_target > 0.20:
+                # Ainda longe, continua navegação normal
+                pass
+            elif distance_to_target > 0.06:
+                # Próximo (6-20cm), entra em aproximação final ultra-precisa
+                print(f"🎯 APROXIMAÇÃO FINAL BASE ULTRA-PRECISA: Distância {distance_to_target*100:.1f}cm, entrando em modo preciso")
                 self.navigation_state = "FINAL_APPROACH_BASE"
+                self.current_target = self.base_position
                 self.final_approach_start_time = None
                 return
+            else:
+                # Muito perto (< 6cm), verifica se chegou (tolerância 3cm)
+                arrival_tolerance = 0.03  # 3cm - tolerância final ultra-fina
+                if distance_to_target < arrival_tolerance:
+                    precision_percent = (1.0 - (distance_to_target / 0.08)) * 100
+                    print(f"🎯 BASE ALCANÇADA COM PRECISÃO ULTRA-FINA: Distância {distance_to_target*100:.1f}cm < {arrival_tolerance*100:.0f}cm, Precisão: {precision_percent:.1f}%")
+                    self.navigation_state = "FINAL_APPROACH_BASE"
+                    self.final_approach_start_time = None
+                    return
             
             # Log periódico para debug (a cada 10 atualizações)
             if not hasattr(self, '_return_log_counter'):
