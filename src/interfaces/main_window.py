@@ -638,15 +638,66 @@ class MainWindow(QMainWindow):
         """
         self.navigator.update()
 
+        # 🎯 CORREÇÃO CRÍTICA: Verifica estado COMPLETED ANTES de verificar navigation_active
+        # Isso garante que a mensagem seja exibida mesmo se navigation_active já foi desativado
+        nav_status = self.navigator.get_navigation_status()
+        state_text = nav_status.get("state", "IDLE")
+        
+        # Se o estado é COMPLETED, processa a conclusão ANTES de verificar navigation_active
+        if state_text == "COMPLETED":
+            # 🎯 CORREÇÃO CRÍTICA: Se o estado é COMPLETED, sempre finaliza a navegação
+            if self.navigation_active:
+                print("🔄 SINCRONIZAÇÃO: Estado COMPLETED detectado, finalizando navegação na interface")
+                self.navigation_active = False
+            
+            # 🎯 CORREÇÃO: Garante que a mensagem seja mostrada apenas uma vez por navegação
+            if not hasattr(self, '_navigation_completed_shown'):
+                self._navigation_completed_shown = False
+            
+            if not self._navigation_completed_shown:
+                print("✅ NAVEGAÇÃO CONCLUÍDA: Exibindo mensagem ao usuário")
+                self._navigation_completed_shown = True
+                # Finaliza navegação na interface
+                self._complete_navigation_and_reset()
+                # Mostra mensagem interativa ao usuário
+                QMessageBox.information(
+                    self, 
+                    "✅ Navegação Concluída", 
+                    "🎉 Navegação concluída com sucesso!\n\n"
+                    "O robô completou todo o percurso:\n"
+                    "• Navegou até o POI de destino\n"
+                    "• Aguardou 2 segundos no destino\n"
+                    "• Retornou à posição base inicial\n\n"
+                    "O sistema está pronto para uma nova navegação."
+                )
+                # Reseta o estado para IDLE após mostrar mensagem
+                self.navigator.navigation_state = "IDLE"
+            return
+        
+        # 🎯 CORREÇÃO CRÍTICA: Sincroniza navigation_active ANTES de verificar
+        # Se o navegador finalizou a navegação, atualiza a flag da interface
+        if not self.navigator.navigation_active and self.navigation_active:
+            print("🔄 SINCRONIZAÇÃO: Navegador finalizou navegação, atualizando flag da interface")
+            self.navigation_active = False
+
         if not self.navigation_active:
             return
-
-        nav_status = self.navigator.get_navigation_status()
+        
+        # Reutiliza nav_status já obtido acima (não precisa obter novamente)
         progress = int(nav_status.get("progress", 0) * 100)
         self.nav_progress_bar.setValue(progress)
 
-        state_text = nav_status.get("state", "IDLE")
         time_remaining = nav_status.get("estimated_time_remaining", 0)
+
+        # 🎯 CORREÇÃO: Atualiza o caminho na interface quando o retorno inicia
+        # Isso garante que o caminho de retorno seja desenhado corretamente
+        if state_text == "RETURNING_TO_BASE" or state_text == "ORIENTING_TO_TARGET":
+            if hasattr(self.navigator, 'path') and self.navigator.path:
+                # Atualiza o caminho apenas se mudou
+                current_path_length = len(self.map_widget.current_path) if self.map_widget.current_path else 0
+                if len(self.navigator.path) != current_path_length:
+                    self.map_widget.set_current_path(self.navigator.path)
+                    print(f"🎯 INTERFACE: Caminho de retorno atualizado na interface: {len(self.navigator.path)} pontos")
 
         if nav_status.get("is_paused_at_destination", False):
             info_text = f"Estado: {state_text} | Pausado no destino"
@@ -656,10 +707,9 @@ class MainWindow(QMainWindow):
             info_text = f"Estado: {state_text}"
             
         self.nav_info_label.setText(info_text)
-
-        if state_text in ["COMPLETED", "IDLE"]:
-            self._complete_navigation_and_reset()
-            QMessageBox.information(self, "Navegação", "Navegação concluída!")
+        
+        # Nota: A verificação de COMPLETED já foi feita no início da função (linha 647)
+        # e retorna imediatamente após processar, então não precisa repetir aqui
 
     def _toggle_mode(self):
         """Alterna entre modo manual e autônomo."""
@@ -1379,6 +1429,8 @@ class MainWindow(QMainWindow):
             # 🚀 NOVA FASE: Navegação automática completa (ida + volta)
             print(f"🚀 CHAMANDO navigate_to_and_return com destino: {destination}")
             print(f"🚀 Estado ANTES: navigation_active={self.navigator.navigation_active}, state={self.navigator.navigation_state}")
+            # 🎯 CORREÇÃO: Reseta flag de conclusão antes de iniciar nova navegação
+            self._navigation_completed_shown = False
             self.navigator.navigate_to_and_return(destination)
             print(f"🚀 Estado DEPOIS: navigation_active={self.navigator.navigation_active}, state={self.navigator.navigation_state}")
             self.navigation_active = True

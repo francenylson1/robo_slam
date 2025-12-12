@@ -115,11 +115,30 @@ class PathFinder:
         
         print(f"DEBUG: Coordenadas relativas - Início: ({start_relative_x:.2f}, {start_relative_y:.2f})m, Fim: ({goal_relative_x:.2f}, {goal_relative_y:.2f})m")
         print(f"DEBUG: Coordenadas da grade - Início: {start_grid}, Fim: {goal_grid}")
+        print(f"DEBUG: Dimensões do mapa: {self.width}x{self.height} células")
+        print(f"DEBUG: Grid size: {self.grid_size}m, Origem: {self.map_origin}")
+        
+        # Verifica se o início está dentro dos limites do mapa
+        if not (0 <= start_grid[0] < self.width and 0 <= start_grid[1] < self.height):
+            print(f"🚨 ERRO: Início fora dos limites do mapa: {start_grid} (limites: 0-{self.width}, 0-{self.height})")
+            return None  # Não retorna caminho direto se estiver fora dos limites
         
         # Verifica se o objetivo está dentro dos limites do mapa
         if not (0 <= goal_grid[0] < self.width and 0 <= goal_grid[1] < self.height):
-            print(f"DEBUG: Objetivo fora dos limites do mapa: {goal_grid}")
-            return [start, goal]  # Retorna caminho direto se objetivo estiver fora do mapa
+            print(f"🚨 ERRO: Objetivo fora dos limites do mapa: {goal_grid} (limites: 0-{self.width}, 0-{self.height})")
+            return None  # Não retorna caminho direto se estiver fora dos limites
+        
+        # Verifica se o início está em uma área proibida
+        if self._is_in_forbidden_area(start_grid[0], start_grid[1]):
+            print(f"DEBUG: ⚠️ Início {start_grid} em área proibida. Procurando ponto válido mais próximo...")
+            original_start_grid = start_grid
+            start_grid = self._find_nearest_valid_point(original_start_grid)
+            
+            if start_grid is None:
+                print(f"🚨 ERRO: Não foi possível encontrar um ponto válido perto do início {original_start_grid}.")
+                return None
+                
+            print(f"DEBUG: ✅ Novo início válido encontrado: {start_grid}")
             
         # Verifica se o objetivo está em uma área proibida. Se sim, encontra o ponto válido mais próximo.
         if self._is_in_forbidden_area(goal_grid[0], goal_grid[1]):
@@ -128,12 +147,17 @@ class PathFinder:
             goal_grid = self._find_nearest_valid_point(original_goal_grid)
             
             if goal_grid is None:
-                print(f"DEBUG: ⛔ Não foi possível encontrar um ponto válido perto de {original_goal_grid}. Retornando caminho direto.")
-                return [start, goal] # Desiste se não houver ponto válido
+                print(f"🚨 ERRO: Não foi possível encontrar um ponto válido perto do objetivo {original_goal_grid}.")
+                return None
                 
             print(f"DEBUG: ✅ Novo objetivo válido encontrado: {goal_grid}")
-            
+        
         # Executa o algoritmo A* otimizado
+        print(f"DEBUG: Executando A* de {start_grid} para {goal_grid}...")
+        print(f"DEBUG: Verificando se start está em obstáculo: {self._is_in_forbidden_area(start_grid[0], start_grid[1])}")
+        print(f"DEBUG: Verificando se goal está em obstáculo: {self._is_in_forbidden_area(goal_grid[0], goal_grid[1])}")
+        print(f"DEBUG: Dimensões do mapa: {self.width}x{self.height} células")
+        print(f"DEBUG: obstacle_grid tem {len(self.obstacle_grid)} células marcadas")
         path = self._astar_optimized(start_grid, goal_grid)
         
         if path:
@@ -142,12 +166,28 @@ class PathFinder:
                 (x * self.grid_size + self.map_origin[0], y * self.grid_size + self.map_origin[1]) 
                 for x, y in path
             ]
+            # 🎯 CORREÇÃO 1: Garante que o primeiro ponto seja a posição EXATA atual e o último seja o destino EXATO
+            # Substitui o primeiro ponto pela posição atual exata
+            if len(world_path) > 0:
+                world_path[0] = start
+            # Substitui o último ponto pelo destino exato
+            if len(world_path) > 0:
+                world_path[-1] = goal
             print(f"DEBUG: Caminho encontrado com {len(world_path)} pontos")
-            print(f"DEBUG: Primeiro ponto: {world_path[0]}, Último ponto: {world_path[-1]}")
+            print(f"DEBUG: Primeiro ponto: {world_path[0]} (posição exata), Último ponto: {world_path[-1]} (destino exato)")
             return world_path
         else:
-            print("DEBUG: Nenhum caminho encontrado, retornando caminho direto")
-            return [start, goal]  # Retorna caminho direto se não encontrar um caminho válido
+            # A* não encontrou caminho
+            print(f"🚨 ERRO: A* não encontrou caminho de {start_grid} para {goal_grid}")
+            print(f"🚨 Verificando se há caminho possível...")
+            # Verifica se start e goal estão em áreas proibidas
+            start_in_obstacle = self._is_in_forbidden_area(start_grid[0], start_grid[1])
+            goal_in_obstacle = self._is_in_forbidden_area(goal_grid[0], goal_grid[1])
+            print(f"🚨 Start em obstáculo: {start_in_obstacle}, Goal em obstáculo: {goal_in_obstacle}")
+            print(f"🚨 obstacle_grid tem {len(self.obstacle_grid)} células marcadas")
+            print(f"🚨 Dimensões do mapa: {self.width}x{self.height}")
+            # 🚫 NÃO retorna caminho direto - isso seria perigoso!
+            return None  # Retorna None para indicar que não há caminho
         
     def _find_nearest_valid_point(self, start_node: Tuple[int, int]) -> Optional[Tuple[int, int]]:
         """Encontra o ponto válido mais próximo usando uma busca em largura (BFS)."""
@@ -186,6 +226,14 @@ class PathFinder:
 
     def _astar_optimized(self, start: Tuple[int, int], goal: Tuple[int, int]) -> Optional[List[Tuple[int, int]]]:
         """Implementação otimizada do algoritmo A* com caminhos simplificados"""
+        # Verifica se start ou goal estão em áreas proibidas
+        if self._is_in_forbidden_area(start[0], start[1]):
+            print(f"🚨 ERRO A*: Start {start} está em área proibida!")
+            return None
+        if self._is_in_forbidden_area(goal[0], goal[1]):
+            print(f"🚨 ERRO A*: Goal {goal} está em área proibida!")
+            return None
+        
         # Estruturas de dados otimizadas
         open_set = []  # Fila de prioridade (heap)
         closed_set = set()
@@ -195,6 +243,14 @@ class PathFinder:
         
         # Adiciona o ponto inicial à fila de prioridade
         heapq.heappush(open_set, (f_score[start], start))
+        
+        max_iterations = self.width * self.height  # Limite de iterações para evitar loops infinitos
+        iterations = 0
+        
+        # Log inicial
+        print(f"🔍 A* INICIADO: Start={start}, Goal={goal}, Max iterations={max_iterations}")
+        print(f"🔍 A*: obstacle_grid tem {len(self.obstacle_grid)} células marcadas")
+        print(f"🔍 A*: Dimensões do mapa: {self.width}x{self.height} células")
         
         # Direções de movimento (8 direções)
         directions = [
@@ -252,7 +308,12 @@ class PathFinder:
                     # Adiciona à fila de prioridade
                     heapq.heappush(open_set, (f_score[neighbor], neighbor))
         
-        print("DEBUG: Nenhum caminho encontrado pelo A*")
+        print(f"🚨 ERRO A*: Nenhum caminho encontrado após {iterations} iterações")
+        print(f"🚨 Open set esgotado: {len(open_set)} nós restantes")
+        print(f"🚨 Closed set: {len(closed_set)} nós visitados")
+        print(f"🚨 Start: {start}, Goal: {goal}")
+        print(f"🚨 Start em obstáculo: {self._is_in_forbidden_area(start[0], start[1])}")
+        print(f"🚨 Goal em obstáculo: {self._is_in_forbidden_area(goal[0], goal[1])}")
         return None
 
     def _simplify_path(self, path: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
@@ -475,16 +536,41 @@ class PathFinder:
         
     def _line_intersects_obstacles(self, start: Tuple[float, float], end: Tuple[float, float]) -> bool:
         """Verifica se uma linha intersecta alguma área proibida"""
+        # Se não há áreas proibidas, retorna False
+        if not self.forbidden_areas or len(self.forbidden_areas) == 0:
+            return False
+        
+        # Se o obstacle_grid está vazio, não há obstáculos
+        if len(self.obstacle_grid) == 0:
+            print(f"⚠️ _line_intersects_obstacles: obstacle_grid está vazio! Áreas proibidas podem não ter sido processadas.")
+            return False
+        
         # Converte para coordenadas da grade considerando a origem do mapa
         start_grid = (int((start[0] - self.map_origin[0]) / self.grid_size), int((start[1] - self.map_origin[1]) / self.grid_size))
         end_grid = (int((end[0] - self.map_origin[0]) / self.grid_size), int((end[1] - self.map_origin[1]) / self.grid_size))
         
+        # Verifica se os pontos estão dentro dos limites do mapa
+        if not (0 <= start_grid[0] < self.width and 0 <= start_grid[1] < self.height):
+            print(f"⚠️ _line_intersects_obstacles: start_grid {start_grid} fora dos limites ({self.width}x{self.height})")
+            return False
+        if not (0 <= end_grid[0] < self.width and 0 <= end_grid[1] < self.height):
+            print(f"⚠️ _line_intersects_obstacles: end_grid {end_grid} fora dos limites ({self.width}x{self.height})")
+            return False
+        
         # Usa o algoritmo de Bresenham para verificar todos os pontos da linha
         points = self._bresenham_line(start_grid, end_grid)
         
+        # Verifica cada ponto da linha
+        obstacles_found = 0
         for point in points:
             if point in self.obstacle_grid:
-                return True
+                obstacles_found += 1
+                if obstacles_found == 1:  # Log apenas o primeiro encontrado
+                    print(f"🚫 _line_intersects_obstacles: Obstáculo encontrado no ponto {point} (grid)")
+        
+        if obstacles_found > 0:
+            print(f"🚫 _line_intersects_obstacles: {obstacles_found} obstáculos encontrados na linha")
+            return True
                 
         return False
         

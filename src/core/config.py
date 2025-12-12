@@ -33,8 +33,10 @@ MAP_SCALE = 56.66  # pixels por metro (ajustado para mostrar grids de 0.5m com 7
 # Configurações de segurança
 EMERGENCY_STOP_DISTANCE = 0.2  # 20cm
 # A margem de segurança deve ser o RAIO do robô + uma folga.
-# Raio (30cm para um robô de 60cm de diâmetro) + Folga (5cm) = 35cm
-FORBIDDEN_AREA_INFLATION_RADIUS = 0.35 # 35cm de margem de segurança
+# Raio (30cm para um robô de 60cm de diâmetro) + Folga (10cm para permitir passagem entre áreas) = 40cm
+# 🎯 CORREÇÃO 5: Aumentado de 35cm para 40cm para permitir que o robô passe entre áreas proibidas
+# quando há espaço suficiente (60cm largura + 20cm margem = 80cm mínimo entre áreas)
+FORBIDDEN_AREA_INFLATION_RADIUS = 0.40 # 40cm de margem de segurança (raio 30cm + folga 10cm)
 
 # Configurações do robô
 ROBOT_WIDTH = 0.6                # Largura/Diâmetro do robô em metros (60cm)

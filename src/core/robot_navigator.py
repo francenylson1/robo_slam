@@ -39,6 +39,8 @@ class RobotNavigator(QObject):
         self.current_target = None
         self.navigation_active = False
         self.is_returning_to_base = False
+        # 🎯 CORREÇÃO 3: base_position é definido apenas uma vez e NUNCA é alterado durante a navegação
+        # Isso garante que o robô sempre retorne à posição base exata
         self.base_position = ROBOT_INITIAL_POSITION
         self.is_adjusting_final_angle = False
         self.navigation_state = "IDLE"  # IDLE, ORIENTING_TO_TARGET, NAVIGATING, RETURNING, COMPLETED
@@ -111,6 +113,9 @@ class RobotNavigator(QObject):
         # Preserva as áreas proibidas durante o reset
         preserved_forbidden_areas = self.forbidden_areas.copy()
         
+        # 🎯 CORREÇÃO 3: Preserva base_position durante o reset (NUNCA altera)
+        preserved_base_position = self.base_position
+        
         # 🎯 ADAPTAÇÃO PARA MAPAS PGM: Preserva posição se solicitado
         if not preserve_position:
             # ETAPA 2: Correção do "Pulo" - NÃO reseta a posição/ângulo.
@@ -146,6 +151,9 @@ class RobotNavigator(QObject):
         # Restaura as áreas proibidas
         self.forbidden_areas = preserved_forbidden_areas
         self.path_finder.set_forbidden_areas(preserved_forbidden_areas)
+        
+        # 🎯 CORREÇÃO 3: Restaura base_position (garante que nunca seja alterado)
+        self.base_position = preserved_base_position
         
         # Para os motores
         self.motors.stop()
@@ -237,6 +245,12 @@ class RobotNavigator(QObject):
 
         elif self.navigation_state == "ADJUSTING_FINAL_ANGLE":
             self._adjust_final_angle()
+        
+        elif self.navigation_state == "COMPLETED":
+            # 🎯 CORREÇÃO: Se o estado já é COMPLETED, garante que a navegação está finalizada
+            if self.navigation_active:
+                print("⚠️ AVISO: Estado COMPLETED mas navigation_active=True, forçando finalização")
+                self._finalize_navigation()
 
         if len(self.path) > 1:
             self.progress = self.path_index / (len(self.path) - 1)
@@ -261,11 +275,162 @@ class RobotNavigator(QObject):
     def _calculate_and_execute_return_angle(self):
         """Calcula o ângulo necessário para retornar à base e inicia o giro"""
         print("DEBUG: === CALCULANDO ÂNGULO DE RETORNO ===")
+        print(f"🔍 RETORNO: Posição atual: {self.current_position}")
+        print(f"🔍 RETORNO: Base position: {self.base_position}")
+        print(f"🔍 RETORNO: Áreas proibidas configuradas: {len(self.forbidden_areas)}")
         
-        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Se habilitada, usa navegação direta para retorno
-        if self.use_direct_navigation:
-            # Navegação direta: vai direto à base sem pathfinding
+        # 🚫 CORREÇÃO CRÍTICA: SEMPRE verifica áreas proibidas no retorno, independente de use_direct_navigation
+        # Isso garante que o robô nunca passe por áreas proibidas no retorno
+        
+        # 🎯 CORREÇÃO: Garante que o obstacle_grid está atualizado antes de verificar
+        if self.forbidden_areas and len(self.forbidden_areas) > 0:
+            # Força atualização do obstacle_grid se necessário
+            if len(self.path_finder.obstacle_grid) == 0:
+                print(f"⚠️ RETORNO: obstacle_grid vazio, forçando atualização...")
+                self.path_finder.set_forbidden_areas(self.forbidden_areas)
+        
+        # 🎯 CORREÇÃO CRÍTICA: Se há áreas proibidas configuradas, SEMPRE usa PathFinder no retorno
+        # Isso garante que o robô nunca passe por áreas proibidas, mesmo que a verificação falhe
+        has_forbidden_areas = self.forbidden_areas and len(self.forbidden_areas) > 0
+        
+        if has_forbidden_areas:
+            # Se há áreas proibidas, verifica se o caminho direto passa por elas
+            path_intersects_forbidden = self._check_path_intersects_forbidden_areas(
+                self.current_position, self.base_position
+            )
+        else:
+            path_intersects_forbidden = False
+        
+        # 🎯 CORREÇÃO CRÍTICA: Se há áreas proibidas configuradas, SEMPRE usa PathFinder no retorno
+        # Isso garante que o robô nunca passe por áreas proibidas, mesmo que a verificação falhe
+        if has_forbidden_areas:
+                print(f"🚫 ÁREA PROIBIDA CONFIGURADA - SEMPRE usando PathFinder no retorno!")
+                print(f"🚫 Calculando caminho de retorno que evita áreas proibidas...")
+                
+                # 🎯 CORREÇÃO CRÍTICA: Garante que o obstacle_grid está atualizado ANTES de calcular o caminho
+                if len(self.path_finder.obstacle_grid) == 0:
+                    print(f"⚠️ RETORNO: obstacle_grid vazio, forçando atualização antes de calcular caminho...")
+                    self.path_finder.set_forbidden_areas(self.forbidden_areas)
+                    print(f"🔍 RETORNO: Após atualização, obstacle_grid tem {len(self.path_finder.obstacle_grid)} células")
+                
+                # Usa PathFinder para calcular caminho que evita áreas proibidas
+                path_to_base = self.path_finder.find_path(self.current_position, self.base_position)
+                
+                if not path_to_base or len(path_to_base) < 2:
+                    print(f"🚨 ERRO CRÍTICO: Não foi possível encontrar caminho de retorno que evite áreas proibidas!")
+                    print(f"🚨 PathFinder retornou: {path_to_base}")
+                    print(f"🚨 Posição atual: {self.current_position}, Base: {self.base_position}")
+                    print(f"🚨 Áreas proibidas: {len(self.forbidden_areas)}")
+                    print(f"🚨 obstacle_grid: {len(self.path_finder.obstacle_grid)} células")
+                    # 🚫 NÃO PERMITE NAVEGAÇÃO DIRETA quando há áreas proibidas - isso seria perigoso!
+                    print(f"🚨 ABORTANDO retorno - não é seguro navegar diretamente com áreas proibidas!")
+                    self._finalize_navigation()
+                    return
+                
+                # 🎯 VERIFICAÇÃO CRÍTICA: Verifica se o caminho retornado realmente evita áreas proibidas
+                # Se o caminho tem apenas 2 pontos (start, goal), pode ser um caminho direto que passa por áreas proibidas
+                if len(path_to_base) == 2:
+                    # Verifica se o caminho direto passa por áreas proibidas
+                    direct_path_intersects = self._check_path_intersects_forbidden_areas(
+                        path_to_base[0], path_to_base[1]
+                    )
+                    if direct_path_intersects:
+                        print(f"🚨 ERRO CRÍTICO: PathFinder retornou caminho direto que PASSA POR ÁREAS PROIBIDAS!")
+                        print(f"🚨 Caminho: {path_to_base[0]} → {path_to_base[1]}")
+                        print(f"🚨 Isso não deveria acontecer! PathFinder deveria ter evitado áreas proibidas.")
+                        print(f"🚨 ABORTANDO retorno - caminho não é seguro!")
+                        self._finalize_navigation()
+                        return
+                    else:
+                        print(f"✅ Caminho direto verificado - não passa por áreas proibidas")
+                else:
+                    # Verifica cada segmento do caminho
+                    path_has_obstacles = False
+                    for i in range(len(path_to_base) - 1):
+                        segment_intersects = self._check_path_intersects_forbidden_areas(
+                            path_to_base[i], path_to_base[i + 1]
+                        )
+                        if segment_intersects:
+                            print(f"🚨 ERRO CRÍTICO: Segmento {i} do caminho ({path_to_base[i]} → {path_to_base[i+1]}) PASSA POR ÁREAS PROIBIDAS!")
+                            path_has_obstacles = True
+                            break
+                    
+                    if path_has_obstacles:
+                        print(f"🚨 ABORTANDO retorno - caminho calculado não é seguro!")
+                        self._finalize_navigation()
+                        return
+                
+                print(f"✅ Caminho de retorno calculado e VERIFICADO com {len(path_to_base)} waypoints evitando áreas proibidas")
+                
+                # 🎯 CORREÇÃO 1: Garante que o caminho comece na posição EXATA atual e termine na base EXATA
+                # Substitui o primeiro ponto pela posição atual exata
+                if len(path_to_base) > 0:
+                    path_to_base[0] = self.current_position
+                # Garante que o último ponto seja a base exata
+                if len(path_to_base) > 0:
+                    path_to_base[-1] = self.base_position
+                
+                # Configura navegação com pathfinding
+                self.path = path_to_base
+                self.is_returning_to_base = True
+                
+                # 🎯 CORREÇÃO: Inicia no primeiro waypoint real (índice 1), não na posição atual (índice 0)
+                # Se o caminho tem apenas 2 pontos (posição atual + base), vai direto à base
+                if len(self.path) > 2:
+                    self.path_index = 1  # Começa no primeiro waypoint real
+                    first_waypoint = self.path[1]
+                elif len(self.path) > 1:
+                    self.path_index = 1  # Vai direto à base (último ponto)
+                    first_waypoint = self.path[1]
+                else:
+                    self.path_index = 0
+                    first_waypoint = self.base_position
+                
+                # 🎯 CORREÇÃO: Atualiza current_target para o primeiro waypoint
+                self.current_target = first_waypoint
+                
+                # 🎯 CORREÇÃO: Emite sinal para atualizar o caminho na interface
+                # O caminho será atualizado automaticamente quando a UI verificar self.path
+                print(f"🎯 RETORNO: Caminho de retorno configurado com {len(self.path)} waypoints")
+                # Emite sinal de atualização de status para que a interface atualize o caminho
+                self.navigation_status_updated.emit(self.get_navigation_status())
+                
+                dx = first_waypoint[0] - self.current_position[0]
+                dy = first_waypoint[1] - self.current_position[1]
+                target_angle = math.degrees(math.atan2(dy, dx))
+                
+                # Normaliza target_angle para [0, 360)
+                if target_angle < 0:
+                    target_angle += 360
+                
+                # Normaliza ângulo atual para [0, 360)
+                current_angle_normalized = self.current_angle
+                if current_angle_normalized < 0:
+                    current_angle_normalized += 360
+                
+                # Calcula erro angular
+                angle_error = (target_angle - current_angle_normalized + 180) % 360 - 180
+                
+                print(f"🚫 RETORNO COM DESVIO: Primeiro waypoint: {first_waypoint}")
+                print(f"🚫 RETORNO COM DESVIO: target_angle={target_angle:.1f}°, erro={angle_error:.1f}°")
+                
+                # Define estado inicial
+                if abs(angle_error) < 20.0:
+                    print(f"🚫 RETORNO COM DESVIO: Já alinhado, iniciando navegação")
+                    self.navigation_state = "RETURNING_TO_BASE"
+                else:
+                    print(f"🚫 RETORNO COM DESVIO: Orientando para primeiro waypoint")
+                    self.navigation_state = "ORIENTING_TO_TARGET"
+                
+                return
+        
+        # Se não há áreas proibidas no caminho, verifica se deve usar navegação direta
+        # 🎯 CORREÇÃO: Só usa navegação direta se use_direct_navigation estiver habilitado E não houver áreas proibidas
+        if self.use_direct_navigation and not has_forbidden_areas:
+            # Se não há áreas proibidas no caminho, usa navegação direta
+            print(f"✅ Caminho de retorno direto livre de áreas proibidas - usando navegação direta")
             print("🎯 RETORNO DIRETA: Configurando navegação direta à base")
+            # 🎯 CORREÇÃO 1: Garante que o caminho comece na posição EXATA atual e termine na base EXATA
             self.path = [self.current_position, self.base_position]
             self.path_index = 0
             self.current_target = self.base_position
@@ -301,20 +466,70 @@ class RobotNavigator(QObject):
                 self.navigation_state = "ORIENTING_TO_TARGET"
             return
         
-        # Navegação com pathfinding (código original)
+        # Navegação com pathfinding (sempre usa quando há áreas proibidas ou quando use_direct_navigation está desabilitado)
+        print(f"🔍 RETORNO: Usando PathFinder para calcular caminho de retorno...")
         path_to_base = self.path_finder.find_path(self.current_position, self.base_position)
         if not path_to_base or len(path_to_base) < 2:
-            print("ERRO: Não foi possível calcular o caminho de volta para a base.")
-            self._finalize_navigation()
-            return
+            print("⚠️ ERRO: Não foi possível calcular o caminho de volta para a base.")
+            print("⚠️ Tentando navegação direta mesmo assim...")
+            # Fallback: tenta navegação direta mesmo com erro
+            path_to_base = [self.current_position, self.base_position]
+        else:
+            print(f"✅ Caminho de retorno calculado com {len(path_to_base)} waypoints")
+        
+        # 🎯 CORREÇÃO 1: Garante que o caminho comece na posição EXATA atual e termine na base EXATA
+        if len(path_to_base) > 0:
+            path_to_base[0] = self.current_position
+        if len(path_to_base) > 0:
+            path_to_base[-1] = self.base_position
             
         self.path = path_to_base
-        self.path_index = 0
-        self.current_target = self.path[0]
         self.is_returning_to_base = True
         
-        print("🔄 MUDANÇA DE FASE: PAUSED_AT_DESTINATION → ORIENTING_TO_TARGET (para retorno)")
-        self.navigation_state = "ORIENTING_TO_TARGET"
+        # 🎯 CORREÇÃO: Inicia no primeiro waypoint real (índice 1), não na posição atual (índice 0)
+        if len(self.path) > 2:
+            self.path_index = 1  # Começa no primeiro waypoint real
+            self.current_target = self.path[1]
+            first_waypoint = self.path[1]
+        elif len(self.path) > 1:
+            self.path_index = 1  # Vai direto à base (último ponto)
+            self.current_target = self.path[1]
+            first_waypoint = self.path[1]
+        else:
+            self.path_index = 0
+            self.current_target = self.base_position
+            first_waypoint = self.base_position
+        
+        # 🎯 CORREÇÃO: Emite sinal para atualizar o caminho na interface
+        print(f"🎯 RETORNO: Caminho de retorno configurado com {len(self.path)} waypoints")
+        self.navigation_status_updated.emit(self.get_navigation_status())
+        
+        dx = first_waypoint[0] - self.current_position[0]
+        dy = first_waypoint[1] - self.current_position[1]
+        target_angle = math.degrees(math.atan2(dy, dx))
+        
+        # Normaliza target_angle para [0, 360)
+        if target_angle < 0:
+            target_angle += 360
+        
+        # Normaliza ângulo atual para [0, 360)
+        current_angle_normalized = self.current_angle
+        if current_angle_normalized < 0:
+            current_angle_normalized += 360
+        
+        # Calcula erro angular
+        angle_error = (target_angle - current_angle_normalized + 180) % 360 - 180
+        
+        print(f"🚫 RETORNO COM PATHFINDER: Primeiro waypoint: {first_waypoint}")
+        print(f"🚫 RETORNO COM PATHFINDER: target_angle={target_angle:.1f}°, erro={angle_error:.1f}°")
+        
+        # Define estado inicial
+        if abs(angle_error) < 20.0:
+            print(f"🚫 RETORNO COM PATHFINDER: Já alinhado, iniciando navegação")
+            self.navigation_state = "RETURNING_TO_BASE"
+        else:
+            print(f"🚫 RETORNO COM PATHFINDER: Orientando para primeiro waypoint")
+            self.navigation_state = "ORIENTING_TO_TARGET"
 
     def _start_return_navigation(self):
         """Inicia a navegação de retorno à base"""
@@ -347,6 +562,12 @@ class RobotNavigator(QObject):
         # NÃO limpa o path para preservar informações de debug
         # self.path = []  # <- REMOVIDO para preservar o destino original
         self.path_index = len(self.path)  # Marca como final do caminho
+        
+        # 🎯 CORREÇÃO: Inicializa timer para timeout do ajuste de ângulo
+        if not hasattr(self, 'final_angle_adjustment_start_time'):
+            self.final_angle_adjustment_start_time = time.time()
+        else:
+            self.final_angle_adjustment_start_time = time.time()
         
         # Inicia o ajuste de ângulo
         self._adjust_final_angle()
@@ -383,17 +604,82 @@ class RobotNavigator(QObject):
         self.should_return_to_base = True  # Habilita retorno automático
         self.final_approach_start_time = None
         
-        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Se habilitada, usa navegação direta sem pathfinding
-        if self.use_direct_navigation:
+        # 🚫 CORREÇÃO CRÍTICA: Se há áreas proibidas configuradas, SEMPRE usa PathFinder
+        # Isso garante que o robô nunca passe por áreas proibidas, independente de use_direct_navigation
+        has_forbidden_areas = self.forbidden_areas and len(self.forbidden_areas) > 0
+        
+        if has_forbidden_areas:
+            # Se há áreas proibidas, SEMPRE usa PathFinder (não importa use_direct_navigation)
+            print(f"🚫 ÁREAS PROIBIDAS CONFIGURADAS - SEMPRE usando PathFinder para navegação!")
+            print(f"🚫 Calculando caminho que evita áreas proibidas...")
+            
+            # 🎯 CORREÇÃO CRÍTICA: Garante que o obstacle_grid está atualizado ANTES de calcular o caminho
+            if len(self.path_finder.obstacle_grid) == 0:
+                print(f"⚠️ NAVEGAÇÃO: obstacle_grid vazio, forçando atualização antes de calcular caminho...")
+                self.path_finder.set_forbidden_areas(self.forbidden_areas)
+                print(f"🔍 NAVEGAÇÃO: Após atualização, obstacle_grid tem {len(self.path_finder.obstacle_grid)} células")
+            
+            path_to_destination = self.path_finder.find_path(self.current_position, destination)
+            
+            # 🎯 VERIFICAÇÃO CRÍTICA: Verifica se o caminho retornado realmente evita áreas proibidas
+            if not path_to_destination or len(path_to_destination) < 2:
+                print(f"🚨 ERRO CRÍTICO: PathFinder não retornou caminho válido!")
+                print(f"🚨 PathFinder retornou: {path_to_destination}")
+                print(f"🚨 Isso pode significar que não há caminho possível entre a posição atual e o destino.")
+                print(f"🚨 Verifique se há áreas proibidas bloqueando completamente o caminho.")
+                # Mostra mensagem de erro ao usuário
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(None, "Erro de Navegação", 
+                    f"Não foi possível encontrar um caminho seguro até o destino.\n\n"
+                    f"Possíveis causas:\n"
+                    f"- Áreas proibidas bloqueando completamente o caminho\n"
+                    f"- Destino inacessível\n"
+                    f"- Configuração incorreta do PathFinder\n\n"
+                    f"Verifique as áreas proibidas e tente novamente.")
+                self.navigation_active = False
+                # 🎯 CORREÇÃO: Define estado para IDLE mas marca que foi erro (não conclusão)
+                self.navigation_state = "IDLE"
+                # Não chama _finalize_navigation para evitar mensagem de "navegação concluída"
+                return
+            
+            # Verifica se o caminho realmente evita áreas proibidas
+            if len(path_to_destination) == 2:
+                # Caminho direto - verifica se não passa por áreas proibidas
+                direct_path_intersects = self._check_path_intersects_forbidden_areas(
+                    path_to_destination[0], path_to_destination[1]
+                )
+                if direct_path_intersects:
+                    print(f"🚨 ERRO CRÍTICO: PathFinder retornou caminho direto que PASSA POR ÁREAS PROIBIDAS!")
+                    print(f"🚨 ABORTANDO navegação - caminho não é seguro!")
+                    self.navigation_active = False
+                    return
+            else:
+                # Verifica cada segmento do caminho
+                for i in range(len(path_to_destination) - 1):
+                    segment_intersects = self._check_path_intersects_forbidden_areas(
+                        path_to_destination[i], path_to_destination[i + 1]
+                    )
+                    if segment_intersects:
+                        print(f"🚨 ERRO CRÍTICO: Segmento {i} do caminho PASSA POR ÁREAS PROIBIDAS!")
+                        print(f"🚨 ABORTANDO navegação - caminho não é seguro!")
+                        self.navigation_active = False
+                        return
+            
+            print(f"✅ Caminho VERIFICADO com {len(path_to_destination)} waypoints evitando áreas proibidas")
+        elif self.use_direct_navigation:
+            # Se não há áreas proibidas E use_direct_navigation está habilitado, usa navegação direta
             self._navigate_direct_simple(destination)
             return
-        
-        # Navegação com pathfinding (código original)
-        path_to_destination = self.path_finder.find_path(self.current_position, destination)
-        if not path_to_destination or len(path_to_destination) < 2:
-            print("DEBUG: ERRO - Não foi possível encontrar caminho para o destino")
-            self.navigation_active = False
-            return
+        else:
+            # Navegação com pathfinding (código original - quando não há áreas proibidas e use_direct_navigation está desabilitado)
+            path_to_destination = self.path_finder.find_path(self.current_position, destination)
+            if not path_to_destination or len(path_to_destination) < 2:
+                print("🚨 ERRO CRÍTICO - Não foi possível encontrar caminho para o destino")
+                self.navigation_active = False
+                # 🎯 CORREÇÃO: Define estado para IDLE mas marca que foi erro (não conclusão)
+                self.navigation_state = "IDLE"
+                # Não chama _finalize_navigation para evitar mensagem de "navegação concluída"
+                return
 
         self.path = path_to_destination
         self.path_index = 0
@@ -420,16 +706,180 @@ class RobotNavigator(QObject):
             print(f"🔄 MUDANÇA DE FASE: IDLE → ORIENTING_TO_TARGET (erro: {angle_error:.1f}°)")
             self.navigation_state = "ORIENTING_TO_TARGET"
     
+    def _check_path_intersects_forbidden_areas(self, start: Tuple[float, float], end: Tuple[float, float]) -> bool:
+        """
+        Verifica se o caminho direto entre dois pontos passa por áreas proibidas.
+        
+        Args:
+            start: Ponto inicial (x, y) em coordenadas do mundo
+            end: Ponto final (x, y) em coordenadas do mundo
+            
+        Returns:
+            True se o caminho intersecta áreas proibidas, False caso contrário
+        """
+        # Se não há áreas proibidas, o caminho está livre
+        if not self.forbidden_areas or len(self.forbidden_areas) == 0:
+            print(f"🔍 VERIFICAÇÃO ÁREAS PROIBIDAS: Nenhuma área proibida configurada")
+            return False
+        
+        print(f"🔍 VERIFICAÇÃO ÁREAS PROIBIDAS: Verificando caminho de {start} para {end}")
+        print(f"🔍 VERIFICAÇÃO ÁREAS PROIBIDAS: {len(self.forbidden_areas)} áreas proibidas configuradas")
+        print(f"🔍 VERIFICAÇÃO ÁREAS PROIBIDAS: obstacle_grid tem {len(self.path_finder.obstacle_grid)} células marcadas")
+        
+        # 🎯 CORREÇÃO: Garante que o obstacle_grid está atualizado
+        if len(self.path_finder.obstacle_grid) == 0:
+            print(f"⚠️ VERIFICAÇÃO ÁREAS PROIBIDAS: obstacle_grid vazio! Forçando atualização...")
+            self.path_finder.set_forbidden_areas(self.forbidden_areas)
+            print(f"🔍 VERIFICAÇÃO ÁREAS PROIBIDAS: Após atualização, obstacle_grid tem {len(self.path_finder.obstacle_grid)} células")
+        
+        # Usa o método do PathFinder para verificar interseção com obstáculos
+        intersects = self.path_finder._line_intersects_obstacles(start, end)
+        
+        if intersects:
+            print(f"🚫 VERIFICAÇÃO ÁREAS PROIBIDAS: Caminho INTERSECTA áreas proibidas!")
+        else:
+            print(f"✅ VERIFICAÇÃO ÁREAS PROIBIDAS: Caminho NÃO intersecta áreas proibidas (livre)")
+        
+        return intersects
+    
     def _navigate_direct_simple(self, destination: Tuple[float, float]) -> None:
         """
-        🎯 NAVEGAÇÃO DIRETA SIMPLES: Vai direto ao POI sem pathfinding.
-        UNIFICAÇÃO: Usa a mesma lógica que funciona para mapas não PGM.
+        🎯 NAVEGAÇÃO DIRETA SIMPLES COM DESVIO DE ÁREAS PROIBIDAS:
+        - Verifica se o caminho direto passa por áreas proibidas
+        - Se sim, usa PathFinder para calcular caminho que evita áreas
+        - Se não, usa navegação direta (mais rápida)
         """
-        print(f"🎯 NAVEGAÇÃO DIRETA SIMPLES ATIVADA (UNIFICADA)")
+        print(f"🎯 NAVEGAÇÃO DIRETA SIMPLES ATIVADA (COM DESVIO DE ÁREAS PROIBIDAS)")
         print(f"🔍 DEBUG: Destino direto: {destination}")
         print(f"🔍 DEBUG: Posição atual: {self.current_position}")
         print(f"🔍 DEBUG: Ângulo atual: {self.current_angle}°")
         print(f"🔍 DEBUG: Origem do mapa (PathFinder): {self.path_finder.map_origin}")
+        print(f"🔍 DEBUG: Áreas proibidas configuradas: {len(self.forbidden_areas)}")
+        
+        # 🚫 CORREÇÃO CRÍTICA: Se há áreas proibidas configuradas, SEMPRE usa PathFinder
+        # Não confia apenas na verificação - se há áreas proibidas, sempre usa PathFinder
+        has_forbidden_areas = self.forbidden_areas and len(self.forbidden_areas) > 0
+        
+        if has_forbidden_areas:
+            print(f"🚫 ÁREAS PROIBIDAS CONFIGURADAS - SEMPRE usando PathFinder!")
+            print(f"🚫 Calculando caminho que evita áreas proibidas...")
+            
+            # 🎯 CORREÇÃO CRÍTICA: Garante que o obstacle_grid está atualizado ANTES de calcular o caminho
+            if len(self.path_finder.obstacle_grid) == 0:
+                print(f"⚠️ NAVEGAÇÃO: obstacle_grid vazio, forçando atualização antes de calcular caminho...")
+                self.path_finder.set_forbidden_areas(self.forbidden_areas)
+                print(f"🔍 NAVEGAÇÃO: Após atualização, obstacle_grid tem {len(self.path_finder.obstacle_grid)} células")
+            
+            # Usa PathFinder para calcular caminho que evita áreas proibidas
+            path_to_destination = self.path_finder.find_path(self.current_position, destination)
+            
+            if not path_to_destination or len(path_to_destination) < 2:
+                print(f"🚨 ERRO CRÍTICO: Não foi possível encontrar caminho que evite áreas proibidas!")
+                print(f"🚨 PathFinder retornou: {path_to_destination}")
+                print(f"🚨 Posição atual: {self.current_position}, Destino: {destination}")
+                print(f"🚨 Áreas proibidas: {len(self.forbidden_areas)}")
+                print(f"🚨 obstacle_grid: {len(self.path_finder.obstacle_grid)} células")
+                # 🚫 NÃO PERMITE NAVEGAÇÃO DIRETA quando há áreas proibidas - isso seria perigoso!
+                print(f"🚨 ABORTANDO navegação - não é seguro navegar diretamente com áreas proibidas!")
+                self.navigation_active = False
+                # 🎯 CORREÇÃO: Define estado para IDLE mas marca que foi erro (não conclusão)
+                self.navigation_state = "IDLE"
+                # Não chama _finalize_navigation para evitar mensagem de "navegação concluída"
+                return
+            
+            # 🎯 VERIFICAÇÃO CRÍTICA: Verifica se o caminho retornado realmente evita áreas proibidas
+            # Se o caminho tem apenas 2 pontos (start, goal), pode ser um caminho direto que passa por áreas proibidas
+            if len(path_to_destination) == 2:
+                # Verifica se o caminho direto passa por áreas proibidas
+                direct_path_intersects = self._check_path_intersects_forbidden_areas(
+                    path_to_destination[0], path_to_destination[1]
+                )
+                if direct_path_intersects:
+                    print(f"🚨 ERRO CRÍTICO: PathFinder retornou caminho direto que PASSA POR ÁREAS PROIBIDAS!")
+                    print(f"🚨 Caminho: {path_to_destination[0]} → {path_to_destination[1]}")
+                    print(f"🚨 Isso não deveria acontecer! PathFinder deveria ter evitado áreas proibidas.")
+                    print(f"🚨 ABORTANDO navegação - caminho não é seguro!")
+                    self.navigation_active = False
+                    return
+                else:
+                    print(f"✅ Caminho direto verificado - não passa por áreas proibidas")
+            else:
+                # Verifica cada segmento do caminho
+                path_has_obstacles = False
+                for i in range(len(path_to_destination) - 1):
+                    segment_intersects = self._check_path_intersects_forbidden_areas(
+                        path_to_destination[i], path_to_destination[i + 1]
+                    )
+                    if segment_intersects:
+                        print(f"🚨 ERRO CRÍTICO: Segmento {i} do caminho ({path_to_destination[i]} → {path_to_destination[i+1]}) PASSA POR ÁREAS PROIBIDAS!")
+                        path_has_obstacles = True
+                        break
+                
+                if path_has_obstacles:
+                    print(f"🚨 ABORTANDO navegação - caminho calculado não é seguro!")
+                    self.navigation_active = False
+                    return
+            
+            print(f"✅ Caminho calculado e VERIFICADO com {len(path_to_destination)} waypoints evitando áreas proibidas")
+            
+            # 🎯 CORREÇÃO 1: Garante que o caminho comece na posição EXATA atual e termine no destino EXATO
+            # Substitui o primeiro ponto pela posição atual exata
+            if len(path_to_destination) > 0:
+                path_to_destination[0] = self.current_position
+            # Garante que o último ponto seja o destino exato
+            if len(path_to_destination) > 0:
+                path_to_destination[-1] = destination
+            
+            # Configura navegação com pathfinding
+            self.path = path_to_destination
+            self.original_destination = destination
+            
+            # 🎯 CORREÇÃO: Inicia no primeiro waypoint real (índice 1), não na posição atual (índice 0)
+            # Se o caminho tem apenas 2 pontos (posição atual + destino), vai direto ao destino
+            if len(self.path) > 2:
+                self.path_index = 1  # Começa no primeiro waypoint real
+                self.current_target = self.path[1]
+                first_waypoint = self.path[1]
+            elif len(self.path) > 1:
+                self.path_index = 1  # Vai direto ao destino (último ponto)
+                self.current_target = self.path[1]
+                first_waypoint = self.path[1]
+            else:
+                self.path_index = 0
+                self.current_target = destination
+                first_waypoint = destination
+            
+            dx = first_waypoint[0] - self.current_position[0]
+            dy = first_waypoint[1] - self.current_position[1]
+            target_angle = math.degrees(math.atan2(dy, dx))
+            
+            # Normaliza target_angle para [0, 360)
+            if target_angle < 0:
+                target_angle += 360
+            
+            # Normaliza ângulo atual para [0, 360)
+            current_angle_normalized = self.current_angle
+            if current_angle_normalized < 0:
+                current_angle_normalized += 360
+            
+            # Calcula erro angular
+            angle_error = (target_angle - current_angle_normalized + 180) % 360 - 180
+            
+            print(f"🚫 NAVEGAÇÃO COM DESVIO: Primeiro waypoint: {first_waypoint}")
+            print(f"🚫 NAVEGAÇÃO COM DESVIO: target_angle={target_angle:.1f}°, erro={angle_error:.1f}°")
+            
+            # Define estado inicial
+            if abs(angle_error) < 20.0:
+                print(f"🚫 NAVEGAÇÃO COM DESVIO: Já alinhado, iniciando navegação")
+                self.navigation_state = "NAVIGATING_TO_DESTINATION"
+            else:
+                print(f"🚫 NAVEGAÇÃO COM DESVIO: Orientando para primeiro waypoint")
+                self.navigation_state = "ORIENTING_TO_TARGET"
+            
+            return
+        
+        # Se não há áreas proibidas no caminho, usa navegação direta (código original)
+        print(f"✅ Caminho direto livre de áreas proibidas - usando navegação direta")
         
         # 🎯 UNIFICAÇÃO: Normaliza o ângulo atual para [0, 360) para cálculos corretos
         # O ângulo pode estar em [-180, 180] devido à normalização da odometria
@@ -437,10 +887,12 @@ class RobotNavigator(QObject):
         if current_angle_normalized < 0:
             current_angle_normalized += 360
         
+        # 🎯 CORREÇÃO 1: Garante que o caminho comece na posição EXATA atual e termine no destino EXATO
         # Define o destino como alvo único (sem waypoints intermediários)
         self.original_destination = destination
         self.current_target = destination
-        self.path = [self.current_position, destination]  # Caminho mínimo: origem -> destino
+        # Caminho mínimo: origem EXATA -> destino EXATO
+        self.path = [self.current_position, destination]
         self.path_index = 0
         
         # 🎯 UNIFICAÇÃO: Calcula direção direta para o destino
@@ -495,10 +947,20 @@ class RobotNavigator(QObject):
 
     def get_navigation_status(self) -> dict:
         """Retorna o status atual da navegação"""
+        # 🎯 CORREÇÃO CRÍTICA: Se o estado é COMPLETED, sempre retorna COMPLETED
+        # Isso permite que a interface detecte a conclusão mesmo após navigation_active = False
+        if self.navigation_state == "COMPLETED":
+            return {
+                "state": "COMPLETED", "progress": 1.0, "estimated_time_remaining": 0.0,
+                "current_target": None, "position": self.current_position, "angle": self.current_angle,
+                "is_returning_to_base": False, "is_paused_at_destination": False
+            }
+        
         if not self.navigation_active:
             return {
                 "state": "IDLE", "progress": 0.0, "estimated_time_remaining": 0.0,
-                "current_target": None, "position": self.current_position, "angle": self.current_angle
+                "current_target": None, "position": self.current_position, "angle": self.current_angle,
+                "is_returning_to_base": False, "is_paused_at_destination": False
             }
             
         if len(self.path) > 1:
@@ -650,10 +1112,19 @@ class RobotNavigator(QObject):
         self.motors.set_target_speed(left_tps, right_tps)
 
     def _move_towards_target(self):
+        """
+        🎯 NAVEGAÇÃO SIMPLIFICADA E ESTÁVEL:
+        - Navega direto para o waypoint atual (current_target)
+        - Não tenta seguir a linha exata entre waypoints (isso causa instabilidade)
+        - Quando chega perto do waypoint, avança para o próximo (lógica em _handle_navigation_to_destination)
+        - Isso garante que o robô passe pelos waypoints e siga o caminho de forma estável
+        """
         if self.current_target is None:
             self.motors.set_target_speed(0, 0)
             return
 
+        # 🎯 NAVEGAÇÃO SIMPLES: Vai direto ao waypoint atual (current_target)
+        # A lógica de avanço de waypoints está em _handle_navigation_to_destination
         dx = self.current_target[0] - self.current_position[0]
         dy = self.current_target[1] - self.current_position[1]
         distance = math.sqrt(dx*dx + dy*dy)
@@ -816,7 +1287,23 @@ class RobotNavigator(QObject):
         return False
 
     def _adjust_final_angle(self):
+        # 🎯 CORREÇÃO: Timeout para evitar loop infinito (máximo 10 segundos)
+        if hasattr(self, 'final_angle_adjustment_start_time'):
+            elapsed_time = time.time() - self.final_angle_adjustment_start_time
+            if elapsed_time > 10.0:  # Timeout de 10 segundos
+                print(f"⚠️ TIMEOUT: Ajuste de ângulo final excedeu 10 segundos, finalizando navegação")
+                print(f"⚠️ Ângulo atual: {self.current_angle:.1f}°, Ângulo desejado: {ROBOT_INITIAL_ANGLE}°")
+                self._finalize_navigation()
+                return
+        
         angle_diff = (ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180
+        
+        # 🎯 CORREÇÃO: Log periódico para debug (a cada 50 iterações)
+        if not hasattr(self, '_angle_adjustment_log_counter'):
+            self._angle_adjustment_log_counter = 0
+        self._angle_adjustment_log_counter += 1
+        if self._angle_adjustment_log_counter % 50 == 0:
+            print(f"🔄 AJUSTE ÂNGULO FINAL: Erro={angle_diff:.1f}°, Atual={self.current_angle:.1f}°, Desejado={ROBOT_INITIAL_ANGLE}°")
         
         if abs(angle_diff) > 1.0:
             if abs(angle_diff) > 30: turn_value = min(0.8, abs(angle_diff) / 25.0)
@@ -831,6 +1318,7 @@ class RobotNavigator(QObject):
                 right_speed = turn_value * 100
             self.motors.set_speed(left_speed, right_speed)
         else:
+            print(f"✅ AJUSTE DE ÂNGULO FINAL CONCLUÍDO: Erro={angle_diff:.1f}° (dentro da tolerância de 1.0°)")
             self._finalize_navigation()
 
     def _get_next_waypoint_info(self):
@@ -921,8 +1409,12 @@ class RobotNavigator(QObject):
 
         distance_to_target = self._calculate_distance(self.current_position, self.current_target)
 
-        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Se habilitada, usa lógica simplificada
-        if self.use_direct_navigation:
+        # 🎯 NAVEGAÇÃO DIRETA SIMPLES OU COM PATHFINDING: Verifica se há waypoints
+        # Se o caminho tem apenas 2 pontos (início e fim), é navegação direta
+        # Se tem mais pontos, é navegação com pathfinding (desvio de áreas proibidas)
+        is_direct_navigation = (not self.path or len(self.path) <= 2)
+        
+        if is_direct_navigation:
             # Na navegação direta, o destino é sempre self.original_destination
             # Não há waypoints intermediários, então vamos direto ao destino
             
@@ -959,7 +1451,27 @@ class RobotNavigator(QObject):
             self._move_towards_target()
             return
 
-        # Navegação com pathfinding (código original)
+        # Navegação com pathfinding (desvio de áreas proibidas)
+        # 🎯 CORREÇÃO: Garante que current_target está sempre definido corretamente
+        if not self.path or len(self.path) == 0:
+            print("⚠️ ERRO: Caminho vazio durante navegação!")
+            self._finalize_navigation()
+            return
+        
+        # Garante que path_index está dentro dos limites
+        if self.path_index >= len(self.path):
+            print(f"⚠️ ERRO: path_index ({self.path_index}) >= len(path) ({len(self.path)})")
+            self.navigation_state = "FINAL_APPROACH_DESTINATION"
+            self.current_target = self.original_destination
+            return
+        
+        # Garante que current_target está definido
+        if self.current_target is None:
+            if self.path_index < len(self.path):
+                self.current_target = self.path[self.path_index]
+            else:
+                self.current_target = self.original_destination
+        
         is_near_final_destination = (self.path_index >= len(self.path) - 1)
 
         if is_near_final_destination and distance_to_target < 0.15:
@@ -967,13 +1479,17 @@ class RobotNavigator(QObject):
             self.current_target = self.original_destination
             return
 
-        if distance_to_target < 0.12:
+        # 🎯 CORREÇÃO: Avança para o próximo waypoint quando chega perto (tolerância de 20cm para evitar paradas)
+        if distance_to_target < 0.20:  # Tolerância aumentada para evitar paradas e giros em loop
             self.path_index += 1
             if self.path_index < len(self.path):
                 self.current_target = self.path[self.path_index]
+                print(f"🎯 AVANÇANDO WAYPOINT: {self.path_index-1} → {self.path_index}, Novo alvo: {self.current_target}")
             else:
+                # Chegou ao último waypoint, vai para aproximação final
                 self.navigation_state = "FINAL_APPROACH_DESTINATION"
                 self.current_target = self.original_destination
+                print(f"🎯 ÚLTIMO WAYPOINT ALCANÇADO, indo para aproximação final: {self.original_destination}")
             return
         
         self._move_towards_target()
@@ -985,8 +1501,12 @@ class RobotNavigator(QObject):
 
         distance_to_target = self._calculate_distance(self.current_position, self.current_target)
         
-        # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Se habilitada, usa lógica simplificada
-        if self.use_direct_navigation:
+        # 🎯 NAVEGAÇÃO DIRETA SIMPLES OU COM PATHFINDING: Verifica se há waypoints
+        # Se o caminho tem apenas 2 pontos (início e fim), é navegação direta
+        # Se tem mais pontos, é navegação com pathfinding (desvio de áreas proibidas)
+        is_direct_navigation = (not self.path or len(self.path) <= 2)
+        
+        if is_direct_navigation:
             # Na navegação direta, o destino de retorno é sempre self.base_position
             # Não há waypoints intermediários, então vamos direto à base
             
@@ -1022,25 +1542,47 @@ class RobotNavigator(QObject):
             self._move_towards_target()
             return
 
-        # Navegação com pathfinding (código original)
-        if not self.path:
+        # Navegação com pathfinding (desvio de áreas proibidas)
+        # 🎯 CORREÇÃO: Garante que current_target está sempre definido corretamente
+        if not self.path or len(self.path) == 0:
+            print("⚠️ ERRO: Caminho vazio durante retorno!")
             self._finalize_navigation()
             return
+        
+        # Garante que path_index está dentro dos limites válidos (>= 1, pois índice 0 é a posição atual)
+        if self.path_index < 1:
+            self.path_index = 1
+        if self.path_index >= len(self.path):
+            print(f"🎯 ÚLTIMO WAYPOINT DE RETORNO ALCANÇADO, indo para aproximação final")
+            self.navigation_state = "FINAL_APPROACH_BASE"
+            self.current_target = self.base_position
+            self.final_approach_start_time = None
+            return
+        
+        # Garante que current_target está definido
+        if self.current_target is None or self.path_index < len(self.path):
+            self.current_target = self.path[self.path_index]
             
         is_near_base = (self.path_index >= len(self.path) - 1)
 
         if is_near_base and distance_to_target < 0.15:
             self.navigation_state = "FINAL_APPROACH_BASE"
-            self.current_target = self.path[-1]
+            self.current_target = self.base_position
             self.final_approach_start_time = None 
             return
 
-        if distance_to_target < NAVIGATION_GOAL_TOLERANCE:
+        # 🎯 CORREÇÃO: Avança para o próximo waypoint quando chega perto (tolerância de 20cm para evitar paradas)
+        if distance_to_target < 0.20:  # Tolerância aumentada para evitar paradas e giros
             self.path_index += 1
             if self.path_index < len(self.path):
                 self.current_target = self.path[self.path_index]
+                print(f"🎯 RETORNO: Avançando waypoint {self.path_index-1} → {self.path_index}, Novo alvo: {self.current_target}")
             else:
-                self._start_final_angle_adjustment()
+                # Chegou ao último waypoint, vai para aproximação final
+                self.navigation_state = "FINAL_APPROACH_BASE"
+                self.current_target = self.base_position
+                self.final_approach_start_time = None
+                print(f"🎯 RETORNO: Último waypoint alcançado, indo para aproximação final da base")
             return
         
         self._move_towards_target()
