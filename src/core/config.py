@@ -31,15 +31,15 @@ MAP_GRID_SIZE = 0.1 # Tamanho da célula da grade em metros (10cm)
 MAP_SCALE = 56.66  # pixels por metro (ajustado para mostrar grids de 0.5m com 70% de aumento)
 
 # Configurações de segurança
-EMERGENCY_STOP_DISTANCE = 0.2  # 20cm
+EMERGENCY_STOP_DISTANCE = 0.15  # 15cm - Reduzido para robô menor (40cm de largura)
 # A margem de segurança deve ser o RAIO do robô + uma folga.
-# Raio (30cm para um robô de 60cm de diâmetro) + Folga (10cm para permitir passagem entre áreas) = 40cm
-# 🎯 CORREÇÃO 5: Aumentado de 35cm para 40cm para permitir que o robô passe entre áreas proibidas
-# quando há espaço suficiente (60cm largura + 20cm margem = 80cm mínimo entre áreas)
-FORBIDDEN_AREA_INFLATION_RADIUS = 0.40 # 40cm de margem de segurança (raio 30cm + folga 10cm)
+# Raio (20cm para um robô de 40cm de largura) + Folga (11cm para permitir passagem entre áreas) = 31cm
+# 🎯 AJUSTADO: Configurado para robô de 40cm de largura
+# Espaço mínimo necessário entre áreas: 40cm (robô) + 2×31cm (inflação) = 102cm ≈ 1.0m
+FORBIDDEN_AREA_INFLATION_RADIUS = 0.20 # 31cm de margem de segurança (raio 20cm + folga 11cm)
 
 # Configurações do robô
-ROBOT_WIDTH = 0.6                # Largura/Diâmetro do robô em metros (60cm)
+ROBOT_WIDTH = 0.40                # Largura/Diâmetro do robô em metros (40cm)
 ROBOT_SPEED = 0.30               # AUMENTADO 20% para teste (era 0.25, era 0.15 originalmente)
 ROBOT_MAX_SPEED = 0.30           # Alinhado com ROBOT_SPEED (aumentado 20%)
 SIMULATION_SPEED_FACTOR = 8.0    # Fator de multiplicação para a velocidade na simulação
@@ -57,15 +57,15 @@ SIMULATION_TIMESTEP = 0.1  # segundos
 SIMULATION_UPDATE_RATE = 10  # Hz
 
 # Configurações de navegação
-NAVIGATION_GOAL_TOLERANCE = 0.20  # 5cm - Distância para considerar que chegou (REDUZIDO DE 0.15)
-NAVIGATION_ANGLE_TOLERANCE = 5.0   # REDUZIDO para 5 graus. Força um alinhamento melhor antes de avançar.
-NAVIGATION_OBSTACLE_DISTANCE = 0.5  # metros
+NAVIGATION_GOAL_TOLERANCE = 0.20  # 20cm - Distância para considerar que chegou
+NAVIGATION_ANGLE_TOLERANCE = 5.0   # 5 graus - Força um alinhamento melhor antes de avançar
+NAVIGATION_OBSTACLE_DISTANCE = 0.35  # 35cm - Reduzido para robô menor (era 0.5m)
 
 # Configurações de precisão avançada
-NAVIGATION_ULTRA_PRECISION_TOLERANCE = 0.02  # (2cm) Retornando ao valor original para máxima precisão
-NAVIGATION_FINE_APPROACH_DISTANCE = 0.5  # 15cm
-NAVIGATION_PRECISION_APPROACH_DISTANCE = 0.10  # 8cm
-NAVIGATION_ULTRA_PRECISION_ANGLE_TOLERANCE = 1.5  # graus (tolerância de ângulo ultra-precisa)
+NAVIGATION_ULTRA_PRECISION_TOLERANCE = 0.02  # 2cm - Máxima precisão para chegada ao destino
+NAVIGATION_FINE_APPROACH_DISTANCE = 0.30  # 30cm - Reduzido para robô menor (era 0.5m)
+NAVIGATION_PRECISION_APPROACH_DISTANCE = 0.10  # 10cm - Distância para aproximação precisa
+NAVIGATION_ULTRA_PRECISION_ANGLE_TOLERANCE = 1.5  # graus - Tolerância de ângulo ultra-precisa
 
 # Configurações de interface
 INTERFACE_UPDATE_RATE = 10  # Hz
@@ -112,7 +112,7 @@ SIMULATION_OBSTACLE_COUNT = 3
 SIMULATION_DEFAULT_DISTANCE = 5.0  # metros
 
 # Configurações de segurança
-MIN_SAFE_DISTANCE = 0.5  # metros
+MIN_SAFE_DISTANCE = 0.35  # 35cm - Reduzido para robô menor (era 0.5m)
 
 # Configurações da interface
 WINDOW_WIDTH = 800
