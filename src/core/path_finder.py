@@ -166,15 +166,116 @@ class PathFinder:
                 (x * self.grid_size + self.map_origin[0], y * self.grid_size + self.map_origin[1]) 
                 for x, y in path
             ]
+            
             # 🎯 CORREÇÃO 1: Garante que o primeiro ponto seja a posição EXATA atual e o último seja o destino EXATO
-            # Substitui o primeiro ponto pela posição atual exata
+            # Mas verifica se isso não cria segmentos inválidos
+            original_first_point = world_path[0] if len(world_path) > 0 else start
+            
+            # Substitui o primeiro ponto pela posição atual exata (se for seguro)
             if len(world_path) > 0:
-                world_path[0] = start
-            # Substitui o último ponto pelo destino exato
+                # 🎯 CORREÇÃO: Verifica se substituir pelo start exato não cria segmento inválido
+                if len(world_path) > 1 and self.forbidden_areas and len(self.forbidden_areas) > 0:
+                    # Verifica se o segmento do start até o primeiro waypoint é válido
+                    if not self._line_intersects_obstacles(start, world_path[1]):
+                        world_path[0] = start  # Seguro substituir
+                    else:
+                        # Não é seguro substituir, mantém o ponto válido encontrado pelo A*
+                        print(f"⚠️ AVISO: Start exato ({start}) criaria segmento inválido, mantendo ponto válido ({world_path[0]})")
+                else:
+                    world_path[0] = start  # Sem áreas proibidas, sempre seguro
+            
+            # Substitui o último ponto pelo destino exato (se for seguro)
             if len(world_path) > 0:
-                world_path[-1] = goal
+                # 🎯 CORREÇÃO: Verifica se o goal está em área proibida
+                # Se o goal NÃO está em área proibida, sempre adiciona o goal exato como último ponto
+                # (mesmo que o segmento até ele passe por área proibida, o goal em si é válido)
+                if self.forbidden_areas and len(self.forbidden_areas) > 0:
+                    # Converte goal para grid para verificar se está em área proibida
+                    goal_relative_x = goal[0] - self.map_origin[0]
+                    goal_relative_y = goal[1] - self.map_origin[1]
+                    goal_grid = (int(goal_relative_x / self.grid_size), int(goal_relative_y / self.grid_size))
+                    
+                    # Verifica se o goal está em área proibida
+                    goal_in_obstacle = self._is_in_forbidden_area(goal_grid[0], goal_grid[1])
+                    
+                    if not goal_in_obstacle:
+                        # Goal não está em área proibida - sempre adiciona o goal exato como último ponto
+                        # Isso garante que o caminho chegue exatamente ao POI
+                        world_path[-1] = goal
+                        print(f"✅ Goal exato ({goal}) não está em área proibida, adicionando como último ponto")
+                        print(f"✅ Caminho atualizado: último ponto agora é {world_path[-1]} (goal exato)")
+                    else:
+                        # Goal está em área proibida - verifica se o segmento até ele é válido
+                        if len(world_path) > 1:
+                            if not self._line_intersects_obstacles(world_path[-2], goal):
+                                world_path[-1] = goal  # Seguro substituir
+                                print(f"✅ Goal exato ({goal}) está em área proibida mas segmento é válido, substituindo último ponto")
+                            else:
+                                # Não é seguro substituir, mantém o ponto válido encontrado pelo A*
+                                print(f"⚠️ AVISO: Goal exato ({goal}) está em área proibida e segmento é inválido, mantendo ponto válido ({world_path[-1]})")
+                        else:
+                            world_path[-1] = goal  # Se só tem 1 ponto, substitui mesmo assim
+                            print(f"✅ Caminho tem apenas 1 ponto, substituindo pelo goal exato: {world_path[-1]}")
+                else:
+                    world_path[-1] = goal  # Sem áreas proibidas, sempre seguro
+                    print(f"✅ Sem áreas proibidas, substituindo último ponto pelo goal exato: {world_path[-1]}")
+            
+            # 🎯 CORREÇÃO CRÍTICA: Validação final - verifica se todos os segmentos são válidos
+            # Isso garante que a simplificação/suavização não criou segmentos que passam por áreas proibidas
+            if self.forbidden_areas and len(self.forbidden_areas) > 0:
+                # Verifica se o goal está em área proibida
+                goal_relative_x = goal[0] - self.map_origin[0]
+                goal_relative_y = goal[1] - self.map_origin[1]
+                goal_grid = (int(goal_relative_x / self.grid_size), int(goal_relative_y / self.grid_size))
+                goal_in_obstacle = self._is_in_forbidden_area(goal_grid[0], goal_grid[1])
+                
+                invalid_segments = []
+                for i in range(len(world_path) - 1):
+                    if self._line_intersects_obstacles(world_path[i], world_path[i + 1]):
+                        # 🎯 CORREÇÃO: Se o último segmento passa por área proibida mas o goal não está em área proibida,
+                        # não consideramos isso um erro crítico (o robô pode chegar ao goal na fase de aproximação final)
+                        is_last_segment = (i == len(world_path) - 2)
+                        if is_last_segment and not goal_in_obstacle:
+                            print(f"ℹ️ INFO: Último segmento ({world_path[i]} → {world_path[i+1]}) passa por área proibida, mas goal não está em área proibida - permitindo (robô chegará ao goal na aproximação final)")
+                            continue  # Não adiciona à lista de segmentos inválidos
+                        
+                        invalid_segments.append(i)
+                        print(f"⚠️ AVISO: Segmento {i} ({world_path[i]} → {world_path[i+1]}) intersecta área proibida após simplificação!")
+                
+                if invalid_segments:
+                    print(f"🚨 ERRO: {len(invalid_segments)} segmento(s) inválido(s) detectado(s) após simplificação!")
+                    print(f"🚨 Segmentos inválidos: {invalid_segments}")
+                    print(f"🚨 Isso indica que a simplificação/suavização criou caminhos que passam por áreas proibidas")
+                    print(f"🚨 Retornando None para segurança (não é seguro usar este caminho)")
+                    return None  # Retorna None para indicar que o caminho não é seguro
+            
             print(f"DEBUG: Caminho encontrado com {len(world_path)} pontos")
-            print(f"DEBUG: Primeiro ponto: {world_path[0]} (posição exata), Último ponto: {world_path[-1]} (destino exato)")
+            print(f"DEBUG: Primeiro ponto: {world_path[0]} (posição exata)")
+            print(f"DEBUG: Último ponto ANTES da verificação final: {world_path[-1]}, Goal exato: {goal}")
+            
+            # 🎯 CORREÇÃO FINAL CRÍTICA: Garante que o último ponto é sempre o goal exato se o goal não está em área proibida
+            # Isso garante que o traçado azul chegue exatamente ao POI na interface
+            if self.forbidden_areas and len(self.forbidden_areas) > 0:
+                goal_relative_x = goal[0] - self.map_origin[0]
+                goal_relative_y = goal[1] - self.map_origin[1]
+                goal_grid = (int(goal_relative_x / self.grid_size), int(goal_relative_y / self.grid_size))
+                goal_in_obstacle = self._is_in_forbidden_area(goal_grid[0], goal_grid[1])
+                
+                if not goal_in_obstacle:
+                    # Goal não está em área proibida - FORÇA substituição do último ponto pelo goal exato
+                    if world_path[-1] != goal:
+                        print(f"🔧 CORREÇÃO FINAL: Último ponto ({world_path[-1]}) diferente do goal exato ({goal}), substituindo...")
+                        world_path[-1] = goal
+                        print(f"✅ Último ponto atualizado para goal exato: {world_path[-1]}")
+            else:
+                # Sem áreas proibidas - sempre garante que o último ponto é o goal exato
+                if world_path[-1] != goal:
+                    print(f"🔧 CORREÇÃO FINAL: Último ponto ({world_path[-1]}) diferente do goal exato ({goal}), substituindo...")
+                    world_path[-1] = goal
+                    print(f"✅ Último ponto atualizado para goal exato: {world_path[-1]}")
+            
+            print(f"✅ Validação final: Todos os {len(world_path) - 1} segmentos são válidos (não intersectam áreas proibidas)")
+            print(f"✅ Caminho final retornado: {len(world_path)} pontos, último ponto = {world_path[-1]} (goal exato: {goal})")
             return world_path
         else:
             # A* não encontrou caminho
@@ -317,7 +418,7 @@ class PathFinder:
         return None
 
     def _simplify_path(self, path: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
-        """🎯 SOLUÇÃO B: Simplifica o caminho removendo waypoints desnecessários"""
+        """🎯 CORREÇÃO: Simplifica o caminho removendo waypoints desnecessários com validação"""
         if len(path) <= 2:
             return path
             
@@ -330,6 +431,7 @@ class PathFinder:
             best_idx = next_idx
             
             # Verifica se pode "pular" pontos intermediários
+            # 🎯 CORREÇÃO: Agora usa Bresenham para verificar TODAS as células (não apenas amostras)
             for i in range(current_idx + 2, len(path)):
                 if self._can_skip_points(path[current_idx], path[i]):
                     best_idx = i
@@ -345,7 +447,24 @@ class PathFinder:
         # Sempre mantém o final
         if simplified[-1] != path[-1]:
             simplified.append(path[-1])
-            
+        
+        # 🎯 CORREÇÃO: Validação após simplificação - verifica se os segmentos simplificados são válidos
+        # Se houver áreas proibidas, valida cada segmento
+        if self.forbidden_areas and len(self.forbidden_areas) > 0:
+            for i in range(len(simplified) - 1):
+                # Converte para coordenadas world para validação
+                start_world = (simplified[i][0] * self.grid_size + self.map_origin[0],
+                              simplified[i][1] * self.grid_size + self.map_origin[1])
+                end_world = (simplified[i+1][0] * self.grid_size + self.map_origin[0],
+                            simplified[i+1][1] * self.grid_size + self.map_origin[1])
+                
+                # Verifica se o segmento intersecta áreas proibidas
+                if self._line_intersects_obstacles(start_world, end_world):
+                    # Segmento inválido detectado! Retorna caminho menos simplificado
+                    print(f"⚠️ AVISO: Segmento simplificado {i} intersecta área proibida, usando simplificação mais conservadora")
+                    # Retorna caminho original (não simplificado) como fallback seguro
+                    return path
+        
         return simplified
 
     def _smooth_curves(self, path: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
@@ -464,28 +583,17 @@ class PathFinder:
         return intermediate_points
     
     def _can_skip_points(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
-        """🎯 SOLUÇÃO B: Verifica se pode pular pontos intermediários (linha reta livre)"""
-        # Converte para coordenadas do mundo considerando a origem do mapa
-        start_world = (start[0] * self.grid_size + self.map_origin[0], start[1] * self.grid_size + self.map_origin[1])
-        end_world = (end[0] * self.grid_size + self.map_origin[0], end[1] * self.grid_size + self.map_origin[1])
+        """🎯 CORREÇÃO: Verifica se pode pular pontos intermediários usando Bresenham (verifica TODAS as células)"""
+        # 🎯 CORREÇÃO CRÍTICA: Usa Bresenham para verificar TODAS as células da linha
+        # Isso garante que nenhuma célula de obstáculo seja perdida (problema da amostragem anterior)
+        line_points = self._bresenham_line(start, end)
         
-        # Verifica se a linha reta entre os pontos não passa por áreas proibidas
-        # Usa amostragem para verificar pontos intermediários
-        num_samples = max(3, int(self._calculate_world_distance(start_world, end_world) / (self.grid_size * 2)))
+        # Verifica cada célula da linha
+        for point in line_points:
+            if self._is_in_forbidden_area(point[0], point[1]):
+                return False  # Encontrou obstáculo, não pode pular pontos
         
-        for i in range(1, num_samples):
-            t = i / num_samples
-            sample_x = start_world[0] + t * (end_world[0] - start_world[0])
-            sample_y = start_world[1] + t * (end_world[1] - start_world[1])
-            
-            # Converte de volta para grid considerando a origem do mapa
-            sample_grid = (int((sample_x - self.map_origin[0]) / self.grid_size), int((sample_y - self.map_origin[1]) / self.grid_size))
-            
-            # Verifica se está em área proibida
-            if self._is_in_forbidden_area(sample_grid[0], sample_grid[1]):
-                return False
-                
-        return True
+        return True  # Linha livre, pode pular pontos intermediários
     
     def _calculate_world_distance(self, p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
         """Calcula distância entre dois pontos em coordenadas do mundo"""

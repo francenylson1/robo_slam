@@ -58,6 +58,10 @@ class MapWidget(QWidget):
         
     def set_current_path(self, path: List[Tuple[float, float]]):
         """Define o caminho de navegação atual para ser desenhado."""
+        # 🎯 CORREÇÃO: NÃO modifica o caminho aqui - apenas armazena e desenha
+        # A lógica de garantir que o caminho termina no destino exato deve ser feita
+        # no main_window.py ANTES de chamar esta função, usando o destino correto
+        # Se modificarmos aqui usando "POI mais próximo", podemos adicionar o POI errado!
         self.current_path = path
         self.update()  # Força o widget a se redesenhar
 

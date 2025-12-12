@@ -691,13 +691,64 @@ class MainWindow(QMainWindow):
 
         # 🎯 CORREÇÃO: Atualiza o caminho na interface quando o retorno inicia
         # Isso garante que o caminho de retorno seja desenhado corretamente
-        if state_text == "RETURNING_TO_BASE" or state_text == "ORIENTING_TO_TARGET":
+        # IMPORTANTE: Só atualiza se o robô ESTÁ retornando (is_returning_to_base = True)
+        # Não atualiza durante a navegação até o destino para evitar mostrar o caminho completo
+        if state_text == "RETURNING_TO_BASE" or (state_text == "ORIENTING_TO_TARGET" and getattr(self.navigator, 'is_returning_to_base', False)):
             if hasattr(self.navigator, 'path') and self.navigator.path:
-                # Atualiza o caminho apenas se mudou
-                current_path_length = len(self.map_widget.current_path) if self.map_widget.current_path else 0
-                if len(self.navigator.path) != current_path_length:
-                    self.map_widget.set_current_path(self.navigator.path)
-                    print(f"🎯 INTERFACE: Caminho de retorno atualizado na interface: {len(self.navigator.path)} pontos")
+                # 🎯 CORREÇÃO: Sempre atualiza o caminho quando o retorno inicia (não apenas se mudou)
+                # Isso garante que o caminho de retorno seja mostrado mesmo que o comprimento seja o mesmo
+                # 🎯 CORREÇÃO: Garante que o caminho de retorno termina na base exata
+                path_to_display = list(self.navigator.path)
+                if hasattr(self.navigator, 'base_position') and self.navigator.base_position:
+                    base_exact = self.navigator.base_position
+                    if len(path_to_display) > 0:
+                        last_point = path_to_display[-1]
+                        dist_to_base = math.sqrt(
+                            (last_point[0] - base_exact[0])**2 + 
+                            (last_point[1] - base_exact[1])**2
+                        )
+                        if dist_to_base > 0.01:  # Mais de 1cm de diferença
+                            print(f"🔧 INTERFACE: Adicionando base exata ao caminho de retorno (distância: {dist_to_base*100:.2f}cm)")
+                            path_to_display.append(base_exact)
+                self.map_widget.set_current_path(path_to_display)
+                print(f"🎯 INTERFACE: Caminho de retorno atualizado na interface: {len(path_to_display)} pontos")
+        
+        # 🎯 CORREÇÃO CRÍTICA: Durante a navegação até o destino, garante que apenas o caminho de ida seja mostrado
+        # Isso evita que o caminho completo (ida + volta) seja mostrado desde o início
+        elif state_text in ["NAVIGATING_TO_DESTINATION", "ORIENTING_TO_TARGET", "FINAL_APPROACH_DESTINATION"]:
+            if hasattr(self.navigator, 'path') and self.navigator.path and not getattr(self.navigator, 'is_returning_to_base', False):
+                # Garante que apenas o caminho de ida seja mostrado
+                if hasattr(self.navigator, 'destination_index') and self.navigator.destination_index is not None:
+                    max_index = min(self.navigator.destination_index + 1, len(self.navigator.path))
+                    path_to_display = list(self.navigator.path[:max_index])
+                    
+                    # 🎯 CORREÇÃO: Adiciona o destino exato se necessário
+                    destination_exact = None
+                    if hasattr(self.navigator, 'original_destination') and self.navigator.original_destination:
+                        destination_exact = self.navigator.original_destination
+                    
+                    if destination_exact and len(path_to_display) > 0:
+                        last_point = path_to_display[-1]
+                        dist_to_destination = math.sqrt(
+                            (last_point[0] - destination_exact[0])**2 + 
+                            (last_point[1] - destination_exact[1])**2
+                        )
+                        if dist_to_destination > 0.01:  # Mais de 1cm de diferença
+                            path_to_display.append(destination_exact)
+                    
+                    # Só atualiza se o caminho mudou
+                    current_path_length = len(self.map_widget.current_path) if self.map_widget.current_path else 0
+                    if len(path_to_display) != current_path_length:
+                        self.map_widget.set_current_path(path_to_display)
+                        print(f"🔍 INTERFACE: Atualizando caminho de IDA durante navegação: {len(path_to_display)} pontos")
+        
+        # 🎯 CORREÇÃO CRÍTICA: Quando o robô chega ao destino (PAUSED_AT_DESTINATION), limpa o caminho de ida
+        # O caminho de retorno será mostrado quando o retorno iniciar
+        elif state_text == "PAUSED_AT_DESTINATION":
+            # Limpa o caminho de ida para preparar para o caminho de retorno
+            if self.map_widget.current_path:
+                print(f"🔍 INTERFACE: Robô chegou ao destino, limpando caminho de ida para preparar retorno")
+                self.map_widget.clear_current_path()
 
         if nav_status.get("is_paused_at_destination", False):
             info_text = f"Estado: {state_text} | Pausado no destino"
@@ -1436,7 +1487,65 @@ class MainWindow(QMainWindow):
             self.navigation_active = True
             
             if hasattr(self.navigator, 'path') and self.navigator.path:
-                self.map_widget.set_current_path(self.navigator.path)
+                # 🎯 CORREÇÃO CRÍTICA: Mostra apenas o caminho de IDA inicialmente
+                # O caminho de volta será mostrado apenas quando o robô chegar ao destino
+                # Isso evita mostrar o caminho completo (ida + volta) desde o início
+                
+                print(f"🔍 DEBUG INTERFACE: path length={len(self.navigator.path)}, is_returning_to_base={getattr(self.navigator, 'is_returning_to_base', False)}, destination_index={getattr(self.navigator, 'destination_index', None)}")
+                
+                # Obtém o destino exato (POI) - pode ser original_destination ou destination
+                destination_exact = None
+                if hasattr(self.navigator, 'original_destination') and self.navigator.original_destination:
+                    destination_exact = self.navigator.original_destination
+                    print(f"🔍 INTERFACE: Usando original_destination: {destination_exact}")
+                elif destination:  # Usa o destination passado para navigate_to_and_return
+                    destination_exact = destination
+                    print(f"🔍 INTERFACE: Usando destination: {destination_exact}")
+                
+                # Se o robô ainda não está retornando, mostra apenas o caminho até o destino
+                if not getattr(self.navigator, 'is_returning_to_base', False):
+                    # Usa destination_index para limitar o caminho apenas até o destino
+                    if hasattr(self.navigator, 'destination_index') and self.navigator.destination_index is not None:
+                        # Mostra apenas os pontos até o destino (incluindo o destino)
+                        # 🎯 CORREÇÃO: Garante que destination_index não exceda o tamanho do caminho
+                        max_index = min(self.navigator.destination_index + 1, len(self.navigator.path))
+                        path_to_display = list(self.navigator.path[:max_index])
+                        print(f"🔍 INTERFACE: Mostrando apenas caminho de IDA até destino (índice {self.navigator.destination_index}, max_index={max_index}): {len(path_to_display)} pontos de {len(self.navigator.path)} totais")
+                        print(f"🔍 DEBUG: Primeiro ponto: {path_to_display[0] if path_to_display else 'N/A'}, Último ponto: {path_to_display[-1] if path_to_display else 'N/A'}")
+                    else:
+                        # Se não tem destination_index, usa todo o caminho (mas não deveria ter caminho de volta ainda)
+                        path_to_display = list(self.navigator.path)
+                        print(f"⚠️ INTERFACE: destination_index não disponível, usando caminho completo: {len(path_to_display)} pontos")
+                        print(f"⚠️ DEBUG: Primeiro ponto: {path_to_display[0] if path_to_display else 'N/A'}, Último ponto: {path_to_display[-1] if path_to_display else 'N/A'}")
+                    
+                    # 🎯 CORREÇÃO CRÍTICA: Se temos um destino exato e o caminho não termina nele, adiciona o destino exato
+                    # Isso garante que o traçado azul chegue exatamente ao POI
+                    if destination_exact and len(path_to_display) > 0:
+                        # Compara com tolerância de 1cm para evitar problemas de precisão de ponto flutuante
+                        last_point = path_to_display[-1]
+                        dist_to_destination = math.sqrt(
+                            (last_point[0] - destination_exact[0])**2 + 
+                            (last_point[1] - destination_exact[1])**2
+                        )
+                        
+                        print(f"🔍 INTERFACE: Último ponto do caminho: {last_point}, Destino exato: {destination_exact}, Distância: {dist_to_destination*100:.2f}cm")
+                        
+                        if dist_to_destination > 0.01:  # Mais de 1cm de diferença
+                            print(f"🔧 INTERFACE: Último ponto do caminho ({last_point}) está a {dist_to_destination*100:.2f}cm do destino exato ({destination_exact}), adicionando destino exato")
+                            path_to_display.append(destination_exact)
+                        else:
+                            print(f"✅ INTERFACE: Último ponto do caminho já está no destino exato (distância: {dist_to_destination*100:.2f}cm)")
+                    elif not destination_exact:
+                        print(f"⚠️ INTERFACE: Não foi possível obter destino exato! original_destination={getattr(self.navigator, 'original_destination', None)}, destination={destination}")
+                else:
+                    # Se o robô está retornando, mostra o caminho completo (já atualizado para retorno)
+                    path_to_display = list(self.navigator.path)
+                    print(f"🔍 INTERFACE: Robô retornando, mostrando caminho de retorno: {len(path_to_display)} pontos")
+                
+                self.map_widget.set_current_path(path_to_display)
+                print(f"🎯 INTERFACE: Caminho passado para interface: {len(path_to_display)} pontos, último ponto: {path_to_display[-1] if path_to_display else 'N/A'}")
+            else:
+                print(f"⚠️ INTERFACE: Nenhum caminho disponível no navegador! path existe? {hasattr(self.navigator, 'path')}, path length? {len(self.navigator.path) if hasattr(self.navigator, 'path') else 0}")
             
             self.nav_status_label.setText("Status: Navegação automática (ida + volta)...")
             self.nav_progress_bar.setVisible(True)

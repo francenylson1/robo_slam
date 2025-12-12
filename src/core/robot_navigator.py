@@ -687,7 +687,21 @@ class RobotNavigator(QObject):
         self.original_destination = destination
         self.destination_index = len(path_to_destination) - 1
         
-        self.current_target = self.path[0]
+        # 🎯 CORREÇÃO CRÍTICA: Se o caminho tem apenas 2 pontos (start e goal), 
+        # e o primeiro ponto é a posição atual, usa o goal como target
+        # Caso contrário, usa o próximo waypoint (índice 1) se disponível
+        if len(self.path) > 1:
+            # Se o primeiro ponto é muito próximo da posição atual (provavelmente é o start exato),
+            # usa o segundo ponto como target inicial
+            dist_to_first = math.sqrt((self.path[0][0] - self.current_position[0])**2 + 
+                                     (self.path[0][1] - self.current_position[1])**2)
+            if dist_to_first < 0.05:  # Menos de 5cm de distância
+                self.current_target = self.path[1]  # Usa o próximo waypoint
+                self.path_index = 1  # Começa no segundo ponto
+            else:
+                self.current_target = self.path[0]  # Usa o primeiro ponto
+        else:
+            self.current_target = self.path[0] if len(self.path) > 0 else destination
         
         print(f"DEBUG: Caminho calculado com {len(self.path)} pontos.")
         
