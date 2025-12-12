@@ -588,12 +588,20 @@ class RobotNavigator(QObject):
         self.path_finder.set_forbidden_areas(areas)
         print(f"DEBUG: {len(areas)} áreas proibidas configuradas no navegador")
 
-    def navigate_to_and_return(self, destination: Tuple[float, float]) -> None:
-        """Navega até o destino e retorna à base (compatível com mapas PGM)"""
+    def navigate_to_and_return(self, destination: Tuple[float, float], should_return_to_base: bool = True) -> None:
+        """
+        Navega até o destino e opcionalmente retorna à base (compatível com mapas PGM)
+        
+        Args:
+            destination: Coordenadas do destino (x, y) em metros
+            should_return_to_base: Se True, retorna à base após chegar ao destino.
+                                  Se False, para no destino e aguarda novo comando.
+        """
         print(f"DEBUG: ===== NAVEGAÇÃO {'DIRETA SIMPLES' if self.use_direct_navigation else 'INTELIGENTE'} =====")
         print(f"DEBUG: Destino: {destination}")
         print(f"DEBUG: Posição atual: {self.current_position}, Ângulo atual: {self.current_angle}°")
         print(f"DEBUG: Base position: {self.base_position}")
+        print(f"DEBUG: Retorno automático: {'SIM' if should_return_to_base else 'NÃO'}")
         
         # Preserva a posição atual ao fazer reset (importante para mapas PGM)
         self.reset_to_initial_state(preserve_position=True)
@@ -601,7 +609,7 @@ class RobotNavigator(QObject):
         self.navigation_active = True
         self.start_time = time.time()
         self.is_returning_to_base = False
-        self.should_return_to_base = True  # Habilita retorno automático
+        self.should_return_to_base = should_return_to_base  # 🎯 NOVO: Usa o parâmetro do usuário
         self.final_approach_start_time = None
         
         # 🚫 CORREÇÃO CRÍTICA: Se há áreas proibidas configuradas, SEMPRE usa PathFinder

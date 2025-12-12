@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QComboBox, QMessageBox,
                              QGroupBox, QGridLayout, QInputDialog, QProgressBar, QSlider,
-                             QScrollArea, QFrame, QSizePolicy, QApplication, QFileDialog)
+                             QScrollArea, QFrame, QSizePolicy, QApplication, QFileDialog, QCheckBox)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QCursor
 import sys
@@ -361,6 +361,12 @@ class MainWindow(QMainWindow):
         nav_buttons.addWidget(start_nav_btn, 0, 0)
         nav_buttons.addWidget(stop_nav_btn, 0, 1)
         nav_layout.addLayout(nav_buttons)
+        
+        # 🎯 NOVO: Checkbox para escolher se retorna à base automaticamente
+        self.return_to_base_checkbox = QCheckBox("Retornar à base automaticamente")
+        self.return_to_base_checkbox.setChecked(True)  # Padrão: marcado (comportamento atual)
+        self.return_to_base_checkbox.setToolTip("Se marcado, o robô retorna à base após chegar ao destino.\nSe desmarcado, o robô para no destino e aguarda novo comando.")
+        nav_layout.addWidget(self.return_to_base_checkbox)
         
         # === 🕹️ CONTROLES MANUAIS (Expansível, inicialmente aberto) ===
         manual_control_group = CollapsibleGroupBox("Controles Manuais", "🕹️", collapsed=False)
@@ -1477,12 +1483,17 @@ class MainWindow(QMainWindow):
         print(f"🚀 NAVEGAÇÃO: PathFinder - Origem: {self.navigator.path_finder.map_origin}, Grid: {self.navigator.path_finder.grid_size}m")
             
         try:
-            # 🚀 NOVA FASE: Navegação automática completa (ida + volta)
-            print(f"🚀 CHAMANDO navigate_to_and_return com destino: {destination}")
+            # 🎯 NOVO: Obtém a escolha do usuário sobre retorno automático
+            should_return = self.return_to_base_checkbox.isChecked()
+            return_text = "ida + volta" if should_return else "apenas ida"
+            print(f"🚀 NAVEGAÇÃO: Modo selecionado - {return_text}")
+            
+            # 🚀 NOVA FASE: Navegação automática (ida + volta ou apenas ida)
+            print(f"🚀 CHAMANDO navigate_to_and_return com destino: {destination}, should_return_to_base: {should_return}")
             print(f"🚀 Estado ANTES: navigation_active={self.navigator.navigation_active}, state={self.navigator.navigation_state}")
             # 🎯 CORREÇÃO: Reseta flag de conclusão antes de iniciar nova navegação
             self._navigation_completed_shown = False
-            self.navigator.navigate_to_and_return(destination)
+            self.navigator.navigate_to_and_return(destination, should_return_to_base=should_return)
             print(f"🚀 Estado DEPOIS: navigation_active={self.navigator.navigation_active}, state={self.navigator.navigation_state}")
             self.navigation_active = True
             
@@ -1547,7 +1558,9 @@ class MainWindow(QMainWindow):
             else:
                 print(f"⚠️ INTERFACE: Nenhum caminho disponível no navegador! path existe? {hasattr(self.navigator, 'path')}, path length? {len(self.navigator.path) if hasattr(self.navigator, 'path') else 0}")
             
-            self.nav_status_label.setText("Status: Navegação automática (ida + volta)...")
+            # 🎯 NOVO: Atualiza status baseado na escolha do usuário
+            status_text = "Navegação automática (ida + volta)..." if should_return else "Navegação automática (apenas ida)..."
+            self.nav_status_label.setText(f"Status: {status_text}")
             self.nav_progress_bar.setVisible(True)
             self.nav_progress_bar.setValue(0)
             self.nav_info_label.setVisible(True)
