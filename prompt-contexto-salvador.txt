@@ -1,0 +1,9 @@
+
+Fiz umas pesquisas sobre o Slamtec Aurora, RPLidar sensor C1, Aurora Remote e RoboStudio para saber as possibilidades de gerar um arquivo que pudesse ser utilizado aqui na nossa aplicação e concluimos o seguinte: 
+1) Precisamos abandonar as idéias contidas na pasta c1_mappin e no main_mapping.py e excluir(e limpar) essa pasta/subpastas e arquivo pois eles não serão funcionais;
+2) Criei uma pasta chamada "c1_scanner" na qual vamos colocar todas os desenvolvimentos e funcionalidade sobre as preparações dos mapas que serão utilizados pela nossa aplicação;
+3) Crie um "main_scanner.py" para que possamos usar quando formos processar e preparar os mapas;
+4) Criei uma pasta chamada "C1_mapas_processados".  Nessa pasta teremos subpastas na qual os arquivos PMG, PNG E YAML deverão ficar. Considere que esse conjunto de arquivos devem ficar numa mesma subpasta. No caso dos arquivos (mapa_final_refinado.yaml, mapa_final_refinado.png e mapa_final_refinado.pgm) que gerei criei uma subpasta "c1_sala_maker";
+5) Conforme está no anexo prompt-salvador.md crei um script e salve com  nome main_scanner.py com esse script que está no arquivo prompt-salvador.md;
+6) Se contextualize com o arquivo prompt-salvador.md para que possamos dar continuidade a nossa aplicação. Precisamos que a nossa aplicação atual ao executar main.py deve abrir os mapas da subpasta c1_sala_maker;
+

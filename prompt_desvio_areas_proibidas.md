@@ -293,3 +293,4 @@ NAVIGATION_GOAL_TOLERANCE = 0.15         # 15cm de tolerância de chegada
 **Última Atualização:** Dezembro 2025  
 **Próximo Foco:** Implementar desvio de áreas proibidas (A* não está funcionando)
 
+
