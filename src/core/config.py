@@ -106,6 +106,12 @@ RPLIDAR_PORT = "/dev/ttyUSB0"  # Porta padrão do RPLIDAR
 RPLIDAR_BAUDRATE = 115200
 RPLIDAR_TIMEOUT = 1.0  # segundos
 
+# Configurações do IMU BNO08x (I2C: SDA, SCL + GPIO)
+# Fiação: SDA/SCL no I2C; GPIO 26 = RST (reset); GPIO 27 = INT (interrupto)
+BNO08X_I2C_ADDRESS = 0x4A       # BNO085 default (0x4B para BNO080)
+BNO08X_GPIO_RST = 26            # Pino GPIO para reset (obrigatório para inicialização)
+BNO08X_GPIO_INT = 27            # Pino GPIO para interrupção (data ready - opcional, uso futuro)
+
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz
 SIMULATION_OBSTACLE_COUNT = 3
