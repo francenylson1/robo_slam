@@ -16,3 +16,5 @@ requests>=2.31.0  # Para comunicação HTTP com API SLAMWARE do C1
 # IMU BNO08x (Raspberry Pi apenas - para tools/bno08x_test.py)
 adafruit-blinka>=8.0.0
 adafruit-circuitpython-bno08x>=2.0.0
+# Opcional: se I2C falhar com "No Hardware I2C", use ExtendedI2C(1) para /dev/i2c-1
+adafruit-extended-bus>=1.0.0

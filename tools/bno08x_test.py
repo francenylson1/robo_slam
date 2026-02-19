@@ -45,7 +45,12 @@ def main():
     try:
         import board
         import busio
+        import digitalio
         from digitalio import DigitalInOut
+        # Direction fica no módulo digitalio, não em DigitalInOut (evita AttributeError em algumas versões do Blinka)
+        Direction = getattr(digitalio, "Direction", None)
+        if Direction is None:
+            Direction = getattr(DigitalInOut, "Direction", None)
     except ImportError:
         print("Instale adafruit-blinka: pip install adafruit-blinka")
         sys.exit(1)
@@ -69,9 +74,50 @@ def main():
         BNO08X_I2C_ADDRESS = 0x4A
 
     print("Inicializando I2C e pino de reset (GPIO {}).".format(BNO08X_GPIO_RST))
-    i2c = busio.I2C(board.SCL, board.SDA)
+    # Barramento I2C: em alguns Raspberry (ex. Pi 5) board.SCL/SDA dão "No Hardware I2C on (3,2)".
+    # Valid ports costumam ser (bus, SCL, SDA) = (1, 3, 2) = I2C1 com GPIO3=SCL, GPIO2=SDA.
+    i2c = None
+    # 1) Tentar pinos explícitos do I2C1 (GPIO3=SCL, GPIO2=SDA) que o erro indicou como válidos
+    for scl_name, sda_name in [("D3", "D2"), ("SCL", "SDA")]:
+        try:
+            scl = getattr(board, scl_name, None)
+            sda = getattr(board, sda_name, None)
+            if scl is not None and sda is not None:
+                i2c = busio.I2C(scl, sda)
+                print("Usando I2C em {} (SCL) e {} (SDA).".format(scl_name, sda_name))
+                break
+        except Exception as e:
+            if i2c is not None:
+                break
+            continue
+    # 2) Fallback: board.I2C() se existir
+    if i2c is None and hasattr(board, "I2C") and callable(getattr(board, "I2C", None)):
+        try:
+            i2c = board.I2C()
+            print("Usando board.I2C().")
+        except Exception as e:
+            print("board.I2C() falhou:", e)
+    # 3) Fallback: adafruit_extended_bus abre /dev/i2c-1 diretamente (evita problema de pinos no Blinka)
+    if i2c is None:
+        try:
+            from adafruit_extended_bus import ExtendedI2C
+            i2c = ExtendedI2C(1)  # /dev/i2c-1 = I2C1 no header 40-pin
+            print("Usando ExtendedI2C(1) (/dev/i2c-1).")
+        except ImportError:
+            pass
+        except Exception as e:
+            print("ExtendedI2C(1) falhou:", e)
+    if i2c is None:
+        print("Erro: não foi possível criar o barramento I2C.")
+        print("Confirme que I2C está ativado: sudo raspi-config -> Interface Options -> I2C")
+        print("Verifique: ls /dev/i2c*  (deve listar /dev/i2c-1 etc.)")
+        print("Se usar Pi 5 ou outro modelo, tente: pip install adafruit-extended-bus e reinicie o script.")
+        sys.exit(1)
     reset_pin = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
-    reset_pin.direction = DigitalInOut.Direction.OUTPUT
+    if Direction is not None:
+        reset_pin.direction = Direction.OUTPUT
+    else:
+        reset_pin.direction = 1  # OUTPUT = 1 em digitalio
 
     try:
         bno = BNO08X_I2C(i2c, reset=reset_pin, address=BNO08X_I2C_ADDRESS)
