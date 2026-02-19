@@ -732,10 +732,16 @@ class MapWidget(QWidget):
                 
                 # Usa a menor escala para garantir que cabe completamente
                 new_scale = min(scale_x, scale_y)
-                
-                # Só atualiza se for um valor válido
+                # Escala mínima para que o mapa não fique minúsculo e permita rolagem em telas pequenas (ex.: Raspberry)
+                MIN_MAP_SCALE = 50.0
                 if new_scale > 0 and not (np.isnan(new_scale) or np.isinf(new_scale)):
-                    self.scale = new_scale
+                    self.scale = max(new_scale, MIN_MAP_SCALE)
+                
+                # Define tamanho mínimo do widget = tamanho do mapa na tela, para QScrollArea mostrar barras de rolagem
+                display_w = int(map_width_m * self.scale)
+                display_h = int(map_height_m * self.scale)
+                self.setMinimumSize(display_w, display_h)
+                self.setMaximumSize(display_w, display_h)
                 
                 print(f"✅ Escala ajustada: {self.scale:.2f} pixels/m")
                 print(f"   Mapa: {map_width_m:.2f}m x {map_height_m:.2f}m")
@@ -777,6 +783,7 @@ class MapWidget(QWidget):
         self.map_resolution = 0.05
         self.map_origin = (0.0, 0.0)
         self.show_grid = True
+        self.setMaximumSize(16777215, 16777215)  # restaura para permitir redimensionar sem PGM
         self.update()
     
     def _world_to_screen_with_origin(self, world_x: float, world_y: float) -> Tuple[int, int]:

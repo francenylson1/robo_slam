@@ -125,10 +125,16 @@ class MainWindow(QMainWindow):
         # Layout principal
         main_layout = QHBoxLayout()
         
-        # Área do mapa (lado esquerdo)
+        # Área do mapa (lado esquerdo) dentro de QScrollArea para ver mapa completo e rolar (ex.: Raspberry)
         map_layout = QVBoxLayout()
+        self.map_scroll = QScrollArea()
+        self.map_scroll.setWidgetResizable(False)  # widget do mapa define seu próprio tamanho
+        self.map_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.map_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.map_scroll.setFrameShape(QFrame.StyledPanel)
         self.map_widget = MapWidget()
-        map_layout.addWidget(self.map_widget)
+        self.map_scroll.setWidget(self.map_widget)
+        map_layout.addWidget(self.map_scroll)
         
         # Barra de status do mapa
         map_status_layout = QHBoxLayout()
@@ -1026,12 +1032,31 @@ class MainWindow(QMainWindow):
                         pgm_maps.append(map_name)
                         pgm_map_paths[map_name] = pgm_file
         
-        # Procura em mapas/otimizados (padrão)
+        # Procura em mapas/otimizados (padrão legado)
         pgm_dir_default = Path("mapas/otimizados")
         if pgm_dir_default.exists():
             for pgm_file in pgm_dir_default.glob("*.pgm"):
                 map_name = pgm_file.stem
                 if map_name not in pgm_map_paths:  # Evita duplicatas
+                    pgm_maps.append(map_name)
+                    pgm_map_paths[map_name] = pgm_file
+        
+        # Procura em mapas/c1/otimizados e mapas/c1/final (mesma estrutura desktop e Raspberry)
+        for subdir in ("mapas/c1/otimizados", "mapas/c1/final", "mapas/c1/test", "mapas/c1/completo/final"):
+            pgm_dir_c1 = Path(subdir)
+            if pgm_dir_c1.exists():
+                for pgm_file in pgm_dir_c1.glob("*.pgm"):
+                    map_name = pgm_file.stem
+                    if map_name not in pgm_map_paths:
+                        pgm_maps.append(map_name)
+                        pgm_map_paths[map_name] = pgm_file
+        
+        # Procura na raiz de mapas/ (ex.: sala-maker-1.pgm)
+        mapas_root = Path("mapas")
+        if mapas_root.exists():
+            for pgm_file in mapas_root.glob("*.pgm"):
+                map_name = pgm_file.stem
+                if map_name not in pgm_map_paths:
                     pgm_maps.append(map_name)
                     pgm_map_paths[map_name] = pgm_file
         
@@ -1134,9 +1159,14 @@ class MainWindow(QMainWindow):
                 return
         
         # Se não houver mapas na lista, ou se o usuário quiser navegar manualmente
-        # Abre diálogo de arquivo começando na pasta raiz do projeto
+        # Abre diálogo de arquivo em pasta que exista (desktop e Raspberry)
         project_root = Path.cwd()
-        default_dir = str(pgm_dir_default.absolute()) if pgm_dir_default.exists() else str(project_root)
+        for candidate in (Path("mapas/c1/otimizados"), pgm_dir_default, Path("mapas"), project_root):
+            if candidate.exists():
+                default_dir = str(candidate.absolute())
+                break
+        else:
+            default_dir = str(project_root)
         
         file_path, _ = QFileDialog.getOpenFileName(
             self,

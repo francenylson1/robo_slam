@@ -2,6 +2,8 @@
 
 Fluxo para manter **esta versão do desktop**, o **Git na nuvem** e a **Raspberry** sempre na mesma versão.
 
+**POIs e áreas proibidas:** ficam no banco `data/robot.db`, que **está no Git** (é a exceção à pasta `data/` no .gitignore). Ao dar `git pull` na Raspberry, você recebe o mesmo `robot.db` do desktop. Para o app encontrar o banco, **execute sempre na raiz do projeto** (ex.: `cd ~/robo_slam` e depois `python src/main.py`).
+
 ---
 
 ## Visão geral
