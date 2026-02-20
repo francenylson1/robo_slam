@@ -9,7 +9,7 @@ Ou use: python tools/robot_command_menu.py --no-arrows
 
 Executar apenas na Raspberry Pi. Uso (na raiz do projeto):
   python tools/robot_command_menu.py
-  python tools/robot_command_menu.py --forward-duration 3 --turn-tps 12
+  python tools/robot_command_menu.py --forward-duration 5 --turn-tps 12
   python tools/robot_command_menu.py --debug-keys   # ver códigos das teclas (diagnóstico)
 """
 
@@ -288,8 +288,8 @@ def print_menu():
 
 def main():
     parser = argparse.ArgumentParser(description="Menu de comandos do robô (frente, giros 45/90/180°)")
-    parser.add_argument("--forward-duration", type=float, default=2.5,
-                        help="Duração do avanço em segundos (default 2.5)")
+    parser.add_argument("--forward-duration", type=float, default=4.0,
+                        help="Duração do avanço em segundos (default 4)")
     parser.add_argument("--turn-tps", type=float, default=12.0,
                         help="TPS para giros no lugar (default 12)")
     parser.add_argument("--no-arrows", action="store_true",
