@@ -125,35 +125,48 @@ def get_key_blocking():
 # BNO08x
 # ---------------------------------------------------------------------------
 def init_bno(debug=False):
-    """Inicializa BNO08x. RST em HIGH antes de qualquer I2C (como em bno08x_test). Retorna (bno, get_yaw) ou (None, None)."""
+    """Inicializa BNO08x. RST em HIGH antes de qualquer I2C. Usa RPi.GPIO para RST no Raspberry. Retorna (bno, get_yaw) ou (None, None)."""
     try:
         from src.core.config import BNO08X_GPIO_RST, BNO08X_I2C_ADDRESS
     except ImportError:
         BNO08X_GPIO_RST = 26
         BNO08X_I2C_ADDRESS = 0x4B
-    try:
-        import board
-        import busio
-        import digitalio
-        from digitalio import DigitalInOut
-        Direction = getattr(digitalio, "Direction", None) or getattr(DigitalInOut, "Direction", None)
-    except ImportError:
-        if debug:
-            print("  init_bno: falha ao importar board/busio/digitalio")
-        return None, None
-    # RST em HIGH *antes* de qualquer I2C (sensor sai do reset e fica visível no barramento)
-    if BNO08X_GPIO_RST is not None:
+    # RST em HIGH *antes* de qualquer I2C. No Raspberry usar RPi.GPIO (mesmo stack do projeto) para evitar conflito com Blinka.
+    if BNO08X_GPIO_RST is not None and is_raspberry_pi():
         try:
+            import RPi.GPIO as GPIO
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(BNO08X_GPIO_RST, GPIO.OUT)
+            GPIO.output(BNO08X_GPIO_RST, GPIO.HIGH)
+            if debug:
+                print("  GPIO {} (RST) em HIGH (RPi.GPIO).".format(BNO08X_GPIO_RST))
+            time.sleep(0.35)
+        except Exception as e:
+            if debug:
+                print("  init_bno: RST (RPi.GPIO) falhou:", e)
+    elif BNO08X_GPIO_RST is not None:
+        try:
+            import board
+            import digitalio
+            from digitalio import DigitalInOut
+            Direction = getattr(digitalio, "Direction", None) or getattr(DigitalInOut, "Direction", None)
             rst = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
             if Direction is not None:
                 rst.direction = Direction.OUTPUT
             rst.value = True
             if debug:
-                print("  GPIO {} (RST) em HIGH.".format(BNO08X_GPIO_RST))
+                print("  GPIO {} (RST) em HIGH (Blinka).".format(BNO08X_GPIO_RST))
             time.sleep(0.35)
         except Exception as e:
             if debug:
                 print("  init_bno: RST falhou:", e)
+    try:
+        import board
+        import busio
+    except ImportError:
+        if debug:
+            print("  init_bno: falha ao importar board/busio")
+        return None, None
     try:
         import adafruit_bno08x as _bno_mod
         _orig_rl = getattr(_bno_mod, "_report_length", None)
@@ -448,6 +461,8 @@ def main():
                 cmd_turn(motors, 90, False, turn_tps, get_bno_yaw, qt_app)
             elif key == "7":
                 cmd_turn(motors, 180, False, turn_tps, get_bno_yaw, qt_app)
+            elif key in ("", "\n", "\r"):
+                continue
             else:
                 print("Tecla ignorada.")
                 continue

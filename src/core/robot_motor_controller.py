@@ -292,8 +292,9 @@ class RobotMotorController(QObject):
                 self.current_left_tps = self.left_hall_ticks / delta_time
                 self.current_right_tps = self.right_hall_ticks / delta_time
 
-                # Debug: Mostra quando há ticks sendo processados
-                if self.left_hall_ticks > 0 or self.right_hall_ticks > 0:
+                # Debug: Mostra quando há ticks sendo processados (desativado com ROBOT_MOTOR_QUIET=1)
+                if (os.environ.get("ROBOT_MOTOR_QUIET") != "1" and
+                        (self.left_hall_ticks > 0 or self.right_hall_ticks > 0)):
                     print(f"DEBUG SPEED: Processando ticks - L:{self.left_hall_ticks}, R:{self.right_hall_ticks} em {delta_time:.3f}s")
 
                 self.left_hall_ticks = 0
