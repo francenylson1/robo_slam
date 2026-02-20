@@ -201,12 +201,13 @@ def init_bno():
 # Motores
 # ---------------------------------------------------------------------------
 def init_motors():
+    """Retorna (motors, app). O app deve ter processEvents() chamado durante esperas para evitar RuntimeError no PID."""
     from PyQt5.QtCore import QCoreApplication
     app = QCoreApplication.instance()
     if app is None:
         app = QCoreApplication(sys.argv)
     from src.core.robot_motor_controller import RobotMotorController
-    return RobotMotorController()
+    return RobotMotorController(), app
 
 
 def ticks_to_angle_deg(left_ticks, right_ticks, tpr, circ_m, base_m):
@@ -215,13 +216,15 @@ def ticks_to_angle_deg(left_ticks, right_ticks, tpr, circ_m, base_m):
     return math.degrees((dist_l - dist_r) / base_m)
 
 
-def cmd_forward(motors, duration_s, get_bno_yaw):
+def cmd_forward(motors, duration_s, get_bno_yaw, app=None):
     from src.core.config import SPEED_SLOW_TPS
-    print("  → Frente por {:.1f} s ...".format(duration_s))
+    print("  -> Frente por {:.1f} s ...".format(duration_s))
     yaw0 = get_bno_yaw() if get_bno_yaw else None
     motors.set_target_speed(SPEED_SLOW_TPS, SPEED_SLOW_TPS)
     t0 = time.time()
     while time.time() - t0 < duration_s:
+        if app is not None:
+            app.processEvents()
         time.sleep(0.05)
     motors.stop_motors()
     yaw1 = get_bno_yaw() if get_bno_yaw else None
@@ -230,14 +233,14 @@ def cmd_forward(motors, duration_s, get_bno_yaw):
     print("  Frente concluído.")
 
 
-def cmd_turn(motors, target_deg, left_turn, turn_tps, get_bno_yaw):
+def cmd_turn(motors, target_deg, left_turn, turn_tps, get_bno_yaw, app=None):
     from src.core.config import (
         TICKS_PER_REVOLUTION,
         ROBOT_WHEEL_CIRCUMFERENCE_M,
         ROBOT_WHEEL_BASE_M,
     )
     lado = "Esquerda" if left_turn else "Direita"
-    print("  → Giro {} {:.0f}° ...".format(lado, target_deg))
+    print("  -> Giro {} {:.0f}° ...".format(lado, target_deg))
     if left_turn:
         motors.set_precise_rotation_direction(1, -1)
         motors.set_target_speed(turn_tps, -turn_tps)
@@ -246,8 +249,9 @@ def cmd_turn(motors, target_deg, left_turn, turn_tps, get_bno_yaw):
         motors.set_target_speed(-turn_tps, turn_tps)
     angle_odom = 0.0
     yaw0 = get_bno_yaw() if get_bno_yaw else None
-    # Esquerda: delta > 0, parar quando angle_odom >= target_deg. Direita: delta < 0, parar quando angle_odom <= -target_deg.
     while (left_turn and angle_odom < target_deg) or (not left_turn and angle_odom > -target_deg):
+        if app is not None:
+            app.processEvents()
         time.sleep(0.05)
         ticks = motors.get_and_reset_ticks()
         if ticks:
@@ -304,6 +308,7 @@ def main():
         print("AVISO: stdin não é um terminal. Setas desativadas; use números (0-8) ou letras (F/L/R/S/Q).")
         args.no_arrows = True
 
+    os.environ["ROBOT_MOTOR_QUIET"] = "1"  # menos debug do controlador (encoder/PID) no console
     print("Inicializando BNO08x (opcional)...")
     bno, get_bno_yaw = init_bno()
     if bno is None:
@@ -312,7 +317,7 @@ def main():
         print("BNO08x OK.")
 
     print("Inicializando motores...")
-    motors = init_motors()
+    motors, qt_app = init_motors()
     print("Motores OK.")
 
     use_arrows = not args.no_arrows and sys.platform == "linux" and stdin_is_tty
@@ -322,6 +327,8 @@ def main():
         print("Digite o número ou letra e Enter (ex: 1, 6, F, Q).")
 
     while True:
+        if qt_app is not None:
+            qt_app.processEvents()
         print_menu()
         if use_arrows:
             try:
@@ -353,39 +360,39 @@ def main():
         # Frente
         if key in ("1", "f", "up"):
             print("Frente.")
-            cmd_forward(motors, args.forward_duration, get_bno_yaw)
+            cmd_forward(motors, args.forward_duration, get_bno_yaw, qt_app)
             continue
 
         # Esquerda 90° (seta ou L)
         if key in ("l", "left"):
             print("Esquerda 90°.")
-            cmd_turn(motors, 90, True, args.turn_tps, get_bno_yaw)
+            cmd_turn(motors, 90, True, args.turn_tps, get_bno_yaw, qt_app)
             continue
         # Direita 90° (seta ou R)
         if key in ("r", "right"):
             print("Direita 90°.")
-            cmd_turn(motors, 90, False, args.turn_tps, get_bno_yaw)
+            cmd_turn(motors, 90, False, args.turn_tps, get_bno_yaw, qt_app)
             continue
 
         # Menu numérico
         if key == "2":
             print("Esquerda 45°.")
-            cmd_turn(motors, 45, True, args.turn_tps, get_bno_yaw)
+            cmd_turn(motors, 45, True, args.turn_tps, get_bno_yaw, qt_app)
         elif key == "3":
             print("Esquerda 90°.")
-            cmd_turn(motors, 90, True, args.turn_tps, get_bno_yaw)
+            cmd_turn(motors, 90, True, args.turn_tps, get_bno_yaw, qt_app)
         elif key == "4":
             print("Esquerda 180°.")
-            cmd_turn(motors, 180, True, args.turn_tps, get_bno_yaw)
+            cmd_turn(motors, 180, True, args.turn_tps, get_bno_yaw, qt_app)
         elif key == "5":
             print("Direita 45°.")
-            cmd_turn(motors, 45, False, args.turn_tps, get_bno_yaw)
+            cmd_turn(motors, 45, False, args.turn_tps, get_bno_yaw, qt_app)
         elif key == "6":
             print("Direita 90°.")
-            cmd_turn(motors, 90, False, args.turn_tps, get_bno_yaw)
+            cmd_turn(motors, 90, False, args.turn_tps, get_bno_yaw, qt_app)
         elif key == "7":
             print("Direita 180°.")
-            cmd_turn(motors, 180, False, args.turn_tps, get_bno_yaw)
+            cmd_turn(motors, 180, False, args.turn_tps, get_bno_yaw, qt_app)
         else:
             print("Não reconhecida. Use 0-8, F/L/R/S/Q ou setas.")
 

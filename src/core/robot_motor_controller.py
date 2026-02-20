@@ -201,14 +201,13 @@ class RobotMotorController(QObject):
                 # Se o GPIO foi limpo, a thread deve parar.
                 break
             
-            # Debug: A cada 1000 iterações, mostra o status dos encoders
+            # Debug: A cada 1000 iterações, mostra o status dos encoders (desativado com ROBOT_MOTOR_QUIET=1)
             debug_counter += 1
             if debug_counter >= 1000:
                 current_time = time.time()
-                if current_time - last_debug_time > 5.0:  # A cada 5 segundos
+                if current_time - last_debug_time > 5.0 and os.environ.get("ROBOT_MOTOR_QUIET") != "1":
                     with self.ticks_lock:
                         print(f"DEBUG ENCODER: L:{self.left_hall_ticks} ticks, R:{self.right_hall_ticks} ticks | Estados: L:{current_state_E}, R:{current_state_D}")
-                        # NOVO DEBUG: Mostrar ticks totais para calibração
                         print(f"CALIBRATION_TICKS - Total Acumulado - Esquerda: {self.left_ticks_for_odometry}, Direita: {self.right_ticks_for_odometry}")
                     last_debug_time = current_time
                 debug_counter = 0
@@ -313,8 +312,9 @@ class RobotMotorController(QObject):
         left_tps_corrected = left_tps * LEFT_MOTOR_CORRECTION_FACTOR
         right_tps_corrected = right_tps * RIGHT_MOTOR_CORRECTION_FACTOR
         
-        print(f"🎯 CORREÇÃO_DERIVA: set_target_speed(left={left_tps:.1f}→{left_tps_corrected:.1f}, right={right_tps:.1f}→{right_tps_corrected:.1f})")
-        print(f"🎯 Fatores aplicados: E={LEFT_MOTOR_CORRECTION_FACTOR:.6f}, D={RIGHT_MOTOR_CORRECTION_FACTOR:.6f}")
+        if os.environ.get("ROBOT_MOTOR_QUIET") != "1":
+            print(f"🎯 CORREÇÃO_DERIVA: set_target_speed(left={left_tps:.1f}→{left_tps_corrected:.1f}, right={right_tps:.1f}→{right_tps_corrected:.1f})")
+            print(f"🎯 Fatores aplicados: E={LEFT_MOTOR_CORRECTION_FACTOR:.6f}, D={RIGHT_MOTOR_CORRECTION_FACTOR:.6f}")
         
         if not self.pid_enabled:
             self.enable_pid_control()
@@ -395,12 +395,14 @@ class RobotMotorController(QObject):
 
     def enable_pid_control(self):
         """Ativa o loop de controle PID."""
-        print("DEBUG: Controle PID ATIVADO.")
+        if os.environ.get("ROBOT_MOTOR_QUIET") != "1":
+            print("DEBUG: Controle PID ATIVADO.")
         self.pid_enabled = True
 
     def disable_pid_control(self):
         """Desativa o loop de controle PID e reseta os controladores."""
-        print("DEBUG: Controle PID DESATIVADO e motores parados.")
+        if os.environ.get("ROBOT_MOTOR_QUIET") != "1":
+            print("DEBUG: Controle PID DESATIVADO e motores parados.")
         self.pid_enabled = False
         # Para os motores fisicamente
         if GPIO_AVAILABLE and GPIO:
