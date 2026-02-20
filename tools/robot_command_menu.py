@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
 Menu de comandos do robô para testes manuais: frente, esquerda e direita (45°, 90°, 180°).
-Permite usar teclado numérico/menu ou setas: ↑ Frente, ← Esquerda 90°, → Direita 90°, ↓ Parar.
+Arquivo: robot_command_menu.py (não confundir com sync_test_motors_bno.py, que é o teste automático.)
+
+Controles: setas ↑↓←→ ou números 1-8 / letras F,L,R,S,Q.
+Se as setas não funcionarem: execute no terminal (não em background) e use 1=Frente, 2-7=giros, 8=Parar, 0=Sair.
+Ou use: python tools/robot_command_menu.py --no-arrows  (só números/letras + Enter).
 
 Executar apenas na Raspberry Pi. Uso (na raiz do projeto):
   python tools/robot_command_menu.py
   python tools/robot_command_menu.py --forward-duration 3 --turn-tps 12
+  python tools/robot_command_menu.py --debug-keys   # ver códigos das teclas (diagnóstico)
 """
 
 import sys
@@ -30,8 +35,20 @@ def is_raspberry_pi():
 # ---------------------------------------------------------------------------
 # Leitura de tecla (setas e um caractere)
 # ---------------------------------------------------------------------------
-def _get_key_linux():
-    """Lê uma tecla (incluindo setas) no Linux. Retorna 'up','down','left','right' ou o caractere."""
+def _read_with_timeout(fd, timeout_sec=0.08):
+    """Lê um byte do fd com timeout. Retorna None se nada chegar a tempo."""
+    import select
+    if select.select([fd], [], [], timeout_sec)[0]:
+        return sys.stdin.read(1)
+    return None
+
+
+def _get_key_linux(debug_keys=False):
+    """
+    Lê uma tecla (incluindo setas) no Linux.
+    Suporta: ESC [ A/B/C/D (padrão) e ESC O A/B/C/D (alguns terminais/SSH).
+    Retorna 'up','down','left','right' ou o caractere (minúsculo).
+    """
     import termios
     import tty
     fd = sys.stdin.fileno()
@@ -39,18 +56,25 @@ def _get_key_linux():
     try:
         tty.setraw(fd)
         ch = sys.stdin.read(1)
+        if debug_keys and ch:
+            print(repr(ch), end=" ", flush=True)
         if ch == "\x1b":
-            c2 = sys.stdin.read(1)
-            if c2 == "[":
-                c3 = sys.stdin.read(1)
-                if c3 == "A":
-                    return "up"
-                if c3 == "B":
-                    return "down"
-                if c3 == "C":
-                    return "right"
-                if c3 == "D":
-                    return "left"
+            c2 = _read_with_timeout(fd)
+            if c2 is None:
+                return ""  # Apenas Escape pressionado
+            if debug_keys:
+                print(repr(c2), end=" ", flush=True)
+            c3 = _read_with_timeout(fd)
+            if c3 is None:
+                return ""
+            if debug_keys:
+                print(repr(c3), flush=True)
+            # Padrão comum: ESC [ A (cima), [ B (baixo), [ C (direita), [ D (esquerda)
+            if c2 == "[" and c3 in "ABCD":
+                return {"A": "up", "B": "down", "C": "right", "D": "left"}[c3]
+            # Alternativa (alguns terminais/SSH): ESC O A / O B / O C / O D
+            if c2 == "O" and c3 in "ABCD":
+                return {"A": "up", "B": "down", "C": "right", "D": "left"}[c3]
         return ch.lower() if ch else ""
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
@@ -263,11 +287,19 @@ def main():
                         help="TPS para giros no lugar (default 12)")
     parser.add_argument("--no-arrows", action="store_true",
                         help="Usar apenas números/letras (sem leitura de setas)")
+    parser.add_argument("--debug-keys", action="store_true",
+                        help="Mostrar códigos das teclas (para diagnosticar setas)")
     args = parser.parse_args()
 
     if not is_raspberry_pi():
         print("Execute este script na Raspberry Pi.")
         sys.exit(1)
+
+    # Setas só funcionam se stdin for um terminal (não em background nem com pipe)
+    stdin_is_tty = sys.stdin.isatty()
+    if not stdin_is_tty and not args.no_arrows:
+        print("AVISO: stdin não é um terminal. Setas desativadas; use números (0-8) ou letras (F/L/R/S/Q).")
+        args.no_arrows = True
 
     print("Inicializando BNO08x (opcional)...")
     bno, get_bno_yaw = init_bno()
@@ -280,7 +312,7 @@ def main():
     motors = init_motors()
     print("Motores OK.")
 
-    use_arrows = not args.no_arrows and sys.platform == "linux"
+    use_arrows = not args.no_arrows and sys.platform == "linux" and stdin_is_tty
     if use_arrows:
         print("Modo setas ativo (↑↓←→). Use também 0-8 ou F/L/R/S/Q.")
     else:
@@ -290,7 +322,7 @@ def main():
         print_menu()
         if use_arrows:
             try:
-                key = _get_key_linux()
+                key = _get_key_linux(debug_keys=args.debug_keys)
             except Exception:
                 key = get_key()
         else:
