@@ -84,7 +84,7 @@ def main():
             rst_hold.direction = 1
         rst_hold.value = True
         print("GPIO {} (RST) em HIGH para sensor sair do reset.".format(BNO08X_GPIO_RST))
-        time.sleep(0.05)
+        time.sleep(0.35)  # BNO08x precisa de ~300 ms após sair do reset antes de aceitar comandos
 
     print("Inicializando I2C.")
     # Barramento I2C: em alguns Raspberry (ex. Pi 5) board.SCL/SDA dão "No Hardware I2C on (3,2)".
@@ -178,10 +178,19 @@ def main():
         print("PS0/PS1 do BNO08x devem estar no nível correto para modo I2C (consulte o datasheet).")
         sys.exit(1)
 
+    time.sleep(0.2)  # Pequena pausa após abrir conexão antes de habilitar relatórios
     print("BNO08x conectado. Habilitando relatórios (acelerômetro, giro, rotação).")
-    bno.enable_feature(BNO_REPORT_ACCELEROMETER)
-    bno.enable_feature(BNO_REPORT_GYROSCOPE)
-    bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
+    for attempt in range(3):
+        try:
+            bno.enable_feature(BNO_REPORT_ACCELEROMETER)
+            bno.enable_feature(BNO_REPORT_GYROSCOPE)
+            bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
+            break
+        except RuntimeError as e:
+            if attempt < 2 and "enable feature" in str(e).lower():
+                time.sleep(0.3)
+                continue
+            raise
 
     # Status de calibração (0 = não calibrado, 3 = totalmente calibrado)
     try:
