@@ -6,7 +6,7 @@ Baseado no robot_command_menu.py. Inclui:
   1) Giros 45°, 90°, 180° (esquerda/direita) - mesmo comportamento do menu, com ajustes finos possíveis.
   2) Navegação para frente e para trás com correção em tempo real usando o IMU BNO08x (linha reta).
   3) Teleop por teclado: W=frente, S=trás, A=giro esquerda, D=giro direita, X/Espaço=parar, Q=sair.
-     Menu numérico: 1=Frente 4s (com BNO), 2-7=giros fixos, 8=Parar, 0=Sair.
+     Teclas principais: 1=Frente N s (BNO), 4=Esq 90°, 6=Dir 90°, X=Parar, 0=Sair. 2/3/5/7=outros giros.
 
 Executar na Raspberry Pi. Uso (na raiz do projeto):
   python tools/robot_teleop_bno.py
@@ -238,18 +238,18 @@ def ticks_to_angle_deg(left_ticks, right_ticks, tpr, circ_m, base_m):
 def compute_straight_correction(yaw_ref, get_bno_yaw, base_tps, kp, max_correction):
     """
     Calcula (left_tps, right_tps) para manter linha reta usando BNO.
-    yaw_ref: rumo desejado (graus). base_tps: velocidade base. kp: ganho do proporcional.
-    Se get_bno_yaw falhar, retorna (base_tps, base_tps).
+    err = yaw_ref - yaw_now: positivo = robot virou à esquerda -> corrigir aumentando direita.
+    Ajustado para o robô que estava indo para a esquerda (correção invertida).
     """
     yaw_now = get_bno_yaw() if get_bno_yaw else None
     if yaw_now is None:
         return base_tps, base_tps
-    err = normalize_angle_deg(yaw_now - yaw_ref)
+    err = normalize_angle_deg(yaw_ref - yaw_now)
     corr = kp * err
     corr = max(-max_correction, min(max_correction, corr))
-    # Se desviou para a esquerda (yaw aumentou), err>0: reduzir esquerda e aumentar direita = virar à direita
-    left_tps = base_tps - corr
-    right_tps = base_tps + corr
+    # Robot virou esquerda (err>0) -> direita mais rápida. Robot virou direita (err<0) -> esquerda mais rápida.
+    left_tps = base_tps + corr
+    right_tps = base_tps - corr
     return left_tps, right_tps
 
 
@@ -334,10 +334,11 @@ def cmd_turn(motors, target_deg, left_turn, turn_tps, get_bno_yaw, app=None):
 
 def print_instructions():
     print()
-    print("  ========== TELEOP + NAVEGACAO COM BNO ==========")
-    print("  TECLADO:  W=Frente  S=Tras  A=Giro esq  D=Giro dir  X/Espaco=Parar  Q=Sair")
-    print("  MENU:     1=Frente 4s (BNO)  2-7=Giros 45/90/180  8=Parar  0=Sair")
-    print("  ================================================")
+    print("  ========== TELEOP (uma tecla = um comando) ==========")
+    print("  W = Frente    S = Tras    A = Giro esq    D = Giro dir")
+    print("  1 = Frente 8s (BNO)    4 = Esq 90 deg    6 = Dir 90 deg")
+    print("  X ou Espaco = Parar    0 ou Q = Sair")
+    print("  =====================================================")
     print("  Comando: ", end="", flush=True)
 
 
@@ -386,7 +387,7 @@ def main():
         if use_timeout:
             key = get_key_or_none(0.05)
         else:
-            print("  Comando (W/S/A/D ou 0-8): ", end="", flush=True)
+            print("  Comando (W/S/A/D 1 4 6 X 0): ", end="", flush=True)
             key = get_key_blocking()
         if key is not None and key != "":
             if key in ("q", "0"):
@@ -426,10 +427,9 @@ def main():
                 cmd_turn(motors, 90, False, turn_tps, get_bno_yaw, qt_app)
             elif key == "7":
                 cmd_turn(motors, 180, False, turn_tps, get_bno_yaw, qt_app)
-            elif key in ("", "\n", "\r"):
+            elif key in ("", "\n", "\r", "^", "[", "O"):
                 continue
             else:
-                print("Tecla ignorada.")
                 continue
         # Aplicar comando contínuo (teleop)
         if command == "forward":
