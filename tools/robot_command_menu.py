@@ -4,8 +4,8 @@ Menu de comandos do robô para testes manuais: frente, esquerda e direita (45°,
 Arquivo: robot_command_menu.py (não confundir com sync_test_motors_bno.py, que é o teste automático.)
 
 Controles: setas ↑↓←→ ou números 1-8 / letras F,L,R,S,Q.
-Se as setas não funcionarem: execute no terminal (não em background) e use 1=Frente, 2-7=giros, 8=Parar, 0=Sair.
-Ou use: python tools/robot_command_menu.py --no-arrows  (só números/letras + Enter).
+Se as setas não funcionarem (ex.: no Thonny): digite o número ou letra e Enter (1=Frente, 2-7=giros, 8=Parar, 0=Sair).
+Ou use: python tools/robot_command_menu.py --no-arrows
 
 Executar apenas na Raspberry Pi. Uso (na raiz do projeto):
   python tools/robot_command_menu.py
@@ -119,12 +119,17 @@ def init_bno():
     except ImportError:
         return None, None
     try:
+        import adafruit_bno08x as _bno_mod
+        _orig_rl = getattr(_bno_mod, "_report_length", None)
+        if callable(_orig_rl):
+            def _safe_rl(rid):
+                try:
+                    return _orig_rl(rid)
+                except KeyError:
+                    return 16
+            _bno_mod._report_length = _safe_rl
         from adafruit_bno08x.i2c import BNO08X_I2C
-        from adafruit_bno08x import (
-            BNO_REPORT_ACCELEROMETER,
-            BNO_REPORT_GYROSCOPE,
-            BNO_REPORT_ROTATION_VECTOR,
-        )
+        from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR
     except ImportError:
         return None, None
     try:
@@ -174,11 +179,9 @@ def init_bno():
     time.sleep(0.2)
     for attempt in range(3):
         try:
-            bno.enable_feature(BNO_REPORT_ACCELEROMETER)
-            bno.enable_feature(BNO_REPORT_GYROSCOPE)
             bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
             break
-        except RuntimeError:
+        except (RuntimeError, KeyError):
             time.sleep(0.3)
     else:
         return None, None
@@ -331,6 +334,10 @@ def main():
         if not key:
             continue
 
+        # Mostrar tecla recebida (ajuda a ver se o terminal está enviando certo)
+        key_display = {"up": "↑", "down": "↓", "left": "←", "right": "→"}.get(key, key)
+        print("  [tecla: {}] ".format(key_display), end="", flush=True)
+
         # Sair
         if key in ("0", "q"):
             print("Saindo.")
@@ -339,39 +346,48 @@ def main():
 
         # Parar
         if key in ("8", "s", "down"):
-            print("  → Parar.")
+            print("Parar.")
             motors.stop_motors()
             continue
 
         # Frente
         if key in ("1", "f", "up"):
+            print("Frente.")
             cmd_forward(motors, args.forward_duration, get_bno_yaw)
             continue
 
         # Esquerda 90° (seta ou L)
         if key in ("l", "left"):
+            print("Esquerda 90°.")
             cmd_turn(motors, 90, True, args.turn_tps, get_bno_yaw)
             continue
         # Direita 90° (seta ou R)
         if key in ("r", "right"):
+            print("Direita 90°.")
             cmd_turn(motors, 90, False, args.turn_tps, get_bno_yaw)
             continue
 
         # Menu numérico
         if key == "2":
+            print("Esquerda 45°.")
             cmd_turn(motors, 45, True, args.turn_tps, get_bno_yaw)
         elif key == "3":
+            print("Esquerda 90°.")
             cmd_turn(motors, 90, True, args.turn_tps, get_bno_yaw)
         elif key == "4":
+            print("Esquerda 180°.")
             cmd_turn(motors, 180, True, args.turn_tps, get_bno_yaw)
         elif key == "5":
+            print("Direita 45°.")
             cmd_turn(motors, 45, False, args.turn_tps, get_bno_yaw)
         elif key == "6":
+            print("Direita 90°.")
             cmd_turn(motors, 90, False, args.turn_tps, get_bno_yaw)
         elif key == "7":
+            print("Direita 180°.")
             cmd_turn(motors, 180, False, args.turn_tps, get_bno_yaw)
         else:
-            print("  Tecla não reconhecida. Use 0-8, F/L/R/S/Q ou setas.")
+            print("Não reconhecida. Use 0-8, F/L/R/S/Q ou setas.")
 
 
 if __name__ == "__main__":

@@ -48,6 +48,16 @@ def init_bno():
         print("Instale adafruit-blinka para usar o BNO08x.")
         return None, None
     try:
+        # Corrige KeyError quando o BNO envia report desconhecido (ex.: 0x7B) que a lib não trata
+        import adafruit_bno08x as _bno_mod
+        _orig_report_length = getattr(_bno_mod, "_report_length", None)
+        if callable(_orig_report_length):
+            def _safe_report_length(report_id):
+                try:
+                    return _orig_report_length(report_id)
+                except KeyError:
+                    return 16
+            _bno_mod._report_length = _safe_report_length
         from adafruit_bno08x.i2c import BNO08X_I2C
         from adafruit_bno08x import (
             BNO_REPORT_ACCELEROMETER,
@@ -109,16 +119,15 @@ def init_bno():
         return None, None
 
     time.sleep(0.2)
+    # Habilitar só o necessário para yaw (ROTATION_VECTOR). Evita processar relatórios extras que geram KeyError.
     for attempt in range(3):
         try:
-            bno.enable_feature(BNO_REPORT_ACCELEROMETER)
-            bno.enable_feature(BNO_REPORT_GYROSCOPE)
             bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
             break
-        except RuntimeError:
+        except (RuntimeError, KeyError):
             time.sleep(0.3)
     else:
-        print("Falha ao habilitar relatórios do BNO08x.")
+        print("Falha ao habilitar relatório de rotação do BNO08x.")
         return None, None
 
     def get_yaw():
