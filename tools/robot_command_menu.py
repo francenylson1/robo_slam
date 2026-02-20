@@ -239,17 +239,18 @@ def cmd_turn(motors, target_deg, left_turn, turn_tps, get_bno_yaw, app=None):
         ROBOT_WHEEL_CIRCUMFERENCE_M,
         ROBOT_WHEEL_BASE_M,
     )
+    # Sentido do seu robô: Esquerda = (-1,1); Direita = (1,-1). Invertido em relação à convenção roda-esquerda/frente.
     lado = "Esquerda" if left_turn else "Direita"
     print("  -> Giro {} {:.0f}° ...".format(lado, target_deg))
     if left_turn:
-        motors.set_precise_rotation_direction(1, -1)
-        motors.set_target_speed(turn_tps, -turn_tps)
-    else:
         motors.set_precise_rotation_direction(-1, 1)
         motors.set_target_speed(-turn_tps, turn_tps)
+    else:
+        motors.set_precise_rotation_direction(1, -1)
+        motors.set_target_speed(turn_tps, -turn_tps)
     angle_odom = 0.0
     yaw0 = get_bno_yaw() if get_bno_yaw else None
-    while (left_turn and angle_odom < target_deg) or (not left_turn and angle_odom > -target_deg):
+    while (left_turn and angle_odom > -target_deg) or (not left_turn and angle_odom < target_deg):
         if app is not None:
             app.processEvents()
         time.sleep(0.05)
@@ -264,8 +265,8 @@ def cmd_turn(motors, target_deg, left_turn, turn_tps, get_bno_yaw, app=None):
     motors.clear_precise_rotation_direction()
     time.sleep(0.15)
     yaw1 = get_bno_yaw() if get_bno_yaw else None
-    alvo = target_deg if left_turn else -target_deg
-    print("  Odometria: {:.1f}° (alvo {:.0f}°) → erro {:.1f}°".format(
+    alvo = -target_deg if left_turn else target_deg
+    print("  Odometria: {:.1f}° (alvo {:.0f}°) -> erro {:.1f}°".format(
         angle_odom, alvo, angle_odom - alvo))
     if yaw0 is not None and yaw1 is not None:
         print("  BNO yaw: {:.1f}° → {:.1f}° (delta: {:.1f}°)".format(yaw0, yaw1, yaw1 - yaw0))
