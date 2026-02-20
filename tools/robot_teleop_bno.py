@@ -235,25 +235,27 @@ def ticks_to_angle_deg(left_ticks, right_ticks, tpr, circ_m, base_m):
     return math.degrees((dist_l - dist_r) / base_m)
 
 
-def compute_straight_correction(yaw_ref, get_bno_yaw, base_tps, kp, max_correction):
+def compute_straight_correction(yaw_ref, get_bno_yaw, base_tps, kp, max_correction, invert_correction=False):
     """
     Calcula (left_tps, right_tps) para manter linha reta usando BNO.
-    err = yaw_ref - yaw_now: positivo = robot virou à esquerda -> corrigir aumentando direita.
-    Ajustado para o robô que estava indo para a esquerda (correção invertida).
+    err = yaw_now - yaw_ref: positivo = robot virou à esquerda -> corrigir com roda direita mais rápida.
+    Se o robô ainda curvar para um lado, use --invert-correction.
     """
     yaw_now = get_bno_yaw() if get_bno_yaw else None
     if yaw_now is None:
         return base_tps, base_tps
-    err = normalize_angle_deg(yaw_ref - yaw_now)
+    err = normalize_angle_deg(yaw_now - yaw_ref)
+    if invert_correction:
+        err = -err
     corr = kp * err
     corr = max(-max_correction, min(max_correction, corr))
-    # Robot virou esquerda (err>0) -> direita mais rápida. Robot virou direita (err<0) -> esquerda mais rápida.
-    left_tps = base_tps + corr
-    right_tps = base_tps - corr
+    # Virou esquerda (err>0) -> reduzir esquerda, aumentar direita = virar à direita para corrigir.
+    left_tps = base_tps - corr
+    right_tps = base_tps + corr
     return left_tps, right_tps
 
 
-def cmd_forward_straight(motors, duration_s, get_bno_yaw, app, base_tps, kp=0.7, max_correction=8.0):
+def cmd_forward_straight(motors, duration_s, get_bno_yaw, app, base_tps, kp=1.0, max_correction=12.0, invert_correction=False):
     """Avança por duration_s segundos com correção BNO em tempo real (linha reta)."""
     yaw_ref = get_bno_yaw() if get_bno_yaw else None
     if yaw_ref is None:
@@ -265,10 +267,10 @@ def cmd_forward_straight(motors, duration_s, get_bno_yaw, app, base_tps, kp=0.7,
         if app:
             app.processEvents()
         left_tps, right_tps = compute_straight_correction(
-            yaw_ref if yaw_ref is not None else 0.0, get_bno_yaw, base_tps, kp, max_correction
+            yaw_ref if yaw_ref is not None else 0.0, get_bno_yaw, base_tps, kp, max_correction, invert_correction
         )
         motors.set_target_speed(left_tps, right_tps)
-        time.sleep(0.05)
+        time.sleep(0.03)
     motors.stop_motors()
     yaw1 = get_bno_yaw() if get_bno_yaw else None
     if yaw_ref is not None and yaw1 is not None:
@@ -276,8 +278,8 @@ def cmd_forward_straight(motors, duration_s, get_bno_yaw, app, base_tps, kp=0.7,
     print("  Frente concluído.")
 
 
-def cmd_back_straight(motors, duration_s, get_bno_yaw, app, base_tps, kp=0.7, max_correction=8.0):
-    """Recua por duration_s com correção BNO (rumo invertido para trás)."""
+def cmd_back_straight(motors, duration_s, get_bno_yaw, app, base_tps, kp=1.0, max_correction=12.0, invert_correction=False):
+    """Recua por duration_s com correção BNO."""
     yaw_ref = get_bno_yaw() if get_bno_yaw else None
     if yaw_ref is None:
         print("  AVISO: BNO indisponivel, ré sem correção.")
@@ -289,10 +291,10 @@ def cmd_back_straight(motors, duration_s, get_bno_yaw, app, base_tps, kp=0.7, ma
         if app:
             app.processEvents()
         left_tps, right_tps = compute_straight_correction(
-            yaw_ref if yaw_ref is not None else 0.0, get_bno_yaw, base_neg, kp, max_correction
+            yaw_ref if yaw_ref is not None else 0.0, get_bno_yaw, base_neg, kp, max_correction, invert_correction
         )
         motors.set_target_speed(left_tps, right_tps)
-        time.sleep(0.05)
+        time.sleep(0.03)
     motors.stop_motors()
     print("  Ré concluído.")
 
@@ -346,11 +348,13 @@ def main():
     parser = argparse.ArgumentParser(description="Teleop com correção BNO (linha reta)")
     parser.add_argument("--forward-duration", type=float, default=4.0, help="Duração do comando 1=Frente (s)")
     parser.add_argument("--turn-tps", type=float, default=12.0, help="TPS para giros no lugar")
-    parser.add_argument("--kp", type=float, default=0.7, help="Ganho Kp da correção BNO (linha reta)")
-    parser.add_argument("--max-correction", type=float, default=8.0, help="Máximo TPS de correção por ciclo")
+    parser.add_argument("--kp", type=float, default=1.0, help="Ganho Kp da correção BNO (linha reta)")
+    parser.add_argument("--max-correction", type=float, default=12.0, help="Máximo TPS de correção por ciclo")
+    parser.add_argument("--invert-correction", action="store_true", help="Inverter sentido da correção (se ainda curvar para um lado)")
     parser.add_argument("--teleop-tps", type=float, default=25.0, help="TPS para W/S (frente/trás contínuo)")
     parser.add_argument("--no-arrows", action="store_true", help="Usar só números/letras (Thonny)")
     parser.add_argument("--debug-bno", action="store_true", help="Mostrar mensagens de diagnóstico do BNO08x")
+    parser.add_argument("--calibrate", action="store_true", help="Calibrar BNO08x antes (deixe o robô parado e plano ~15–30 s)")
     args = parser.parse_args()
 
     if not is_raspberry_pi():
@@ -366,6 +370,24 @@ def main():
             print("  Dica: execute com --debug-bno para ver em que etapa falhou.")
     else:
         print("BNO08x OK.")
+    if args.calibrate and bno is not None:
+        print("Calibração BNO08x: deixe o robô parado e em superfície plana...")
+        try:
+            bno.begin_calibration()
+            print("Aguarde ~15–30 s (Ctrl+C para pular).")
+            for i in range(60):
+                time.sleep(0.5)
+                try:
+                    s = bno.calibration_status
+                    if (i + 1) % 6 == 0:
+                        print("  Calibração status:", s)
+                except Exception:
+                    pass
+            print("Calibração concluída (ou tempo esgotado).")
+        except KeyboardInterrupt:
+            print("\nCalibração interrompida.")
+        except Exception as e:
+            print("  Erro na calibração:", e)
     print("Inicializando motores...")
     motors, qt_app = init_motors()
     print("Motores OK.")
@@ -385,7 +407,7 @@ def main():
         if qt_app:
             qt_app.processEvents()
         if use_timeout:
-            key = get_key_or_none(0.05)
+            key = get_key_or_none(0.02)
         else:
             print("  Comando (W/S/A/D 1 4 6 X 0): ", end="", flush=True)
             key = get_key_blocking()
@@ -403,7 +425,7 @@ def main():
                 if key == "1":
                     cmd_forward_straight(
                         motors, args.forward_duration, get_bno_yaw, qt_app,
-                        SPEED_SLOW_TPS, args.kp, args.max_correction
+                        SPEED_SLOW_TPS, args.kp, args.max_correction, args.invert_correction
                     )
                 else:
                     command = "forward"
@@ -435,13 +457,13 @@ def main():
         if command == "forward":
             ref = yaw_ref if yaw_ref is not None else (get_bno_yaw() or 0.0)
             left, right = compute_straight_correction(
-                ref, get_bno_yaw, base_tps_fwd, args.kp, args.max_correction
+                ref, get_bno_yaw, base_tps_fwd, args.kp, args.max_correction, args.invert_correction
             )
             motors.set_target_speed(left, right)
         elif command == "back":
             ref = yaw_ref if yaw_ref is not None else (get_bno_yaw() or 0.0)
             left, right = compute_straight_correction(
-                ref, get_bno_yaw, -base_tps_fwd, args.kp, args.max_correction
+                ref, get_bno_yaw, -base_tps_fwd, args.kp, args.max_correction, args.invert_correction
             )
             motors.set_target_speed(left, right)
         elif command == "turn_left":
@@ -453,7 +475,7 @@ def main():
         elif command == "stop":
             motors.stop_motors()
             motors.clear_precise_rotation_direction()
-        time.sleep(0.05)
+        time.sleep(0.02)
 
 
 if __name__ == "__main__":
