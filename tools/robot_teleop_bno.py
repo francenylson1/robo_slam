@@ -124,8 +124,13 @@ def get_key_blocking():
 # ---------------------------------------------------------------------------
 # BNO08x
 # ---------------------------------------------------------------------------
-def init_bno():
-    """Inicializa BNO08x. Retorna (bno, get_yaw) ou (None, None)."""
+def init_bno(debug=False):
+    """Inicializa BNO08x. RST em HIGH antes de qualquer I2C (como em bno08x_test). Retorna (bno, get_yaw) ou (None, None)."""
+    try:
+        from src.core.config import BNO08X_GPIO_RST, BNO08X_I2C_ADDRESS
+    except ImportError:
+        BNO08X_GPIO_RST = 26
+        BNO08X_I2C_ADDRESS = 0x4B
     try:
         import board
         import busio
@@ -133,7 +138,22 @@ def init_bno():
         from digitalio import DigitalInOut
         Direction = getattr(digitalio, "Direction", None) or getattr(DigitalInOut, "Direction", None)
     except ImportError:
+        if debug:
+            print("  init_bno: falha ao importar board/busio/digitalio")
         return None, None
+    # RST em HIGH *antes* de qualquer I2C (sensor sai do reset e fica visível no barramento)
+    if BNO08X_GPIO_RST is not None:
+        try:
+            rst = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
+            if Direction is not None:
+                rst.direction = Direction.OUTPUT
+            rst.value = True
+            if debug:
+                print("  GPIO {} (RST) em HIGH.".format(BNO08X_GPIO_RST))
+            time.sleep(0.35)
+        except Exception as e:
+            if debug:
+                print("  init_bno: RST falhou:", e)
     try:
         import adafruit_bno08x as _bno_mod
         _orig_rl = getattr(_bno_mod, "_report_length", None)
@@ -146,58 +166,64 @@ def init_bno():
             _bno_mod._report_length = _safe_rl
         from adafruit_bno08x.i2c import BNO08X_I2C
         from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR
-    except ImportError:
+    except ImportError as e:
+        if debug:
+            print("  init_bno: falha adafruit_bno08x:", e)
         return None, None
-    try:
-        from src.core.config import BNO08X_GPIO_RST, BNO08X_I2C_ADDRESS
-    except ImportError:
-        BNO08X_GPIO_RST = 26
-        BNO08X_I2C_ADDRESS = 0x4B
-    if BNO08X_GPIO_RST is not None:
-        rst = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
-        if Direction is not None:
-            rst.direction = Direction.OUTPUT
-        rst.value = True
-        time.sleep(0.35)
+    # I2C: tentar ExtendedI2C(1) primeiro (= /dev/i2c-1), igual bno08x_test quando i2cdetect -y 1 mostra 0x4b
     i2c = None
-    for scl_name, sda_name in [("D3", "D2"), ("SCL", "SDA")]:
-        try:
-            scl = getattr(board, scl_name, None)
-            sda = getattr(board, sda_name, None)
-            if scl and sda:
-                i2c = busio.I2C(scl, sda)
-                break
-        except Exception:
-            continue
+    try:
+        from adafruit_extended_bus import ExtendedI2C
+        i2c = ExtendedI2C(1)
+        if debug:
+            print("  I2C: ExtendedI2C(1)")
+    except (ImportError, Exception):
+        pass
+    if i2c is None:
+        for scl_name, sda_name in [("D3", "D2"), ("SCL", "SDA")]:
+            try:
+                scl = getattr(board, scl_name, None)
+                sda = getattr(board, sda_name, None)
+                if scl and sda:
+                    i2c = busio.I2C(scl, sda)
+                    break
+            except Exception:
+                continue
     if i2c is None and hasattr(board, "I2C") and callable(getattr(board, "I2C", None)):
         try:
             i2c = board.I2C()
         except Exception:
             pass
     if i2c is None:
-        try:
-            from adafruit_extended_bus import ExtendedI2C
-            i2c = ExtendedI2C(1)
-        except ImportError:
-            pass
-    if i2c is None:
+        if debug:
+            print("  init_bno: nao foi possivel criar I2C")
         return None, None
-    addrs = [BNO08X_I2C_ADDRESS, 0x4B, 0x4A]
+    addrs = list(dict.fromkeys([BNO08X_I2C_ADDRESS, 0x4B, 0x4A]))
     bno = None
+    last_err = None
     for addr in addrs:
         try:
             bno = BNO08X_I2C(i2c, reset=None, address=addr, debug=False)
+            if debug:
+                print("  BNO08x conectado em", hex(addr))
             break
-        except Exception:
+        except Exception as e:
+            last_err = e
+            if debug:
+                print("  BNO08x", hex(addr), "falhou:", e)
             continue
     if bno is None:
+        if debug:
+            print("  init_bno: BNO08x nao respondeu. Ultimo erro:", last_err)
         return None, None
     time.sleep(0.2)
     for attempt in range(3):
         try:
             bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
             break
-        except (RuntimeError, KeyError):
+        except (RuntimeError, KeyError) as e:
+            if debug and attempt == 2:
+                print("  init_bno: enable_feature falhou:", e)
             time.sleep(0.3)
     else:
         return None, None
@@ -345,6 +371,7 @@ def main():
     parser.add_argument("--max-correction", type=float, default=8.0, help="Máximo TPS de correção por ciclo")
     parser.add_argument("--teleop-tps", type=float, default=25.0, help="TPS para W/S (frente/trás contínuo)")
     parser.add_argument("--no-arrows", action="store_true", help="Usar só números/letras (Thonny)")
+    parser.add_argument("--debug-bno", action="store_true", help="Mostrar mensagens de diagnóstico do BNO08x")
     args = parser.parse_args()
 
     if not is_raspberry_pi():
@@ -353,9 +380,11 @@ def main():
 
     os.environ["ROBOT_MOTOR_QUIET"] = "1"
     print("Inicializando BNO08x...")
-    bno, get_bno_yaw = init_bno()
+    bno, get_bno_yaw = init_bno(debug=args.debug_bno)
     if bno is None:
         print("BNO08x nao disponivel. Navegacao sera sem correção de deriva.")
+        if not args.debug_bno:
+            print("  Dica: execute com --debug-bno para ver em que etapa falhou.")
     else:
         print("BNO08x OK.")
     print("Inicializando motores...")
