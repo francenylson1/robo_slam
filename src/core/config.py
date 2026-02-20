@@ -107,9 +107,10 @@ RPLIDAR_BAUDRATE = 115200
 RPLIDAR_TIMEOUT = 1.0  # segundos
 
 # Configurações do IMU BNO08x (I2C: SDA, SCL + GPIO)
-# Fiação: SDA/SCL no I2C; GPIO 27 = INT (opcional, uso futuro). RST não conectado (causava ruído).
+# RST em GPIO 26: o script deixa em HIGH no início (sensor sai do reset) e não passa o pino à lib (evita ruído).
+# Se RST não estiver conectado, use None. Se "device not found", use 26 para o script driver RST em HIGH.
 BNO08X_I2C_ADDRESS = 0x4B       # BNO085 default (0x4B para BNO080)
-BNO08X_GPIO_RST = None          # Pino de reset: None = não usado (RST desconectado por ruído)
+BNO08X_GPIO_RST = 26            # GPIO para RST: 26 = driver HIGH no início (sensor visível); None = não tocar no pino
 BNO08X_GPIO_INT = 27            # Pino GPIO para interrupção (data ready - opcional, uso futuro)
 
 # Configurações de simulação

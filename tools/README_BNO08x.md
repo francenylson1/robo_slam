@@ -3,7 +3,7 @@
 Fiação usada no projeto:
 - **I2C:** SDA, SCL (e alimentação 3V3, GND)
 - **GPIO 27:** INT (interrupto – opcional, uso futuro)
-- **RST:** não conectado (causava ruído no nosso setup; o BNO08x funciona sem reset por software)
+- **RST (GPIO 26):** o script coloca em HIGH no início para o sensor sair do reset (evita "device not found" e dispensa `raspi-gpio set 26 op dh`). O pino não é passado à biblioteca (evita ruído).
 
 ## Pré-requisitos na Raspberry Pi
 

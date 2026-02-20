@@ -69,11 +69,24 @@ def main():
     try:
         from src.core.config import BNO08X_GPIO_RST, BNO08X_GPIO_INT, BNO08X_I2C_ADDRESS
     except ImportError:
-        BNO08X_GPIO_RST = None
+        BNO08X_GPIO_RST = 26
         BNO08X_GPIO_INT = 27
         BNO08X_I2C_ADDRESS = 0x4B
 
-    print("Inicializando I2C (RST não usado).")
+    # RST é active-LOW: com GPIO em LOW o BNO08x fica em reset e não aparece no I2C.
+    # Colocar RST em HIGH logo no início (antes do I2C) evita ter que rodar "raspi-gpio set 26 op dh" no terminal.
+    # O pino não é passado à biblioteca (reset=None) para não haver toggle e ruído.
+    if BNO08X_GPIO_RST is not None:
+        rst_hold = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
+        if Direction is not None:
+            rst_hold.direction = Direction.OUTPUT
+        else:
+            rst_hold.direction = 1
+        rst_hold.value = True
+        print("GPIO {} (RST) em HIGH para sensor sair do reset.".format(BNO08X_GPIO_RST))
+        time.sleep(0.05)
+
+    print("Inicializando I2C.")
     # Barramento I2C: em alguns Raspberry (ex. Pi 5) board.SCL/SDA dão "No Hardware I2C on (3,2)".
     # Valid ports costumam ser (bus, SCL, SDA) = (1, 3, 2) = I2C1 com GPIO3=SCL, GPIO2=SDA.
     i2c = None
@@ -114,16 +127,8 @@ def main():
         print("Se usar Pi 5 ou outro modelo, tente: pip install adafruit-extended-bus e reinicie o script.")
         sys.exit(1)
 
-    # RST é active-LOW: com o pino em LOW o BNO08x fica em reset e não responde no I2C.
-    # Por isso, ao usar RST: colocar em HIGH assim que configurar (sensor operacional); só ir para LOW no pulso de reset.
+    # Não passamos o pino RST à biblioteca (reset=None) para evitar toggle e ruído; já deixamos RST em HIGH acima.
     reset_pin = None
-    if BNO08X_GPIO_RST is not None:
-        reset_pin = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
-        if Direction is not None:
-            reset_pin.direction = Direction.OUTPUT
-        else:
-            reset_pin.direction = 1
-        reset_pin.value = True   # HIGH = sensor fora do reset; evita ficar em LOW ao só configurar OUTPUT
 
     # Varredura I2C: lista endereços presentes no barramento (ajuda a ver se 0x4A/0x4B aparecem)
     print("Varredura I2C (0x08-0x77)...")
@@ -149,16 +154,6 @@ def main():
                 print("  Nenhum dispositivo I2C encontrado. Verifique fiação (SDA/SCL/VCC/GND).")
     except Exception as scan_err:
         print("  (varredura não disponível:", scan_err, ")")
-
-    # Reset por hardware (só se RST estiver conectado): pulso LOW -> HIGH; depois mantém HIGH
-    if reset_pin is not None:
-        try:
-            reset_pin.value = False
-            time.sleep(0.02)
-            reset_pin.value = True
-            time.sleep(0.15)
-        except Exception:
-            pass
 
     # Tentar 0x4A (BNO085) e 0x4B (BNO080); alguns módulos/jumper ADR usam 0x4B
     addrs_to_try = [BNO08X_I2C_ADDRESS]
