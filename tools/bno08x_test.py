@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Teste do IMU BNO08x no Raspberry Pi.
-Fiação: I2C (SDA, SCL), alimentação, GPIO 26 = RST, GPIO 27 = INT.
-Pinos definidos em src/core/config.py (BNO08X_GPIO_RST, BNO08X_GPIO_INT).
+Fiação: I2C (SDA, SCL), alimentação; GPIO 27 = INT (opcional). RST não usado (config: BNO08X_GPIO_RST = None).
+Pinos em src/core/config.py (BNO08X_GPIO_RST, BNO08X_GPIO_INT, BNO08X_I2C_ADDRESS).
 
 Uso:
   python tools/bno08x_test.py          # leitura contínua
@@ -69,11 +69,11 @@ def main():
     try:
         from src.core.config import BNO08X_GPIO_RST, BNO08X_GPIO_INT, BNO08X_I2C_ADDRESS
     except ImportError:
-        BNO08X_GPIO_RST = 26
+        BNO08X_GPIO_RST = None
         BNO08X_GPIO_INT = 27
-        BNO08X_I2C_ADDRESS = 0x4A
+        BNO08X_I2C_ADDRESS = 0x4B
 
-    print("Inicializando I2C e pino de reset (GPIO {}).".format(BNO08X_GPIO_RST))
+    print("Inicializando I2C (RST não usado).")
     # Barramento I2C: em alguns Raspberry (ex. Pi 5) board.SCL/SDA dão "No Hardware I2C on (3,2)".
     # Valid ports costumam ser (bus, SCL, SDA) = (1, 3, 2) = I2C1 com GPIO3=SCL, GPIO2=SDA.
     i2c = None
@@ -113,17 +113,74 @@ def main():
         print("Verifique: ls /dev/i2c*  (deve listar /dev/i2c-1 etc.)")
         print("Se usar Pi 5 ou outro modelo, tente: pip install adafruit-extended-bus e reinicie o script.")
         sys.exit(1)
-    reset_pin = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
-    if Direction is not None:
-        reset_pin.direction = Direction.OUTPUT
-    else:
-        reset_pin.direction = 1  # OUTPUT = 1 em digitalio
 
+    # RST é active-LOW: com o pino em LOW o BNO08x fica em reset e não responde no I2C.
+    # Por isso, ao usar RST: colocar em HIGH assim que configurar (sensor operacional); só ir para LOW no pulso de reset.
+    reset_pin = None
+    if BNO08X_GPIO_RST is not None:
+        reset_pin = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
+        if Direction is not None:
+            reset_pin.direction = Direction.OUTPUT
+        else:
+            reset_pin.direction = 1
+        reset_pin.value = True   # HIGH = sensor fora do reset; evita ficar em LOW ao só configurar OUTPUT
+
+    # Varredura I2C: lista endereços presentes no barramento (ajuda a ver se 0x4A/0x4B aparecem)
+    print("Varredura I2C (0x08-0x77)...")
     try:
-        bno = BNO08X_I2C(i2c, reset=reset_pin, address=BNO08X_I2C_ADDRESS)
-    except Exception as e:
-        print("Erro ao conectar ao BNO08x:", e)
-        print("Verifique: I2C ativado (raspi-config), fiação (SDA/SCL/VCC/GND, RST no GPIO 26).")
+        i2c.unlock()
+    except (ValueError, AttributeError):
+        pass
+    try:
+        if hasattr(i2c, "try_lock") and i2c.try_lock():
+            found = []
+            for addr in range(0x08, 0x78):
+                try:
+                    i2c.writeto(addr, bytearray([]))
+                    found.append(hex(addr))
+                except (OSError, RuntimeError):
+                    pass
+            i2c.unlock()
+            if found:
+                print("  Dispositivos encontrados:", ", ".join(found))
+                if "0x4a" not in [a.lower() for a in found] and "0x4b" not in [a.lower() for a in found]:
+                    print("  BNO08x usa 0x4A (BNO085) ou 0x4B (BNO080). Nenhum dos dois apareceu.")
+            else:
+                print("  Nenhum dispositivo I2C encontrado. Verifique fiação (SDA/SCL/VCC/GND).")
+    except Exception as scan_err:
+        print("  (varredura não disponível:", scan_err, ")")
+
+    # Reset por hardware (só se RST estiver conectado): pulso LOW -> HIGH; depois mantém HIGH
+    if reset_pin is not None:
+        try:
+            reset_pin.value = False
+            time.sleep(0.02)
+            reset_pin.value = True
+            time.sleep(0.15)
+        except Exception:
+            pass
+
+    # Tentar 0x4A (BNO085) e 0x4B (BNO080); alguns módulos/jumper ADR usam 0x4B
+    addrs_to_try = [BNO08X_I2C_ADDRESS]
+    if 0x4B not in addrs_to_try:
+        addrs_to_try.append(0x4B)
+    if 0x4A not in addrs_to_try:
+        addrs_to_try.append(0x4A)
+    bno = None
+    for addr in addrs_to_try:
+        try:
+            bno = BNO08X_I2C(i2c, reset=reset_pin, address=addr, debug=False)  # debug=False evita dump de pacotes SHTP no log
+            print("BNO08x conectado no endereço {}.".format(hex(addr)))
+            break
+        except Exception as e:
+            err_str = str(e).lower()
+            if "address" in err_str or "0x4" in err_str:
+                continue
+            raise
+    if bno is None:
+        print("Erro: BNO08x não respondeu em 0x4A nem 0x4B.")
+        print("Verifique: alimentação 3V3, GND, SDA/SCL. Alguns módulos têm jumper ADR (0x4A vs 0x4B).")
+        print("PS0/PS1 do BNO08x devem estar no nível correto para modo I2C (consulte o datasheet).")
         sys.exit(1)
 
     print("BNO08x conectado. Habilitando relatórios (acelerômetro, giro, rotação).")
@@ -161,6 +218,7 @@ def main():
 
     print("Leitura contínua (Ctrl+C para sair). Intervalo: {} s\n".format(args.interval))
     n = 0
+    read_errors = 0  # erros pontuais (pacotes não-sensor) são normais; não enchem o log
     try:
         while True:
             try:
@@ -191,13 +249,18 @@ def main():
                     )
                 )
             except Exception as e:
-                print("Erro na leitura:", e)
+                read_errors += 1
+                # Pacotes não-sensor (timestamp, comando, etc.) geram exceção; é normal. Só avisa de 5 em 5 erros.
+                if read_errors <= 1 or read_errors % 5 == 0:
+                    print("  [leitura ignorada {}x: {}]".format(read_errors, e))
             n += 1
             if args.count > 0 and n >= args.count:
                 break
             time.sleep(args.interval)
     except KeyboardInterrupt:
         print("\nEncerrado pelo usuário.")
+        if read_errors > 0:
+            print("(Durante a execução, {} leituras foram ignoradas por pacotes não-sensor – normal no BNO08x.)".format(read_errors))
 
 
 if __name__ == "__main__":

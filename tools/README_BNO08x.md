@@ -2,8 +2,8 @@
 
 Fiação usada no projeto:
 - **I2C:** SDA, SCL (e alimentação 3V3, GND)
-- **GPIO 26:** RST (reset)
-- **GPIO 27:** INT (interrupto – uso futuro)
+- **GPIO 27:** INT (interrupto – opcional, uso futuro)
+- **RST:** não conectado (causava ruído no nosso setup; o BNO08x funciona sem reset por software)
 
 ## Pré-requisitos na Raspberry Pi
 
@@ -58,7 +58,20 @@ pip install adafruit-extended-bus
 python tools/bno08x_test.py
 ```
 
+## "No I2C device at address: 0x4a"
+
+O script faz **varredura I2C** (lista dispositivos no barramento) e tenta **0x4A e 0x4B**. (RST não é usado no nosso setup.)
+
+- Se a varredura **não mostrar nenhum endereço**: confira alimentação (3V3, GND), SDA e SCL. PS0/PS1 do BNO08x devem estar no nível correto para modo I2C.
+- Se mostrar outro endereço (ex.: 0x4B): o script tenta 0x4B automaticamente. Em `config.py` você pode fixar `BNO08X_I2C_ADDRESS = 0x4B` se o seu módulo for BNO080 ou tiver o jumper ADR.
+- No nosso projeto **RST não é usado** (desconectado por ruído). Para resetar o sensor, desligue e ligue a alimentação (3V3).
+
+## Sobre as mensagens "Erro na leitura" e dump de pacotes (DBG::)
+
+- **Bloco "Packet / DBG::"**: era saída de debug da biblioteca (pacotes SHTP). O script agora usa `debug=False` para não imprimir isso.
+- **"Erro na leitura: 255", "0", "Input/output error", "Unprocessable Batch bytes"**: o BNO08x envia vários tipos de pacote (dados de sensor, timestamp, metadados). Às vezes a biblioteca lê um pacote que não é acelerômetro/giro/quaternion e gera exceção; a próxima leitura volta ao normal. Isso é **normal** em I2C com BNO08x. O script ignora essas leituras e segue; se quiser menos avisos, eles aparecem só de 5 em 5.
+
 ## Configuração
 
 Pinos e endereço I2C estão em `src/core/config.py`:
-- `BNO08X_GPIO_RST`, `BNO08X_GPIO_INT`, `BNO08X_I2C_ADDRESS`
+- `BNO08X_GPIO_RST = None` (não usado), `BNO08X_GPIO_INT`, `BNO08X_I2C_ADDRESS`
