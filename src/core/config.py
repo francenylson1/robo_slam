@@ -113,6 +113,13 @@ BNO08X_I2C_ADDRESS = 0x4B       # BNO085 default (0x4B para BNO080)
 BNO08X_GPIO_RST = 26            # GPIO para RST: 26 = driver HIGH no início (sensor visível); None = não tocar no pino
 BNO08X_GPIO_INT = 27            # Pino GPIO para interrupção (data ready - opcional, uso futuro)
 
+# Correção de rumo (linha reta) com BNO08x - usada por teleop e testes
+BNO_STRAIGHT_KP = 1.0           # Ganho proporcional: correção = kp * (yaw_now - yaw_ref)
+BNO_STRAIGHT_MAX_CORRECTION_TPS = 12.0  # Limite máximo de TPS de correção por ciclo
+BNO_STRAIGHT_INVERT_CORRECTION = False   # True se o robô curvar para o lado oposto ao esperado
+# TPS para giros no lugar (menu, teleop e testes BNO) - alinhado com navegação
+TURN_TPS_DEFAULT = 12.0
+
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz
 SIMULATION_OBSTACLE_COUNT = 3

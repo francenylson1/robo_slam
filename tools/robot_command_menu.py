@@ -288,11 +288,15 @@ def print_menu():
 
 
 def main():
+    try:
+        from src.core.config import TURN_TPS_DEFAULT
+    except ImportError:
+        TURN_TPS_DEFAULT = 12.0
     parser = argparse.ArgumentParser(description="Menu de comandos do robô (frente, giros 45/90/180°)")
     parser.add_argument("--forward-duration", type=float, default=4.0,
                         help="Duração do avanço em segundos (default 4)")
-    parser.add_argument("--turn-tps", type=float, default=12.0,
-                        help="TPS para giros no lugar (default 12)")
+    parser.add_argument("--turn-tps", type=float, default=TURN_TPS_DEFAULT,
+                        help="TPS para giros no lugar (default: config)")
     parser.add_argument("--no-arrows", action="store_true",
                         help="Usar apenas números/letras (sem leitura de setas)")
     parser.add_argument("--debug-keys", action="store_true",

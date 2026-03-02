@@ -345,17 +345,31 @@ def print_instructions():
 
 
 def main():
+    try:
+        from src.core.config import (
+            BNO_STRAIGHT_KP,
+            BNO_STRAIGHT_MAX_CORRECTION_TPS,
+            BNO_STRAIGHT_INVERT_CORRECTION,
+            TURN_TPS_DEFAULT,
+        )
+    except ImportError:
+        BNO_STRAIGHT_KP = 1.0
+        BNO_STRAIGHT_MAX_CORRECTION_TPS = 12.0
+        BNO_STRAIGHT_INVERT_CORRECTION = False
+        TURN_TPS_DEFAULT = 12.0
     parser = argparse.ArgumentParser(description="Teleop com correção BNO (linha reta)")
     parser.add_argument("--forward-duration", type=float, default=4.0, help="Duração do comando 1=Frente (s)")
-    parser.add_argument("--turn-tps", type=float, default=12.0, help="TPS para giros no lugar")
-    parser.add_argument("--kp", type=float, default=1.0, help="Ganho Kp da correção BNO (linha reta)")
-    parser.add_argument("--max-correction", type=float, default=12.0, help="Máximo TPS de correção por ciclo")
-    parser.add_argument("--invert-correction", action="store_true", help="Inverter sentido da correção (se ainda curvar para um lado)")
+    parser.add_argument("--turn-tps", type=float, default=TURN_TPS_DEFAULT, help="TPS para giros (default: config)")
+    parser.add_argument("--kp", type=float, default=BNO_STRAIGHT_KP, help="Ganho Kp correção BNO (default: config)")
+    parser.add_argument("--max-correction", type=float, default=BNO_STRAIGHT_MAX_CORRECTION_TPS, help="Máx. TPS correção (default: config)")
+    parser.add_argument("--invert-correction", action="store_true", help="Inverter correção (ou use config BNO_STRAIGHT_INVERT_CORRECTION)")
     parser.add_argument("--teleop-tps", type=float, default=25.0, help="TPS para W/S (frente/trás contínuo)")
     parser.add_argument("--no-arrows", action="store_true", help="Usar só números/letras (Thonny)")
     parser.add_argument("--debug-bno", action="store_true", help="Mostrar mensagens de diagnóstico do BNO08x")
     parser.add_argument("--calibrate", action="store_true", help="Calibrar BNO08x antes (deixe o robô parado e plano ~15–30 s)")
     args = parser.parse_args()
+    # Respeitar config para inversão da correção (config pode forçar True)
+    args.invert_correction = args.invert_correction or BNO_STRAIGHT_INVERT_CORRECTION
 
     if not is_raspberry_pi():
         print("Execute este script na Raspberry Pi.")

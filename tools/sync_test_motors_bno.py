@@ -284,12 +284,16 @@ def run_turn_test(motors, get_bno_yaw, target_deg, turn_tps, config, csv_rows, v
 
 
 def main():
+    try:
+        from src.core.config import TURN_TPS_DEFAULT
+    except ImportError:
+        TURN_TPS_DEFAULT = 12.0
     parser = argparse.ArgumentParser(description="Teste de sincronia motores + odometria + BNO08x")
     parser.add_argument("--duration", type=float, default=5.0, help="Duração do teste de linha reta (s)")
     parser.add_argument("--no-straight", action="store_true", help="Pular teste de linha reta")
     parser.add_argument("--no-turns", action="store_true", help="Pular testes de giro")
     parser.add_argument("--csv", type=str, default="", help="Arquivo CSV para salvar amostras")
-    parser.add_argument("--turn-tps", type=float, default=12.0, help="TPS para giros no lugar")
+    parser.add_argument("--turn-tps", type=float, default=TURN_TPS_DEFAULT, help="TPS para giros (default: config)")
     args = parser.parse_args()
 
     if not is_raspberry_pi():
