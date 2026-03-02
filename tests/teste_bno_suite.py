@@ -42,95 +42,23 @@ def normalize_angle_deg(deg):
 
 
 # ---------------------------------------------------------------------------
-# BNO08x init (compatível com tools: patch _report_length, RST, I2C)
+# BNO08x init: mesmo procedimento do tools/bno08x_test.py (reset + I2C + 3 relatórios)
 # ---------------------------------------------------------------------------
-def init_bno():
-    """Inicializa BNO08x. Retorna (bno, get_yaw) ou (None, None)."""
+def _init_bno_suite():
+    """Inicializa BNO08x via tools.bno08x_init (reset cycle + ACCEL+GYRO+ROTATION_VECTOR)."""
     try:
-        import board
-        import busio
-        import digitalio
-        from digitalio import DigitalInOut
-        Direction = getattr(digitalio, "Direction", None) or getattr(DigitalInOut, "Direction", None)
+        from tools.bno08x_init import init_bno as _init
+        return _init(do_reset_cycle=True, verbose=True)
     except ImportError:
-        return None, None
-    try:
-        import adafruit_bno08x as _bno_mod
-        _orig_rl = getattr(_bno_mod, "_report_length", None)
-        if callable(_orig_rl):
-            def _safe_rl(rid):
-                try:
-                    return _orig_rl(rid)
-                except KeyError:
-                    return 16
-            _bno_mod._report_length = _safe_rl
-        from adafruit_bno08x.i2c import BNO08X_I2C
-        from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR
-    except ImportError:
-        return None, None
-    try:
-        from src.core.config import BNO08X_GPIO_RST, BNO08X_I2C_ADDRESS
-    except ImportError:
-        BNO08X_GPIO_RST = 26
-        BNO08X_I2C_ADDRESS = 0x4B
-    if BNO08X_GPIO_RST is not None:
-        rst = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
-        if Direction is not None:
-            rst.direction = Direction.OUTPUT
-        rst.value = True
-        time.sleep(0.35)
-    i2c = None
-    for scl_name, sda_name in [("D3", "D2"), ("SCL", "SDA")]:
+        # Fallback se rodar de outro diretório: adicionar tools ao path
+        tools_dir = os.path.join(ROOT, "tools")
+        if tools_dir not in sys.path:
+            sys.path.insert(0, ROOT)
         try:
-            scl = getattr(board, scl_name, None)
-            sda = getattr(board, sda_name, None)
-            if scl and sda:
-                i2c = busio.I2C(scl, sda)
-                break
-        except Exception:
-            continue
-    if i2c is None and hasattr(board, "I2C") and callable(getattr(board, "I2C", None)):
-        try:
-            i2c = board.I2C()
-        except Exception:
-            pass
-    if i2c is None:
-        try:
-            from adafruit_extended_bus import ExtendedI2C
-            i2c = ExtendedI2C(1)
+            from tools.bno08x_init import init_bno as _init
+            return _init(do_reset_cycle=True, verbose=True)
         except ImportError:
-            pass
-    if i2c is None:
-        return None, None
-    addrs = [BNO08X_I2C_ADDRESS, 0x4B, 0x4A]
-    bno = None
-    for addr in addrs:
-        try:
-            bno = BNO08X_I2C(i2c, reset=None, address=addr, debug=False)
-            break
-        except Exception:
-            continue
-    if bno is None:
-        return None, None
-    time.sleep(0.2)
-    for attempt in range(3):
-        try:
-            bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
-            break
-        except (RuntimeError, KeyError):
-            time.sleep(0.3)
-    else:
-        return None, None
-
-    def get_yaw():
-        try:
-            quat_i, quat_j, quat_k, quat_real = bno.quaternion
-            siny_cosp = 2 * (quat_real * quat_k + quat_i * quat_j)
-            cosy_cosp = 1 - 2 * (quat_j * quat_j + quat_k * quat_k)
-            return math.degrees(math.atan2(siny_cosp, cosy_cosp))
-        except Exception:
-            return None
-    return bno, get_yaw
+            return None, None
 
 
 def init_motors():
@@ -223,11 +151,12 @@ def run_straight_bno_test(motors, get_bno_yaw, app, duration_s, results_list, ve
     motors.stop_motors()
     yaw_start = yaw_list[0] if yaw_list else None
     yaw_end = yaw_list[-1] if yaw_list else None
-    yaw_drift = (yaw_end - yaw_start) if (yaw_start is not None and yaw_end is not None) else None
+    yaw_drift_raw = (yaw_end - yaw_start) if (yaw_start is not None and yaw_end is not None) else None
+    yaw_drift = normalize_angle_deg(yaw_drift_raw) if yaw_drift_raw is not None else None
     if verbose:
         print("  Odometria (ângulo acumulado): {:.2f}°".format(odom_angle))
         if yaw_drift is not None:
-            print("  BNO yaw: início={:.2f}° fim={:.2f}° → deriva={:.2f}°".format(
+            print("  BNO yaw: início={:.2f}° fim={:.2f}° → deriva={:.2f}° (normalizada)".format(
                 yaw_start, yaw_end, yaw_drift))
         else:
             print("  BNO: sem leitura válida.")
@@ -274,13 +203,14 @@ def run_turn_test(motors, get_bno_yaw, app, target_deg, turn_tps, results_list, 
     motors.clear_precise_rotation_direction()
     time.sleep(0.2)
     yaw_end = get_bno_yaw() if get_bno_yaw else None
-    bno_delta = (yaw_end - yaw_start) if (yaw_start is not None and yaw_end is not None) else None
+    bno_delta_raw = (yaw_end - yaw_start) if (yaw_start is not None and yaw_end is not None) else None
+    bno_delta = normalize_angle_deg(bno_delta_raw) if bno_delta_raw is not None else None
     odom_error = angle_odom - target_deg
     if verbose:
         print("  Odometria: {:.2f}° (alvo {:.0f}°) → erro {:.2f}°".format(
             angle_odom, target_deg, odom_error))
         if bno_delta is not None:
-            print("  BNO: início={:.2f}° fim={:.2f}° → delta={:.2f}°".format(
+            print("  BNO: início={:.2f}° fim={:.2f}° → delta={:.2f}° (normalizado)".format(
                 yaw_start, yaw_end, bno_delta))
     r = {
         "name": "Giro {:.0f}°".format(target_deg),
@@ -320,8 +250,8 @@ def main():
     turn_tps = args.turn_tps if args.turn_tps is not None else TURN_TPS_DEFAULT
 
     os.environ["ROBOT_MOTOR_QUIET"] = "1"
-    print("Inicializando BNO08x...")
-    bno, get_bno_yaw = init_bno()
+    print("Inicializando BNO08x (reset + init como bno08x_test.py)...")
+    bno, get_bno_yaw = _init_bno_suite()
     if bno is None:
         print("AVISO: BNO08x não disponível. Linha reta será sem correção; giros usam só odometria.")
     else:
@@ -352,6 +282,7 @@ def main():
         print("Erro: não foi possível inicializar o controlador de motores.")
         sys.exit(1)
     print("Motores OK. Ganhos de correção BNO e TPS vêm de config.py.")
+    time.sleep(0.5)  # Estabilização do BNO após init dos motores
 
     results = []
     if not args.no_straight:

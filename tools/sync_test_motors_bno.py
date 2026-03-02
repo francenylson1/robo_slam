@@ -37,109 +37,13 @@ def is_raspberry_pi():
 
 
 def init_bno():
-    """Inicializa BNO08x (I2C, RST em HIGH). Retorna (bno, get_yaw_func) ou (None, None)."""
+    """Inicializa BNO08x via tools/bno08x_init (reset cycle + init como bno08x_test.py)."""
     try:
-        import board
-        import busio
-        import digitalio
-        from digitalio import DigitalInOut
-        Direction = getattr(digitalio, "Direction", None) or getattr(DigitalInOut, "Direction", None)
+        from tools.bno08x_init import init_bno as _bno_init
+        return _bno_init(do_reset_cycle=True, verbose=True)
     except ImportError:
-        print("Instale adafruit-blinka para usar o BNO08x.")
+        print("Não foi possível importar tools.bno08x_init. Execute na raiz do projeto.")
         return None, None
-    try:
-        # Corrige KeyError quando o BNO envia report desconhecido (ex.: 0x7B) que a lib não trata
-        import adafruit_bno08x as _bno_mod
-        _orig_report_length = getattr(_bno_mod, "_report_length", None)
-        if callable(_orig_report_length):
-            def _safe_report_length(report_id):
-                try:
-                    return _orig_report_length(report_id)
-                except KeyError:
-                    return 16
-            _bno_mod._report_length = _safe_report_length
-        from adafruit_bno08x.i2c import BNO08X_I2C
-        from adafruit_bno08x import (
-            BNO_REPORT_ACCELEROMETER,
-            BNO_REPORT_GYROSCOPE,
-            BNO_REPORT_ROTATION_VECTOR,
-        )
-    except ImportError:
-        print("Instale adafruit-circuitpython-bno08x.")
-        return None, None
-
-    try:
-        from src.core.config import BNO08X_GPIO_RST, BNO08X_I2C_ADDRESS
-    except ImportError:
-        BNO08X_GPIO_RST = 26
-        BNO08X_I2C_ADDRESS = 0x4B
-
-    if BNO08X_GPIO_RST is not None:
-        rst = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
-        if Direction is not None:
-            rst.direction = Direction.OUTPUT
-        rst.value = True
-        time.sleep(0.35)
-
-    i2c = None
-    for scl_name, sda_name in [("D3", "D2"), ("SCL", "SDA")]:
-        try:
-            scl = getattr(board, scl_name, None)
-            sda = getattr(board, sda_name, None)
-            if scl and sda:
-                i2c = busio.I2C(scl, sda)
-                break
-        except Exception:
-            continue
-    if i2c is None and hasattr(board, "I2C") and callable(getattr(board, "I2C", None)):
-        try:
-            i2c = board.I2C()
-        except Exception:
-            pass
-    if i2c is None:
-        try:
-            from adafruit_extended_bus import ExtendedI2C
-            i2c = ExtendedI2C(1)
-        except ImportError:
-            pass
-    if i2c is None:
-        print("Não foi possível criar I2C para o BNO08x.")
-        return None, None
-
-    addrs = [BNO08X_I2C_ADDRESS, 0x4B, 0x4A]
-    bno = None
-    for addr in addrs:
-        try:
-            bno = BNO08X_I2C(i2c, reset=None, address=addr, debug=False)
-            break
-        except Exception:
-            continue
-    if bno is None:
-        print("BNO08x não encontrado no I2C.")
-        return None, None
-
-    time.sleep(0.2)
-    # Habilitar só o necessário para yaw (ROTATION_VECTOR). Evita processar relatórios extras que geram KeyError.
-    for attempt in range(3):
-        try:
-            bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
-            break
-        except (RuntimeError, KeyError):
-            time.sleep(0.3)
-    else:
-        print("Falha ao habilitar relatório de rotação do BNO08x.")
-        return None, None
-
-    def get_yaw():
-        try:
-            quat_i, quat_j, quat_k, quat_real = bno.quaternion
-            siny_cosp = 2 * (quat_real * quat_k + quat_i * quat_j)
-            cosy_cosp = 1 - 2 * (quat_j * quat_j + quat_k * quat_k)
-            return math.degrees(math.atan2(siny_cosp, cosy_cosp))
-        except Exception:
-            return None
-
-    return bno, get_yaw
 
 
 def init_motors():
