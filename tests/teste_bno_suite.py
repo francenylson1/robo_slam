@@ -45,18 +45,16 @@ def normalize_angle_deg(deg):
 # BNO08x init: mesmo procedimento do tools/bno08x_test.py (reset + I2C + 3 relatórios)
 # ---------------------------------------------------------------------------
 def _init_bno_suite():
-    """Inicializa BNO08x via tools.bno08x_init (reset cycle + ACCEL+GYRO+ROTATION_VECTOR)."""
+    """Inicializa BNO08x via tools.bno08x_init (igual bno08x_test: RST HIGH apenas, sem ciclo)."""
     try:
         from tools.bno08x_init import init_bno as _init
-        return _init(do_reset_cycle=True, verbose=True)
+        return _init(do_reset_cycle=False, verbose=True)
     except ImportError:
-        # Fallback se rodar de outro diretório: adicionar tools ao path
-        tools_dir = os.path.join(ROOT, "tools")
-        if tools_dir not in sys.path:
+        if ROOT not in sys.path:
             sys.path.insert(0, ROOT)
         try:
             from tools.bno08x_init import init_bno as _init
-            return _init(do_reset_cycle=True, verbose=True)
+            return _init(do_reset_cycle=False, verbose=True)
         except ImportError:
             return None, None
 

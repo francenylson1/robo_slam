@@ -109,10 +109,10 @@ def get_key():
 # BNO08x: usa tools/bno08x_init (reset cycle + init igual ao bno08x_test.py)
 # ---------------------------------------------------------------------------
 def init_bno():
-    """Inicializa BNO08x via bno08x_init. Retorna (bno, get_yaw) ou (None, None)."""
+    """Inicializa BNO08x via bno08x_init (igual bno08x_test: RST HIGH apenas)."""
     try:
         from tools.bno08x_init import init_bno as _bno_init
-        return _bno_init(do_reset_cycle=True, verbose=True)
+        return _bno_init(do_reset_cycle=False, verbose=True)
     except ImportError:
         return None, None
 

@@ -23,18 +23,34 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+# Patch do report 0x7B ao carregar o módulo (igual bno08x_test evita KeyError em todos os scripts)
+def _apply_bno07b_patch():
+    try:
+        import adafruit_bno08x as _bno_mod
+        _orig = getattr(_bno_mod, "_report_length", None)
+        if callable(_orig):
+            def _safe(rid):
+                try:
+                    return _orig(rid)
+                except KeyError:
+                    return 16
+            _bno_mod._report_length = _safe
+    except Exception:
+        pass
+_apply_bno07b_patch()
 
-def init_bno(do_reset_cycle=True, verbose=True):
+
+def init_bno(do_reset_cycle=False, verbose=True):
     """
-    Inicializa o BNO08x. Igual ao bno08x_test.py + ciclo de reset opcional.
+    Inicializa o BNO08x exatamente como bno08x_test.py (que funciona na Raspberry).
 
     Args:
-        do_reset_cycle: se True, faz RST LOW 0.15 s depois HIGH 0.35 s (recomendado entre execuções).
+        do_reset_cycle: se False (padrão), só coloca RST em HIGH (como bno08x_test).
+                       Se True, faz LOW 0.15 s depois HIGH (pode causar 0x7B em alguns casos).
         verbose: se True, imprime mensagens (I2C, RST, endereço).
 
     Returns:
         (bno, get_yaw) ou (None, None) em caso de falha.
-        get_yaw() retorna yaw em graus [-180, 180] ou None.
     """
     try:
         import board
@@ -48,15 +64,6 @@ def init_bno(do_reset_cycle=True, verbose=True):
         return None, None
 
     try:
-        import adafruit_bno08x as _bno_mod
-        _orig_rl = getattr(_bno_mod, "_report_length", None)
-        if callable(_orig_rl):
-            def _safe_rl(rid):
-                try:
-                    return _orig_rl(rid)
-                except KeyError:
-                    return 16
-            _bno_mod._report_length = _safe_rl
         from adafruit_bno08x.i2c import BNO08X_I2C
         from adafruit_bno08x import (
             BNO_REPORT_ACCELEROMETER,
@@ -72,7 +79,7 @@ def init_bno(do_reset_cycle=True, verbose=True):
         BNO08X_GPIO_RST = 26
         BNO08X_I2C_ADDRESS = 0x4B
 
-    # Ciclo de reset: RST active-LOW. LOW -> chip em reset; HIGH -> sai do reset.
+    # RST: igual bno08x_test — só HIGH (sem ciclo LOW) para sensor sair do reset e não gerar 0x7B
     if BNO08X_GPIO_RST is not None:
         rst_pin = DigitalInOut(getattr(board, "D{}".format(BNO08X_GPIO_RST)))
         if Direction is not None:

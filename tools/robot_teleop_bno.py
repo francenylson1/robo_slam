@@ -125,10 +125,10 @@ def get_key_blocking():
 # BNO08x: usa tools/bno08x_init (reset cycle + init igual ao bno08x_test.py)
 # ---------------------------------------------------------------------------
 def init_bno(debug=False):
-    """Inicializa BNO08x via bno08x_init (reset + I2C + ACCEL+GYRO+ROTATION_VECTOR)."""
+    """Inicializa BNO08x via bno08x_init (igual bno08x_test: RST HIGH apenas)."""
     try:
         from tools.bno08x_init import init_bno as _bno_init
-        return _bno_init(do_reset_cycle=True, verbose=not debug)
+        return _bno_init(do_reset_cycle=False, verbose=not debug)
     except ImportError:
         if debug:
             print("  init_bno: falha ao importar tools.bno08x_init")

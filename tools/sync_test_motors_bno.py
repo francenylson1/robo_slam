@@ -37,10 +37,10 @@ def is_raspberry_pi():
 
 
 def init_bno():
-    """Inicializa BNO08x via tools/bno08x_init (reset cycle + init como bno08x_test.py)."""
+    """Inicializa BNO08x via tools/bno08x_init (igual bno08x_test: RST HIGH apenas)."""
     try:
         from tools.bno08x_init import init_bno as _bno_init
-        return _bno_init(do_reset_cycle=True, verbose=True)
+        return _bno_init(do_reset_cycle=False, verbose=True)
     except ImportError:
         print("Não foi possível importar tools.bno08x_init. Execute na raiz do projeto.")
         return None, None
