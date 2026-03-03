@@ -118,7 +118,7 @@ def run_straight_bno_test(motors, get_bno_yaw, app, duration_s, results_list, ve
             duration_s, SPEED_SLOW_TPS, BNO_STRAIGHT_KP, BNO_STRAIGHT_MAX_CORRECTION_TPS,
             BNO_STRAIGHT_INVERT_CORRECTION))
     yaw_ref = get_bno_yaw() if get_bno_yaw else None
-    if yaw_ref is None and get_bno_yaw:
+    if yaw_ref is None:
         if verbose:
             print("  AVISO: BNO sem leitura; frente sem correção de rumo.")
     elif verbose:
