@@ -46,7 +46,9 @@ Thumbs.db
 *.db
 
 # Arquivos específicos do projeto
-data/
+data/*
+!data/*.csv
+!data/robot.db
 logs/
 *.map
 *.yaml
