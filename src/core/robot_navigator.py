@@ -91,6 +91,8 @@ class RobotNavigator(QObject):
         # BNO08x: integração para correção de rumo e ângulo (Fase 2)
         self._get_bno_yaw = None
         self._bno_yaw_ref = None
+        # Offset para alinhar BNO ao referencial do mapa (0° BNO = direção do mapa no 1º uso)
+        self._bno_yaw_offset = None
         if is_raspberry_pi():
             try:
                 from tools.bno08x_init import init_bno
@@ -141,6 +143,9 @@ class RobotNavigator(QObject):
         else:
             print(f"🔄 Posição preservada: {self.current_position}")
         
+        # Re-anclar BNO ao referencial do mapa na próxima atualização de pose
+        self._bno_yaw_offset = None
+        self._bno_yaw_ref = None
         # Reseta variáveis de navegação
         self.navigation_active = False
         self.current_target = None
@@ -181,6 +186,16 @@ class RobotNavigator(QObject):
         print(f"✅ Áreas proibidas preservadas: {len(self.forbidden_areas)}")
         print("=" * 60)
         
+    def set_pose(self, x: float, y: float, angle_deg: float):
+        """
+        Define posição e ângulo do robô (ex.: ao carregar mapa PGM ou "definir robô aqui").
+        Re-ancla o BNO ao novo referencial na próxima atualização de pose.
+        """
+        self.current_position = (float(x), float(y))
+        self.current_angle = self._normalize_angle_deg(float(angle_deg))
+        self._bno_yaw_offset = None
+        self._bno_yaw_ref = None
+
     def set_speed_multiplier(self, multiplier: float):
         """
         Define o multiplicador de velocidade para a navegação.
@@ -1435,7 +1450,7 @@ class RobotNavigator(QObject):
         delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
 
-        # Ângulo: BNO se disponível (mais confiável sob patinação), senão odometria
+        # Ângulo: BNO se disponível, mas alinhado ao referencial do mapa (evita seta para direita / giro em loop)
         use_bno_angle = (
             self._get_bno_yaw is not None
             and not self.precise_rotation_active
@@ -1443,7 +1458,10 @@ class RobotNavigator(QObject):
         if use_bno_angle:
             yaw = self._get_bno_yaw()
             if yaw is not None:
-                self.current_angle = self._normalize_angle_deg(yaw)
+                # Primeira vez: fixa offset para que ângulo do mapa não mude (BNO 0° ≠ necessariamente "direita" no mapa)
+                if self._bno_yaw_offset is None:
+                    self._bno_yaw_offset = self._normalize_angle_deg(self.current_angle - yaw)
+                self.current_angle = self._normalize_angle_deg(yaw + self._bno_yaw_offset)
             else:
                 self.current_angle += delta_angle_deg
                 self.current_angle = self._normalize_angle_deg(self.current_angle)

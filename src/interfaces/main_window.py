@@ -1835,19 +1835,15 @@ class MainWindow(QMainWindow):
         
         self.map_widget.robot_position = (world_x, world_y)
         self.map_widget.base_position = (world_x, world_y)
-        self.navigator.current_position = (world_x, world_y)
         self.navigator.base_position = (world_x, world_y)
-        
-        # 🎯 CRÍTICO: Define também o ângulo inicial do robô
-        # UNIFICAÇÃO: Usa o mesmo ângulo inicial que funciona para mapas não PGM
+        # Usa set_pose para alinhar BNO ao referencial do mapa (evita seta errada / giro em loop)
         from src.core.config import ROBOT_INITIAL_ANGLE
-        # Normaliza o ângulo para [-180, 180] para compatibilidade com a odometria
         initial_angle_normalized = ROBOT_INITIAL_ANGLE
         if initial_angle_normalized > 180:
             initial_angle_normalized -= 360
+        self.navigator.set_pose(world_x, world_y, initial_angle_normalized)
         
         self.map_widget.robot_angle = initial_angle_normalized
-        self.navigator.current_angle = initial_angle_normalized
         
         print(f"🔧 Ângulo inicial (UNIFICADO): {ROBOT_INITIAL_ANGLE}° -> {initial_angle_normalized}° (normalizado para [-180, 180])")
         print(f"🔧 Posição inicial (UNIFICADA): ({world_x:.2f}, {world_y:.2f})m")
