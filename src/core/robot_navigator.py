@@ -88,6 +88,21 @@ class RobotNavigator(QObject):
         # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Flag para alternar entre navegação complexa e simples
         self.use_direct_navigation = True  # True = navegação direta simples, False = pathfinding
         
+        # BNO08x: integração para correção de rumo e ângulo (Fase 2)
+        self._get_bno_yaw = None
+        self._bno_yaw_ref = None
+        if is_raspberry_pi():
+            try:
+                from tools.bno08x_init import init_bno
+                _bno, self._get_bno_yaw = init_bno(do_reset_cycle=False, verbose=False)
+                if self._get_bno_yaw is not None:
+                    print("DEBUG: BNO08x integrado ao navegador (correção de rumo e ângulo).")
+                else:
+                    self._get_bno_yaw = None
+            except Exception as e:
+                print(f"DEBUG: BNO08x não disponível no navegador: {e}")
+                self._get_bno_yaw = None
+        
         print(f"DEBUG: Posição inicial definida: {self.current_position}")
         print(f"DEBUG: Ângulo inicial definido: {self.current_angle}°")
         print(f"DEBUG: Base position definida: {self.base_position}")
@@ -1133,6 +1148,50 @@ class RobotNavigator(QObject):
             print(f"   Velocidades: left_tps={left_tps:.1f}, right_tps={right_tps:.1f} (ganho={gain:.2f}, min_tps={MIN_TURN_TPS:.1f})")
         self.motors.set_target_speed(left_tps, right_tps)
 
+    def _normalize_angle_deg(self, deg):
+        """Coloca ângulo em [-180, 180]."""
+        while deg > 180:
+            deg -= 360
+        while deg < -180:
+            deg += 360
+        return deg
+
+    def _ensure_bno_yaw_ref(self):
+        """Obtém primeira leitura válida de yaw para uso como referência (até BNO_FIRST_READ_TIMEOUT)."""
+        if self._get_bno_yaw is None or self._bno_yaw_ref is not None:
+            return
+        deadline = time.time() + BNO_FIRST_READ_TIMEOUT
+        while time.time() < deadline:
+            yaw = self._get_bno_yaw()
+            if yaw is not None:
+                self._bno_yaw_ref = yaw
+                return
+            time.sleep(0.05)
+
+    def _apply_bno_straight_correction(self, left_tps, right_tps):
+        """
+        Aplica correção de rumo BNO quando em linha reta (movimento para frente).
+        Retorna (left_tps, right_tps) corrigidos ou inalterados se BNO indisponível.
+        Usa ganhos de config: BNO_STRAIGHT_KP, BNO_STRAIGHT_MAX_CORRECTION_TPS, BNO_STRAIGHT_INVERT_CORRECTION.
+        """
+        if self._get_bno_yaw is None:
+            return left_tps, right_tps
+        self._ensure_bno_yaw_ref()
+        if self._bno_yaw_ref is None:
+            return left_tps, right_tps
+        yaw_now = self._get_bno_yaw()
+        if yaw_now is None:
+            return left_tps, right_tps
+        err = self._normalize_angle_deg(yaw_now - self._bno_yaw_ref)
+        if BNO_STRAIGHT_INVERT_CORRECTION:
+            err = -err
+        corr = BNO_STRAIGHT_KP * err
+        corr = max(-BNO_STRAIGHT_MAX_CORRECTION_TPS, min(BNO_STRAIGHT_MAX_CORRECTION_TPS, corr))
+        base_tps = (left_tps + right_tps) / 2.0
+        left_tps = base_tps - corr
+        right_tps = base_tps + corr
+        return left_tps, right_tps
+
     def _move_towards_target(self):
         """
         🎯 NAVEGAÇÃO SIMPLIFICADA E ESTÁVEL:
@@ -1204,6 +1263,13 @@ class RobotNavigator(QObject):
         
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
+        
+        # BNO: ao girar muito, limpa referência para próximo trecho em linha reta
+        if abs(angle_error) > 45.0:
+            self._bno_yaw_ref = None
+        # BNO: correção de rumo quando avançando (linha reta)
+        if linear_speed_ms > 0.0:
+            left_tps, right_tps = self._apply_bno_straight_correction(left_tps, right_tps)
         
         if self.use_direct_navigation:
             print(f"🎯 NAV_DIRETA: v={v:.3f}m/s, w={w:.3f}rad/s, left_tps={left_tps:.1f}, right_tps={right_tps:.1f}")
@@ -1305,6 +1371,10 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
 
+        # BNO: correção de rumo na aproximação final quando avançando
+        if linear_speed_ms > 0.0:
+            left_tps, right_tps = self._apply_bno_straight_correction(left_tps, right_tps)
+
         self.motors.set_target_speed(left_tps, right_tps)
         return False
 
@@ -1351,6 +1421,7 @@ class RobotNavigator(QObject):
     def _update_pose_with_odometry(self):
         """
         Atualiza a posição e ângulo do robô baseado na odometria.
+        Quando BNO está disponível, usa o ângulo do BNO (reduz erro por patinação).
         Durante giros precisos, atualiza apenas o ângulo para manter sincronização correta.
         """
         ticks_data = self.motors.get_and_reset_ticks()
@@ -1364,22 +1435,31 @@ class RobotNavigator(QObject):
         delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
 
-        # SEMPRE atualiza o ângulo (necessário para giros precisos)
-        self.current_angle += delta_angle_deg
-        if self.current_angle > 180: self.current_angle -= 360
-        elif self.current_angle < -180: self.current_angle += 360
+        # Ângulo: BNO se disponível (mais confiável sob patinação), senão odometria
+        use_bno_angle = (
+            self._get_bno_yaw is not None
+            and not self.precise_rotation_active
+        )
+        if use_bno_angle:
+            yaw = self._get_bno_yaw()
+            if yaw is not None:
+                self.current_angle = self._normalize_angle_deg(yaw)
+            else:
+                self.current_angle += delta_angle_deg
+                self.current_angle = self._normalize_angle_deg(self.current_angle)
+        else:
+            self.current_angle += delta_angle_deg
+            if self.current_angle > 180:
+                self.current_angle -= 360
+            elif self.current_angle < -180:
+                self.current_angle += 360
 
         # CONDICIONALMENTE atualiza a posição
         if not self.precise_rotation_active:
-            # NAVEGAÇÃO NORMAL: Atualiza posição E ângulo
             angle_rad = math.radians(self.current_angle)
             delta_x = delta_distance * math.cos(angle_rad)
             delta_y = delta_distance * math.sin(angle_rad)
             self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
-        else:
-            # GIRO PRECISO: Atualiza APENAS o ângulo (posição permanece fixa)
-            # Durante giros precisos, a posição não é modificada para manter sincronização correta
-            pass
 
         self.last_position_update = time.time()
         self.position_updated.emit(self.current_position[0], self.current_position[1], self.current_angle)
