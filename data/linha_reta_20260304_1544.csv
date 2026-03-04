@@ -1,0 +1,2 @@
+name,direction,target_deg,odom_angle_deg,odom_error_deg,bno_yaw_drift_deg,bno_delta_deg,bno_yaw_start,bno_yaw_end,bno_corrected
+Linha reta (BNO),,,1.7683882565766158,,-0.09403322085986247,,-0.1000975372491522,-0.19413075810901467,
