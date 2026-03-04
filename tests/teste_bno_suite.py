@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Suíte de testes BNO08x: linha reta com correção de rumo e giros 45°, 90°, 180°, 360°.
+Suíte de testes BNO08x: linha reta com correção de rumo e giros à esquerda/direita (45°, 90°, 180°, 360°).
 
 Usa sempre config.py: SPEED_SLOW_TPS, TURN_TPS_DEFAULT, BNO_STRAIGHT_KP,
 BNO_STRAIGHT_MAX_CORRECTION_TPS, BNO_STRAIGHT_INVERT_CORRECTION e geometria do robô.
@@ -10,6 +10,9 @@ Executar na Raspberry Pi (motores + BNO08x). Uso (na raiz do projeto):
   python tests/teste_bno_suite.py --calibrate --duration 5
   python tests/teste_bno_suite.py --no-straight
   python tests/teste_bno_suite.py --no-turns --angles 90 180
+  python tests/teste_bno_suite.py --direction both --angles 45 90 180
+  python tests/teste_bno_suite.py --direction left --angles 90
+  python tests/teste_bno_suite.py --use-bno-turn --turn-tolerance 1.5
   python tests/teste_bno_suite.py --csv data/teste_bno.csv
 """
 
@@ -109,13 +112,24 @@ def run_straight_bno_test(motors, get_bno_yaw, app, duration_s, results_list, ve
         BNO_STRAIGHT_KP,
         BNO_STRAIGHT_MAX_CORRECTION_TPS,
         BNO_STRAIGHT_INVERT_CORRECTION,
+        BNO_FIRST_READ_TIMEOUT,
     )
     if verbose:
         print("\n--- Teste LINHA RETA (com correção BNO) ---")
         print("  Duração: {:.1f} s | TPS: {} | Kp: {} | max_corr: {} | invert: {}".format(
             duration_s, SPEED_SLOW_TPS, BNO_STRAIGHT_KP, BNO_STRAIGHT_MAX_CORRECTION_TPS,
             BNO_STRAIGHT_INVERT_CORRECTION))
+    # Aguardar primeira leitura válida (timeout do config) para ter rumo de referência real
     yaw_ref = get_bno_yaw() if get_bno_yaw else None
+    if yaw_ref is None and get_bno_yaw:
+        deadline = time.time() + BNO_FIRST_READ_TIMEOUT
+        while time.time() < deadline:
+            if app:
+                app.processEvents()
+            yaw_ref = get_bno_yaw()
+            if yaw_ref is not None:
+                break
+            time.sleep(0.05)
     if yaw_ref is None:
         if verbose:
             print("  AVISO: BNO sem leitura; frente sem correção de rumo.")
@@ -170,23 +184,34 @@ def run_straight_bno_test(motors, get_bno_yaw, app, duration_s, results_list, ve
 
 
 # ---------------------------------------------------------------------------
-# Teste: giro no lugar (odometria + BNO) — sentido direita (angle_odom positivo)
+# Teste: giro no lugar (odometria + BNO) — esquerda ou direita
 # ---------------------------------------------------------------------------
-def run_turn_test(motors, get_bno_yaw, app, target_deg, turn_tps, results_list, verbose=True):
-    """Gira no lugar target_deg graus para a DIREITA (odometria positiva)."""
+def run_turn_test(motors, get_bno_yaw, app, target_deg, turn_tps, results_list,
+                  direction="right", use_bno_correction=False, turn_tolerance_deg=1.0,
+                  verbose=True):
+    """
+    Gira no lugar target_deg graus.
+    direction: "right" (odometria positiva) ou "left" (odometria negativa).
+    Se use_bno_correction=True, após parar por odometria faz correção fina até BNO
+    atingir o ângulo desejado (tolerância turn_tolerance_deg).
+    """
     from src.core.config import (
         TICKS_PER_REVOLUTION,
         ROBOT_WHEEL_CIRCUMFERENCE_M,
         ROBOT_WHEEL_BASE_M,
     )
     if verbose:
-        print("\n--- Teste GIRO {:.0f}° (direita) ---".format(target_deg))
-    motors.set_precise_rotation_direction(1, -1)
-    motors.set_target_speed(turn_tps, -turn_tps)
+        print("\n--- Teste GIRO {:.0f}° ({}). ---".format(target_deg, direction))
+    is_right = direction == "right"
+    if is_right:
+        motors.set_precise_rotation_direction(1, -1)
+        motors.set_target_speed(turn_tps, -turn_tps)
+    else:
+        motors.set_precise_rotation_direction(-1, 1)
+        motors.set_target_speed(-turn_tps, turn_tps)
     angle_odom = 0.0
     yaw_start = get_bno_yaw() if get_bno_yaw else None
-    t0 = time.time()
-    while angle_odom < target_deg:
+    while True:
         if app:
             app.processEvents()
         time.sleep(0.05)
@@ -197,27 +222,65 @@ def run_turn_test(motors, get_bno_yaw, app, target_deg, turn_tps, results_list, 
                 TICKS_PER_REVOLUTION, ROBOT_WHEEL_CIRCUMFERENCE_M, ROBOT_WHEEL_BASE_M
             )
             angle_odom += delta
+        if is_right and angle_odom >= target_deg:
+            break
+        if not is_right and angle_odom <= -target_deg:
+            break
     motors.stop_motors()
     motors.clear_precise_rotation_direction()
     time.sleep(0.2)
     yaw_end = get_bno_yaw() if get_bno_yaw else None
     bno_delta_raw = (yaw_end - yaw_start) if (yaw_start is not None and yaw_end is not None) else None
     bno_delta = normalize_angle_deg(bno_delta_raw) if bno_delta_raw is not None else None
-    odom_error = angle_odom - target_deg
+    odom_signed = angle_odom if is_right else -angle_odom
+    odom_error = odom_signed - target_deg
+    # Correção fina opcional por BNO
+    bno_corrected = False
+    if use_bno_correction and get_bno_yaw and yaw_start is not None and yaw_end is not None:
+        desired_yaw = normalize_angle_deg(yaw_start + (target_deg if is_right else -target_deg))
+        error_deg = normalize_angle_deg(desired_yaw - yaw_end)
+        deadline = time.time() + 3.0
+        correction_tps = max(4.0, turn_tps * 0.4)
+        while abs(error_deg) > turn_tolerance_deg and time.time() < deadline:
+            if app:
+                app.processEvents()
+            if error_deg > 0:  # precisa girar mais para direita
+                motors.set_precise_rotation_direction(1, -1)
+                motors.set_target_speed(correction_tps, -correction_tps)
+            else:
+                motors.set_precise_rotation_direction(-1, 1)
+                motors.set_target_speed(-correction_tps, correction_tps)
+            time.sleep(0.05)
+            yaw_now = get_bno_yaw()
+            if yaw_now is not None:
+                yaw_end = yaw_now
+                error_deg = normalize_angle_deg(desired_yaw - yaw_end)
+        motors.stop_motors()
+        motors.clear_precise_rotation_direction()
+        if abs(error_deg) <= turn_tolerance_deg:
+            bno_corrected = True
+        time.sleep(0.2)
+        yaw_end = get_bno_yaw() if get_bno_yaw else None
+        bno_delta_raw = (yaw_end - yaw_start) if (yaw_start is not None and yaw_end is not None) else None
+        bno_delta = normalize_angle_deg(bno_delta_raw) if bno_delta_raw is not None else None
     if verbose:
         print("  Odometria: {:.2f}° (alvo {:.0f}°) → erro {:.2f}°".format(
-            angle_odom, target_deg, odom_error))
+            odom_signed, target_deg, odom_error))
         if bno_delta is not None:
             print("  BNO: início={:.2f}° fim={:.2f}° → delta={:.2f}° (normalizado)".format(
                 yaw_start, yaw_end, bno_delta))
+        if use_bno_correction:
+            print("  Correção BNO: {}".format("aplicada" if bno_corrected else "timeout ou não necessária"))
     r = {
-        "name": "Giro {:.0f}°".format(target_deg),
+        "name": "Giro {:.0f}° ({})".format(target_deg, direction),
+        "direction": direction,
         "target_deg": target_deg,
-        "odom_angle_deg": angle_odom,
+        "odom_angle_deg": odom_signed,
         "odom_error_deg": odom_error,
         "bno_delta_deg": bno_delta,
         "bno_yaw_start": yaw_start,
         "bno_yaw_end": yaw_end,
+        "bno_corrected": bno_corrected if use_bno_correction else None,
     }
     results_list.append(r)
     return r
@@ -232,8 +295,14 @@ def main():
     parser.add_argument("--no-turns", action="store_true", help="Pular testes de giro")
     parser.add_argument("--angles", type=int, nargs="+", default=[45, 90, 180, 360],
                         help="Ângulos de giro em graus (default: 45 90 180 360)")
+    parser.add_argument("--direction", choices=["left", "right", "both"], default="both",
+                        help="Sentido dos giros: left, right ou both (default: both)")
     parser.add_argument("--turn-tps", type=float, default=None,
                         help="TPS para giros (default: config TURN_TPS_DEFAULT)")
+    parser.add_argument("--use-bno-turn", action="store_true",
+                        help="Correção fina do giro até o ângulo desejado usando BNO")
+    parser.add_argument("--turn-tolerance", type=float, default=1.0,
+                        help="Tolerância em graus para correção BNO do giro (default: 1.0)")
     parser.add_argument("--calibrate", action="store_true",
                         help="Calibrar BNO08x antes (robô parado e plano ~15–30 s)")
     parser.add_argument("--csv", type=str, default="", help="Arquivo CSV para salvar resultados")
@@ -288,14 +357,20 @@ def main():
             motors, get_bno_yaw, app, args.duration, results, verbose=not args.quiet
         )
     if not args.no_turns:
+        directions = ["right", "left"] if args.direction == "both" else [args.direction]
         for angle in args.angles:
             if angle <= 0 or angle > 360:
                 print("  Ignorando ângulo inválido: {}°".format(angle))
                 continue
-            time.sleep(0.5)
-            run_turn_test(
-                motors, get_bno_yaw, app, angle, turn_tps, results, verbose=not args.quiet
-            )
+            for d in directions:
+                time.sleep(0.5)
+                run_turn_test(
+                    motors, get_bno_yaw, app, angle, turn_tps, results,
+                    direction=d,
+                    use_bno_correction=args.use_bno_turn,
+                    turn_tolerance_deg=args.turn_tolerance,
+                    verbose=not args.quiet,
+                )
 
     # Resumo
     print("\n========== RESUMO TESTES BNO ==========")
@@ -308,6 +383,7 @@ def main():
         else:
             err = r.get("odom_error_deg", 0)
             delta = r.get("bno_delta_deg")
+            dir_label = r.get("direction", "")
             print("{}: odom={:.2f}° (erro {:.2f}°) | BNO delta={}".format(
                 r["name"], r.get("odom_angle_deg", 0), err,
                 "{:.2f}°".format(delta) if delta is not None else "N/A"))
@@ -315,14 +391,15 @@ def main():
 
     if args.csv and results:
         import csv as csv_module
+        fieldnames = [
+            "name", "direction", "target_deg", "odom_angle_deg", "odom_error_deg",
+            "bno_yaw_drift_deg", "bno_delta_deg", "bno_yaw_start", "bno_yaw_end", "bno_corrected"
+        ]
         with open(args.csv, "w", newline="") as f:
-            w = csv_module.DictWriter(f, fieldnames=[
-                "name", "odom_angle_deg", "odom_error_deg", "bno_yaw_drift_deg", "bno_delta_deg",
-                "bno_yaw_start", "bno_yaw_end", "target_deg"
-            ])
+            w = csv_module.DictWriter(f, fieldnames=fieldnames)
             w.writeheader()
             for row in results:
-                w.writerow({k: row.get(k) for k in w.fieldnames})
+                w.writerow({k: row.get(k) for k in fieldnames})
         print("Resultados salvos em:", args.csv)
 
     print("Fim da suíte de testes BNO.")

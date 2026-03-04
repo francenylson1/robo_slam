@@ -7,6 +7,7 @@ Inicialização do BNO08x alinhada ao tools/bno08x_test.py (que funciona na Rasp
 - Mesmos relatórios habilitados: ACCELEROMETER, GYROSCOPE, ROTATION_VECTOR.
 - debug=False e reset=None na biblioteca (evita dump de pacotes e conflitos).
 - Patch _report_length para report 0x7B (evita KeyError e instabilidade).
+- Retry: até 2 tentativas de conexão + enable (0,5 s entre tentativas) para maior confiabilidade.
 
 Uso (a partir da raiz do projeto):
   from tools.bno08x_init import init_bno
@@ -136,48 +137,70 @@ def init_bno(do_reset_cycle=False, verbose=True):
         addrs_to_try.append(0x4B)
     if 0x4A not in addrs_to_try:
         addrs_to_try.append(0x4A)
-    bno = None
-    for addr in addrs_to_try:
-        try:
-            bno = BNO08X_I2C(i2c, reset=None, address=addr, debug=False)
-            if verbose:
-                print("BNO08x conectado no endereço {}.".format(hex(addr)))
-            break
-        except Exception as e:
-            err_str = str(e).lower()
-            if "address" in err_str or "0x4" in err_str:
-                continue
-            return None, None
-    if bno is None:
-        return None, None
 
-    time.sleep(0.2)
-    for attempt in range(3):
-        try:
-            bno.enable_feature(BNO_REPORT_ACCELEROMETER)
-            bno.enable_feature(BNO_REPORT_GYROSCOPE)
-            bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
-            break
-        except RuntimeError as e:
-            if attempt < 2 and "enable" in str(e).lower():
-                time.sleep(0.3)
-                continue
-            return None, None
-    else:
-        return None, None
+    # Retry até 2 vezes (conexão + enable) para maior confiabilidade na navegação
+    max_init_attempts = 2
+    for init_attempt in range(max_init_attempts):
+        bno = None
+        for addr in addrs_to_try:
+            try:
+                bno = BNO08X_I2C(i2c, reset=None, address=addr, debug=False)
+                if verbose:
+                    print("BNO08x conectado no endereço {}.".format(hex(addr)))
+                break
+            except Exception as e:
+                err_str = str(e).lower()
+                if "address" in err_str or "0x4" in err_str:
+                    continue
+                break
+        if bno is None:
+            if init_attempt < max_init_attempts - 1 and verbose:
+                print("BNO08x: conexão falhou; retry em 0,5 s...")
+            time.sleep(0.5)
+            continue
 
-    def get_yaw():
-        try:
-            quat_i, quat_j, quat_k, quat_real = bno.quaternion
-            siny_cosp = 2 * (quat_real * quat_k + quat_i * quat_j)
-            cosy_cosp = 1 - 2 * (quat_j * quat_j + quat_k * quat_k)
-            yaw = math.degrees(math.atan2(siny_cosp, cosy_cosp))
-            while yaw > 180:
-                yaw -= 360
-            while yaw < -180:
-                yaw += 360
-            return yaw
-        except Exception:
-            return None
+        time.sleep(0.2)
+        features_ok = False
+        for attempt in range(3):
+            try:
+                bno.enable_feature(BNO_REPORT_ACCELEROMETER)
+                bno.enable_feature(BNO_REPORT_GYROSCOPE)
+                bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
+                features_ok = True
+                break
+            except RuntimeError as e:
+                if attempt < 2 and "enable" in str(e).lower():
+                    time.sleep(0.3)
+                    continue
+                break
+        if not features_ok:
+            if init_attempt < max_init_attempts - 1 and verbose:
+                print("BNO08x: enable features falhou; retry em 0,5 s...")
+            time.sleep(0.5)
+            continue
 
-    return bno, get_yaw
+        def get_yaw():
+            try:
+                quat_i, quat_j, quat_k, quat_real = bno.quaternion
+                siny_cosp = 2 * (quat_real * quat_k + quat_i * quat_j)
+                cosy_cosp = 1 - 2 * (quat_j * quat_j + quat_k * quat_k)
+                yaw = math.degrees(math.atan2(siny_cosp, cosy_cosp))
+                while yaw > 180:
+                    yaw -= 360
+                while yaw < -180:
+                    yaw += 360
+                return yaw
+            except Exception:
+                return None
+
+        # Warm-up: algumas leituras para o ROTATION_VECTOR começar a chegar antes do uso
+        for _ in range(8):
+            try:
+                _ = bno.quaternion
+            except Exception:
+                pass
+            time.sleep(0.05)
+
+        return bno, get_yaw
+
+    return None, None

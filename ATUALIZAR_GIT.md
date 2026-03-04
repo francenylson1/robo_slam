@@ -1,5 +1,21 @@
 # 📤 Atualizar Git - Instruções
 
+## ✅ Conferir se a Raspberry está na mesma versão do desktop
+
+**Referência:** compare o **hash do último commit** nos dois.
+
+| Onde | Comando |
+|------|---------|
+| **Desktop** (após push) | `git log -1 --oneline` ou `git rev-parse HEAD` |
+| **Raspberry** (após pull) | `git log -1 --oneline` ou `git rev-parse HEAD` |
+
+Se o hash for **igual** nos dois, a Raspberry está na mesma versão.  
+Detalhes: `docs/PROMPT_CONTINUACAO_BNO_E_INTEGRACAO_2026.md` → seção "Conferir se a Raspberry está na mesma versão do desktop".
+
+**Branch atual (Fase 1 BNO):** `robo_slam_2026_1_bno_ok`
+
+---
+
 ## 🪟 Windows (Atual)
 
 Execute o script:

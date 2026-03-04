@@ -120,6 +120,8 @@ BNO_STRAIGHT_MAX_CORRECTION_TPS = 12.0  # Limite máximo de TPS de correção po
 BNO_STRAIGHT_INVERT_CORRECTION = True
 # TPS para giros no lugar (menu, teleop e testes BNO) - alinhado com navegação
 TURN_TPS_DEFAULT = 12.0
+# Timeout (s) para obter a primeira leitura válida de yaw antes de linha reta (evita "BNO sem leitura")
+BNO_FIRST_READ_TIMEOUT = 2.5
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz
