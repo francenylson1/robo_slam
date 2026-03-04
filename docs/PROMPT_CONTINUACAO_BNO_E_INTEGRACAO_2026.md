@@ -91,7 +91,8 @@ Ao levar o BNO do ambiente isolado (teste_bno_suite, teleop, menu) para o navega
 
 ## Branches e fluxo Git
 
-- **`robo_slam_2026_1_bno_ok`** – branch onde foi feito o trabalho atual de BNO e testes; já em uso na Raspberry.
+- **`robo_slam_2026_1_bno_ok`** – branch da Fase 1 (BNO e testes); já em uso na Raspberry.
+- **`robo_slam_2026_1_bno_com_odometria`** – branch para Fase 2 (integrar BNO no main.py); usar para integração BNO + odometria.
 - **`robo_slam_2026_1_bno_antes_da_integracao_com_odometria_testes`** – branch de **checkpoint** criada a partir do estado atual; representa “BNO funcionando bem em testes isolados, antes de integrar com odometria/mapa no main.py”.
 - **Workflow:** desenvolvimento no desktop → commit → push; na Raspberry: `git pull origin <branch>` para testar. Sempre que fizer alterações relevantes, fazer commit e push para não perder nada.
 
