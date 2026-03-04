@@ -27,6 +27,15 @@ Executar **na ordem** abaixo. Cada bloco pode ser repetido mais de uma vez se qu
 python3 tests/teste_bno_suite.py --no-turns --duration 10
 ```
 
+#### Recomendações complementares (linha reta)
+
+- **Piso e bateria:** Sempre que possível, mesmo piso e bateria carregada; anotar se algum run “desorientado” foi em piso diferente ou bateria baixa.
+- **Esperar após init:** 5–10 s parado após “Motores OK.” antes de o teste começar (deixar BNO e motores estáveis).
+- **Mais runs para estatística:** Fazer 5–6 runs e anotar quantos ficaram “bons” (odom em torno de ±15° e trajetória reta) vs “desorientados” (odom muito alto ou robô girando).
+- **Duração menor (opcional):** Testar `--duration 20` para ver se o problema aparece no início ou no fim do percurso.
+- **Velocidade menor (opcional):** No `config.py`, temporariamente usar `SPEED_SLOW_TPS` menor (ex.: 15) ou criar um teste com TPS reduzido para reduzir patinação.
+- **Registrar tudo em CSV:** Usar `--csv data/linha_reta_YYYYMMDD.csv` em toda a sessão para não perder runs descartados e analisar depois.
+
 ### 2. Giros à direita
 
 | Ordem | Comando | O que anotar |
