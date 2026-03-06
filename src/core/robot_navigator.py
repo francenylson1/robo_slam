@@ -1339,8 +1339,15 @@ class RobotNavigator(QObject):
             return True
 
         # 🎯 Evita giros em 360° quando muito perto: considera chegada se já está na aproximação final há tempo suficiente
-        if total_distance < 0.06 and (current_time - self.final_approach_start_time) > 8.0:
+        elapsed_approach = current_time - self.final_approach_start_time
+        if total_distance < 0.06 and elapsed_approach > 8.0:
             print(f"🎯 DESTINO CONSIDERADO ALCANÇADO (muito perto há >8s, evita giros contínuos): {total_distance*100:.1f}cm")
+            self.motors.stop()
+            self.final_approach_start_time = None
+            return True
+        # Considera chegada se perto (<15cm) há >10s (evita ficar girando no lugar sem chegar a 6cm)
+        if total_distance < 0.15 and elapsed_approach > 10.0:
+            print(f"🎯 DESTINO CONSIDERADO ALCANÇADO (perto há >10s, evita giros prolongados): {total_distance*100:.1f}cm")
             self.motors.stop()
             self.final_approach_start_time = None
             return True
@@ -1415,25 +1422,29 @@ class RobotNavigator(QObject):
         return False
 
     def _adjust_final_angle(self):
-        # 🎯 CORREÇÃO: Timeout para evitar loop infinito (máximo 10 segundos)
+        # Só ajusta ângulo final quando foi retorno à base (evita girar em modo "só ida")
+        if not self.is_returning_to_base:
+            self._finalize_navigation()
+            return
+        # 🎯 Timeout para evitar giros prolongados (máximo 6 segundos)
         if hasattr(self, 'final_angle_adjustment_start_time'):
             elapsed_time = time.time() - self.final_angle_adjustment_start_time
-            if elapsed_time > 10.0:  # Timeout de 10 segundos
-                print(f"⚠️ TIMEOUT: Ajuste de ângulo final excedeu 10 segundos, finalizando navegação")
+            if elapsed_time > 6.0:
+                print(f"⚠️ TIMEOUT: Ajuste de ângulo final excedeu 6 segundos, finalizando navegação")
                 print(f"⚠️ Ângulo atual: {self.current_angle:.1f}°, Ângulo desejado: {ROBOT_INITIAL_ANGLE}°")
                 self._finalize_navigation()
                 return
         
         angle_diff = (ROBOT_INITIAL_ANGLE - self.current_angle + 180) % 360 - 180
         
-        # 🎯 CORREÇÃO: Log periódico para debug (a cada 50 iterações)
+        # 🎯 Tolerância de 5° (evita giros de 10s quando falta 1–2° por ruído do BNO)
         if not hasattr(self, '_angle_adjustment_log_counter'):
             self._angle_adjustment_log_counter = 0
         self._angle_adjustment_log_counter += 1
         if self._angle_adjustment_log_counter % 50 == 0:
             print(f"🔄 AJUSTE ÂNGULO FINAL: Erro={angle_diff:.1f}°, Atual={self.current_angle:.1f}°, Desejado={ROBOT_INITIAL_ANGLE}°")
         
-        if abs(angle_diff) > 1.0:
+        if abs(angle_diff) > 5.0:
             if abs(angle_diff) > 30: turn_value = min(0.8, abs(angle_diff) / 25.0)
             elif abs(angle_diff) > 10: turn_value = min(0.6, abs(angle_diff) / 30.0)
             else: turn_value = min(0.4, abs(angle_diff) / 35.0)
@@ -1446,7 +1457,7 @@ class RobotNavigator(QObject):
                 right_speed = turn_value * 100
             self.motors.set_speed(left_speed, right_speed)
         else:
-            print(f"✅ AJUSTE DE ÂNGULO FINAL CONCLUÍDO: Erro={angle_diff:.1f}° (dentro da tolerância de 1.0°)")
+            print(f"✅ AJUSTE DE ÂNGULO FINAL CONCLUÍDO: Erro={angle_diff:.1f}° (dentro da tolerância de 5°)")
             self._finalize_navigation()
 
     def _get_next_waypoint_info(self):
