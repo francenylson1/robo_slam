@@ -1,10 +1,23 @@
 # Estratégia: base odometria + BNO gradual
 
+## Percurso definido (roadmap)
+
+| # | Fase | Resumo |
+|---|------|--------|
+| **1** | **BNO só nas retas** | Critério “reta”: \|ω\| &lt; limiar. Em retas: ângulo da pose = fusão com BNO; posição = odometria. Em giros: só odometria. |
+| **2** | **BNO nos giros** | Durante o giro: ângulo só odometria. Ao terminar o giro: correção única do ângulo com BNO. |
+| **3** | **Localização no mapa PGM** | LIDAR + AMCL (ou similar): corrigir pose (x, y, θ) usando o mapa; navegação a mesas específicas mais confiável. |
+| **4** | **Ajustes (Fase 3)** | Fusão contínua, limiares, retorno à base — conforme necessidade; pode incluir afinagem tanto do BNO quanto da localização. |
+
+**Status da base:** Já estabelecida (Opção B: `USE_BNO_IN_NAVIGATION = False`, pose só odometria; validado em testes só ida e com retorno).
+
+---
+
 ## Decisão
 
 - **Voltar** à versão estável **só com odometria** (navegação física e virtual sincronizadas).
 - **Abandonar** temporariamente o uso do BNO no laço de controle atual (não funcionou de forma confiável).
-- **Reintroduzir o BNO em fases**: primeiro só nas retas, depois nos giros, depois etapas adicionais se fizer sentido.
+- **Reintroduzir o BNO em fases**: primeiro só nas retas, depois nos giros; em seguida localização no mapa; por fim ajustes gerais.
 
 ---
 
@@ -96,13 +109,22 @@ Você pode:
 
 ---
 
-### 4. Fase 3 – Refinamentos (conforme necessidade)
+### 4. Localização no mapa PGM (LIDAR + AMCL ou similar)
 
-Possíveis etapas (a definir depois de validar Fases 1 e 2):
+- **Objetivo:** Corrigir pose (x, y, θ) usando o mapa; navegação a mesas específicas mais confiável.
+- **Requisitos:** LIDAR integrado na navegação; algoritmo de localização (AMCL, scan matching, etc.) que compare scan ao PGM.
+- **Detalhes:** Ver `docs/SLAM_VS_LOCALIZACAO_NO_MAPA.md` e `docs/RESPOSTA_NAVEGACAO_ODOMETRIA_MAPA_BNO.md`.
 
-- **Fusão contínua:** usar BNO sempre, mas com ganho que depende do regime (reta vs giro): ganho alto nas retas, baixo ou zero nos giros.
+---
+
+### 5. Ajustes (Fase 3 – conforme necessidade)
+
+Possíveis etapas (a definir depois de validar Fases 1, 2 e localização no mapa):
+
+- **Fusão contínua (BNO):** usar BNO sempre, mas com ganho que depende do regime (reta vs giro): ganho alto nas retas, baixo ou zero nos giros.
 - **Tolerâncias e timeouts:** ajustar limiares de “reta” e “fim de giro” com base em logs e testes.
 - **Retorno à base:** garantir que o offset do BNO (ou a lógica de “reta”/“giro”) funcione também no trecho de retorno.
+- **Localização no mapa:** afinagem de parâmetros (ex.: AMCL), quando confiar na odometria vs no mapa, etc.
 
 ---
 
@@ -110,12 +132,11 @@ Possíveis etapas (a definir depois de validar Fases 1 e 2):
 
 | Ordem | Ação |
 |-------|------|
-| 1 | Decidir: Opção A (branch em 645b278) ou Opção B (branch atual com BNO desligado no navegador). |
-| 2 | Aplicar a opção e garantir que a pose no navegador venha **só da odometria**. |
-| 3 | Testar só ida e com retorno; confirmar sincronia físico/virtual. |
-| 4 | Fase 1: implementar “BNO só nas retas”; testar retas longas e giros. |
-| 5 | Fase 2: implementar “BNO após giros”; testar giros e rotas completas. |
-| 6 | Fase 3: refinamentos (fusão contínua, limiares, retorno) conforme resultados. |
+| 0 | Base: Opção B aplicada (`USE_BNO_IN_NAVIGATION = False`); validar só ida e com retorno. |
+| 1 | Fase 1: implementar “BNO só nas retas”; testar retas longas e giros. |
+| 2 | Fase 2: implementar “BNO após giros”; testar giros e rotas completas. |
+| 3 | Localização no mapa PGM (LIDAR + AMCL ou similar); testar navegação a mesas específicas. |
+| 4 | Ajustes (fusão contínua, limiares, retorno, parâmetros de localização) conforme necessidade. |
 
 ---
 
@@ -125,4 +146,4 @@ Possíveis etapas (a definir depois de validar Fases 1 e 2):
 - **Config:** `src/core/config.py` (flags como `use_bno_on_straights_only`, `use_bno_after_turns`, limiares).
 - **Init BNO:** mantido para Fases 1 e 2; ferramentas em `tools/` continuam iguais para testes.
 
-Documento alinhado com a decisão: voltar à versão estável só odometria e reintroduzir BNO de forma gradual (1 → retas, 2 → giros, 3 → refinamentos).
+Documento alinhado com o percurso definido: base odometria → BNO só retas → BNO nos giros → localização no mapa PGM → ajustes.
