@@ -126,7 +126,7 @@ BNO_FIRST_READ_TIMEOUT = 2.5
 USE_BNO_IN_NAVIGATION = True   # Fase 1: True para ativar BNO (só nas retas se USE_BNO_ON_STRAIGHTS_ONLY=True)
 # Fase 1 – BNO só nas retas: quando True, ângulo da pose usa BNO apenas se |Δθ| < STRAIGHT_ANGLE_THRESHOLD_DEG
 USE_BNO_ON_STRAIGHTS_ONLY = True
-STRAIGHT_ANGLE_THRESHOLD_DEG = 2.0   # por ciclo de odometria (~0.1s): abaixo disso = "reta"
+STRAIGHT_ANGLE_THRESHOLD_DEG = 3.0   # por ciclo (~0.1s): abaixo disso = "reta"; 3° dá mais uso ao BNO e reduz deriva
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz

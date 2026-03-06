@@ -1355,8 +1355,8 @@ class RobotNavigator(QObject):
             self.motors.stop()
             self.final_approach_start_time = None
             return True
-        if total_distance < 1.00 and elapsed_approach > 15.0:
-            print(f"🎯 DESTINO CONSIDERADO ALCANÇADO (<1m há >15s, evita giros em loop): {total_distance*100:.1f}cm")
+        if total_distance < 1.00 and elapsed_approach > 8.0:
+            print(f"🎯 DESTINO CONSIDERADO ALCANÇADO (<1m há >8s, limita giro no POI): {total_distance*100:.1f}cm")
             self.motors.stop()
             self.final_approach_start_time = None
             return True
