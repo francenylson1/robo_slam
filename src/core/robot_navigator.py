@@ -1196,19 +1196,28 @@ class RobotNavigator(QObject):
                 return
             time.sleep(0.05)
 
-    def _apply_bno_straight_correction(self, left_tps, right_tps):
+    def _apply_bno_straight_correction(self, left_tps, right_tps, in_straight=False):
         """
-        Aplica correção de rumo BNO quando em linha reta (movimento para frente).
-        Retorna (left_tps, right_tps) corrigidos ou inalterados se BNO desativado/indisponível.
+        Aplica correção de rumo BNO apenas quando em linha reta (igual ao teste_bno_suite.py).
+        - in_straight=True: usa yaw_ref do início do trecho reto e aplica left=base-corr, right=base+corr.
+        - in_straight=False: limpa yaw_ref e retorna (left_tps, right_tps) sem alterar.
         """
         if not USE_BNO_IN_NAVIGATION or self._get_bno_yaw is None:
             return left_tps, right_tps
-        self._ensure_bno_yaw_ref()
-        if self._bno_yaw_ref is None:
+        if not in_straight:
+            self._bno_yaw_ref = None
             return left_tps, right_tps
+        # Referência ao entrar no trecho reto (como no teste: yaw_ref no início da reta)
+        if self._bno_yaw_ref is None:
+            yaw = self._get_bno_yaw()
+            if yaw is not None:
+                self._bno_yaw_ref = yaw
+            else:
+                return left_tps, right_tps
         yaw_now = self._get_bno_yaw()
         if yaw_now is None:
             return left_tps, right_tps
+        # Fórmula idêntica ao teste_bno_suite.compute_straight_correction
         err = self._normalize_angle_deg(yaw_now - self._bno_yaw_ref)
         if BNO_STRAIGHT_INVERT_CORRECTION:
             err = -err
@@ -1291,12 +1300,14 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         
-        # BNO: ao girar muito, limpa referência para próximo trecho em linha reta
-        if abs(angle_error) > 45.0:
-            self._bno_yaw_ref = None
-        # BNO: correção de rumo quando avançando (linha reta)
+        # BNO: correção de linha reta só quando em trecho reto (igual teste_bno_suite.py)
+        in_straight = (
+            linear_speed_ms > 0.0
+            and USE_BNO_ON_STRAIGHTS_ONLY
+            and abs(angle_error) < STRAIGHT_ANGLE_THRESHOLD_DEG
+        )
         if linear_speed_ms > 0.0:
-            left_tps, right_tps = self._apply_bno_straight_correction(left_tps, right_tps)
+            left_tps, right_tps = self._apply_bno_straight_correction(left_tps, right_tps, in_straight=in_straight)
         
         if self.use_direct_navigation:
             print(f"🎯 NAV_DIRETA: v={v:.3f}m/s, w={w:.3f}rad/s, left_tps={left_tps:.1f}, right_tps={right_tps:.1f}")
@@ -1431,9 +1442,13 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
 
-        # BNO: correção de rumo na aproximação final quando avançando
+        # BNO: correção de linha reta só quando em trecho reto (igual teste_bno_suite.py)
+        in_straight = (
+            linear_speed_ms > 0.0
+            and abs(angle_diff) < STRAIGHT_ANGLE_THRESHOLD_DEG
+        )
         if linear_speed_ms > 0.0:
-            left_tps, right_tps = self._apply_bno_straight_correction(left_tps, right_tps)
+            left_tps, right_tps = self._apply_bno_straight_correction(left_tps, right_tps, in_straight=in_straight)
 
         self.motors.set_target_speed(left_tps, right_tps)
         return False
