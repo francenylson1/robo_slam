@@ -303,7 +303,13 @@ class RobotNavigator(QObject):
         print("DEBUG: === NAVEGAÇÃO FINALIZADA ===")
         
     def _calculate_and_execute_return_angle(self):
-        """Calcula o ângulo necessário para retornar à base e inicia o giro"""
+        """Calcula o ângulo necessário para retornar à base e inicia o giro.
+        Só executa se should_return_to_base for True (evita retorno virtual/físico indesejado).
+        """
+        if not self.should_return_to_base:
+            print("DEBUG: Retorno à base NÃO solicitado — finalizando navegação no destino.")
+            self._finalize_navigation()
+            return
         print("DEBUG: === CALCULANDO ÂNGULO DE RETORNO ===")
         print(f"🔍 RETORNO: Posição atual: {self.current_position}")
         print(f"🔍 RETORNO: Base position: {self.base_position}")
@@ -392,6 +398,9 @@ class RobotNavigator(QObject):
                 
                 print(f"✅ Caminho de retorno calculado e VERIFICADO com {len(path_to_base)} waypoints evitando áreas proibidas")
                 
+                # Re-anclar BNO ao início do retorno para evitar deriva/caos na transição POI → base
+                self._bno_yaw_offset = None
+                self._bno_yaw_ref = None
                 # 🎯 CORREÇÃO 1: Garante que o caminho comece na posição EXATA atual e termine na base EXATA
                 # Substitui o primeiro ponto pela posição atual exata
                 if len(path_to_base) > 0:
@@ -460,6 +469,8 @@ class RobotNavigator(QObject):
             # Se não há áreas proibidas no caminho, usa navegação direta
             print(f"✅ Caminho de retorno direto livre de áreas proibidas - usando navegação direta")
             print("🎯 RETORNO DIRETA: Configurando navegação direta à base")
+            self._bno_yaw_offset = None
+            self._bno_yaw_ref = None
             # 🎯 CORREÇÃO 1: Garante que o caminho comece na posição EXATA atual e termine na base EXATA
             self.path = [self.current_position, self.base_position]
             self.path_index = 0
@@ -507,6 +518,8 @@ class RobotNavigator(QObject):
         else:
             print(f"✅ Caminho de retorno calculado com {len(path_to_base)} waypoints")
         
+        self._bno_yaw_offset = None
+        self._bno_yaw_ref = None
         # 🎯 CORREÇÃO 1: Garante que o caminho comece na posição EXATA atual e termine na base EXATA
         if len(path_to_base) > 0:
             path_to_base[0] = self.current_position
@@ -639,8 +652,9 @@ class RobotNavigator(QObject):
         self.navigation_active = True
         self.start_time = time.time()
         self.is_returning_to_base = False
-        self.should_return_to_base = should_return_to_base  # 🎯 NOVO: Usa o parâmetro do usuário
+        self.should_return_to_base = should_return_to_base  # 🎯 Usa o parâmetro do usuário (checkbox)
         self.final_approach_start_time = None
+        self._navigation_had_return_to_base = should_return_to_base  # para mensagem ao concluir
         
         # 🚫 CORREÇÃO CRÍTICA: Se há áreas proibidas configuradas, SEMPRE usa PathFinder
         # Isso garante que o robô nunca passe por áreas proibidas, independente de use_direct_navigation
@@ -1320,6 +1334,13 @@ class RobotNavigator(QObject):
             print(f"   Precisão: {precision_percent:.1f}%")
             print(f"   Posição robô: ({self.current_position[0]:.3f}, {self.current_position[1]:.3f})")
             print(f"   Destino: ({final_target[0]:.3f}, {final_target[1]:.3f})")
+            self.motors.stop()
+            self.final_approach_start_time = None
+            return True
+
+        # 🎯 Evita giros em 360° quando muito perto: considera chegada se já está na aproximação final há tempo suficiente
+        if total_distance < 0.06 and (current_time - self.final_approach_start_time) > 8.0:
+            print(f"🎯 DESTINO CONSIDERADO ALCANÇADO (muito perto há >8s, evita giros contínuos): {total_distance*100:.1f}cm")
             self.motors.stop()
             self.final_approach_start_time = None
             return True

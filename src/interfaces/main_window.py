@@ -671,17 +671,25 @@ class MainWindow(QMainWindow):
                 self._navigation_completed_shown = True
                 # Finaliza navegação na interface
                 self._complete_navigation_and_reset()
-                # Mostra mensagem interativa ao usuário
-                QMessageBox.information(
-                    self, 
-                    "✅ Navegação Concluída", 
-                    "🎉 Navegação concluída com sucesso!\n\n"
-                    "O robô completou todo o percurso:\n"
-                    "• Navegou até o POI de destino\n"
-                    "• Aguardou 2 segundos no destino\n"
-                    "• Retornou à posição base inicial\n\n"
-                    "O sistema está pronto para uma nova navegação."
-                )
+                # Mensagem conforme tipo de conclusão (só ida ou ida e volta)
+                had_return = getattr(self.navigator, '_navigation_had_return_to_base', True)
+                if had_return:
+                    msg = (
+                        "🎉 Navegação concluída com sucesso!\n\n"
+                        "O robô completou todo o percurso:\n"
+                        "• Navegou até o POI de destino\n"
+                        "• Aguardou 2 segundos no destino\n"
+                        "• Retornou à posição base inicial\n\n"
+                        "O sistema está pronto para uma nova navegação."
+                    )
+                else:
+                    msg = (
+                        "🎉 Navegação concluída com sucesso!\n\n"
+                        "O robô chegou ao POI de destino e parou.\n"
+                        "Não foi solicitado retorno à base.\n\n"
+                        "O sistema está pronto para uma nova navegação."
+                    )
+                QMessageBox.information(self, "✅ Navegação Concluída", msg)
                 # Reseta o estado para IDLE após mostrar mensagem
                 self.navigator.navigation_state = "IDLE"
             return
@@ -754,11 +762,10 @@ class MainWindow(QMainWindow):
                         self.map_widget.set_current_path(path_to_display)
                         print(f"🔍 INTERFACE: Atualizando caminho de IDA durante navegação: {len(path_to_display)} pontos")
         
-        # 🎯 CORREÇÃO CRÍTICA: Quando o robô chega ao destino (PAUSED_AT_DESTINATION), limpa o caminho de ida
-        # O caminho de retorno será mostrado quando o retorno iniciar
+        # 🎯 Quando o robô chega ao destino (PAUSED_AT_DESTINATION): só limpa o caminho se for retornar à base
+        # (evita sumir o traço e dar impressão de “volta” quando o usuário não pediu retorno)
         elif state_text == "PAUSED_AT_DESTINATION":
-            # Limpa o caminho de ida para preparar para o caminho de retorno
-            if self.map_widget.current_path:
+            if getattr(self.navigator, 'should_return_to_base', False) and self.map_widget.current_path:
                 print(f"🔍 INTERFACE: Robô chegou ao destino, limpando caminho de ida para preparar retorno")
                 self.map_widget.clear_current_path()
 
