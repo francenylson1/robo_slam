@@ -122,8 +122,11 @@ BNO_STRAIGHT_INVERT_CORRECTION = True
 TURN_TPS_DEFAULT = 12.0
 # Timeout (s) para obter a primeira leitura válida de yaw antes de linha reta (evita "BNO sem leitura")
 BNO_FIRST_READ_TIMEOUT = 2.5
-# Navegação: False = pose e controle só odometria (estável); True = BNO na pose e correção de rumo (fases futuras)
-USE_BNO_IN_NAVIGATION = False
+# Navegação: False = pose e controle só odometria (estável); True = BNO na pose e correção de rumo
+USE_BNO_IN_NAVIGATION = True   # Fase 1: True para ativar BNO (só nas retas se USE_BNO_ON_STRAIGHTS_ONLY=True)
+# Fase 1 – BNO só nas retas: quando True, ângulo da pose usa BNO apenas se |Δθ| < STRAIGHT_ANGLE_THRESHOLD_DEG
+USE_BNO_ON_STRAIGHTS_ONLY = True
+STRAIGHT_ANGLE_THRESHOLD_DEG = 2.0   # por ciclo de odometria (~0.1s): abaixo disso = "reta"
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz

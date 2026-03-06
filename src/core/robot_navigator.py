@@ -1500,6 +1500,10 @@ class RobotNavigator(QObject):
             and self._get_bno_yaw is not None
             and not self.precise_rotation_active
         )
+        # Fase 1 – BNO só nas retas: usar BNO no ângulo apenas quando |Δθ| < limiar (reta)
+        if use_bno_angle and USE_BNO_ON_STRAIGHTS_ONLY:
+            in_straight = abs(delta_angle_deg) < STRAIGHT_ANGLE_THRESHOLD_DEG
+            use_bno_angle = use_bno_angle and in_straight
         if use_bno_angle:
             yaw = self._get_bno_yaw()
             if yaw is not None:
