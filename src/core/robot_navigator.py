@@ -1338,6 +1338,14 @@ class RobotNavigator(QObject):
 
         # 🎯 Evita giros em 360° quando muito perto: considera chegada se já está na aproximação final há tempo suficiente
         elapsed_approach = current_time - self.final_approach_start_time
+
+        # 🎯 SÓ IDA: no POI apenas parar (como odometria); sem giro de alinhamento
+        if not self.is_returning_to_base and total_distance < 0.25 and elapsed_approach >= 0.5:
+            print(f"🎯 DESTINO ALCANÇADO (só ida, para no POI sem giro): {total_distance*100:.1f}cm")
+            self.motors.stop()
+            self.final_approach_start_time = None
+            return True
+
         if total_distance < 0.06 and elapsed_approach > 8.0:
             print(f"🎯 DESTINO CONSIDERADO ALCANÇADO (muito perto há >8s, evita giros contínuos): {total_distance*100:.1f}cm")
             self.motors.stop()
