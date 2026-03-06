@@ -1351,6 +1351,17 @@ class RobotNavigator(QObject):
             self.motors.stop()
             self.final_approach_start_time = None
             return True
+        # Considera chegada se <50cm há >12s ou <1m há >15s (evita 1 giro de 360° e dezenas no retorno)
+        if total_distance < 0.50 and elapsed_approach > 12.0:
+            print(f"🎯 DESTINO CONSIDERADO ALCANÇADO (<50cm há >12s): {total_distance*100:.1f}cm")
+            self.motors.stop()
+            self.final_approach_start_time = None
+            return True
+        if total_distance < 1.00 and elapsed_approach > 15.0:
+            print(f"🎯 DESTINO CONSIDERADO ALCANÇADO (<1m há >15s, evita giros em loop): {total_distance*100:.1f}cm")
+            self.motors.stop()
+            self.final_approach_start_time = None
+            return True
 
         # 🎯 VELOCIDADE ADAPTATIVA ULTRA-PRECISA: Reduz velocidade conforme se aproxima
         # Quanto mais perto, mais devagar para maior precisão (ajustado para 3cm)
@@ -1470,9 +1481,12 @@ class RobotNavigator(QObject):
         Atualiza a posição e ângulo do robô baseado na odometria.
         Quando BNO está disponível, usa o ângulo do BNO (reduz erro por patinação).
         Durante giros precisos, atualiza apenas o ângulo para manter sincronização correta.
+        Em PAUSED_AT_DESTINATION não atualiza pose (evita virtual "voltar de ré" e deriva para o retorno).
         """
         ticks_data = self.motors.get_and_reset_ticks()
         if not ticks_data:
+            return
+        if self.navigation_state == "PAUSED_AT_DESTINATION":
             return
 
         left_ticks, right_ticks = ticks_data.get('left', 0), ticks_data.get('right', 0)
