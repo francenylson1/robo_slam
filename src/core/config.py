@@ -122,6 +122,8 @@ BNO_STRAIGHT_INVERT_CORRECTION = True
 TURN_TPS_DEFAULT = 12.0
 # Timeout (s) para obter a primeira leitura válida de yaw antes de linha reta (evita "BNO sem leitura")
 BNO_FIRST_READ_TIMEOUT = 2.5
+# Navegação: False = pose e controle só odometria (estável); True = BNO na pose e correção de rumo (fases futuras)
+USE_BNO_IN_NAVIGATION = False
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz

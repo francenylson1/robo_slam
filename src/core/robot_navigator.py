@@ -88,12 +88,11 @@ class RobotNavigator(QObject):
         # 🎯 NAVEGAÇÃO DIRETA SIMPLES: Flag para alternar entre navegação complexa e simples
         self.use_direct_navigation = True  # True = navegação direta simples, False = pathfinding
         
-        # BNO08x: integração para correção de rumo e ângulo (Fase 2)
+        # BNO08x: integração opcional (USE_BNO_IN_NAVIGATION no config)
         self._get_bno_yaw = None
         self._bno_yaw_ref = None
-        # Offset para alinhar BNO ao referencial do mapa (0° BNO = direção do mapa no 1º uso)
         self._bno_yaw_offset = None
-        if is_raspberry_pi():
+        if is_raspberry_pi() and USE_BNO_IN_NAVIGATION:
             try:
                 from tools.bno08x_init import init_bno
                 _bno, self._get_bno_yaw = init_bno(do_reset_cycle=False, verbose=False)
@@ -1200,10 +1199,9 @@ class RobotNavigator(QObject):
     def _apply_bno_straight_correction(self, left_tps, right_tps):
         """
         Aplica correção de rumo BNO quando em linha reta (movimento para frente).
-        Retorna (left_tps, right_tps) corrigidos ou inalterados se BNO indisponível.
-        Usa ganhos de config: BNO_STRAIGHT_KP, BNO_STRAIGHT_MAX_CORRECTION_TPS, BNO_STRAIGHT_INVERT_CORRECTION.
+        Retorna (left_tps, right_tps) corrigidos ou inalterados se BNO desativado/indisponível.
         """
-        if self._get_bno_yaw is None:
+        if not USE_BNO_IN_NAVIGATION or self._get_bno_yaw is None:
             return left_tps, right_tps
         self._ensure_bno_yaw_ref()
         if self._bno_yaw_ref is None:
@@ -1496,9 +1494,10 @@ class RobotNavigator(QObject):
         delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
 
-        # Ângulo: BNO se disponível, mas alinhado ao referencial do mapa (evita seta para direita / giro em loop)
+        # Ângulo: BNO só se USE_BNO_IN_NAVIGATION e disponível; senão só odometria
         use_bno_angle = (
-            self._get_bno_yaw is not None
+            USE_BNO_IN_NAVIGATION
+            and self._get_bno_yaw is not None
             and not self.precise_rotation_active
         )
         if use_bno_angle:
@@ -1583,7 +1582,8 @@ class RobotNavigator(QObject):
         if is_direct_navigation:
             # Na navegação direta, o destino é sempre self.original_destination
             # Não há waypoints intermediários, então vamos direto ao destino
-            
+            arrival_tolerance = 0.20  # valor padrão para log; perto do POI usa 0.03
+
             # 🎯 AJUSTE FINO DE PRECISÃO ULTRA-FINA: Tolerância reduzida para chegar mais perto do POI (3cm)
             # Fase 1: Quando está longe (> 0.20m), usa tolerância normal
             # Fase 2: Quando está perto (< 0.20m), entra em aproximação final ultra-precisa
@@ -1675,7 +1675,8 @@ class RobotNavigator(QObject):
         if is_direct_navigation:
             # Na navegação direta, o destino de retorno é sempre self.base_position
             # Não há waypoints intermediários, então vamos direto à base
-            
+            arrival_tolerance = 0.20  # valor padrão para log; perto da base usa 0.03
+
             # 🎯 AJUSTE FINO DE PRECISÃO ULTRA-FINA: Mesma lógica de precisão para retorno à base (3cm)
             if distance_to_target > 0.20:
                 # Ainda longe, continua navegação normal
