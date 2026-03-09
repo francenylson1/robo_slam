@@ -482,7 +482,9 @@ class RobotNavigator(QObject):
         self.original_destination = destination
         self.current_target = destination
         self.path = [self.current_position, destination]
-        self.path_index = 0
+        # path_index = 1: "viemos de path[0] e vamos para path[1]"
+        # Necessário para o CTE calcular desvio lateral desde o início.
+        self.path_index = 1
 
         dx = destination[0] - self.current_position[0]
         dy = destination[1] - self.current_position[1]
