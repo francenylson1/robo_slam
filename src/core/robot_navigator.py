@@ -774,6 +774,9 @@ class RobotNavigator(QObject):
             # Converte CTE em correção angular (atan para suavidade)
             # Ganho 1.2: equilibrio entre correção eficaz e oscilação
             cte_correction_deg = math.degrees(math.atan2(1.2 * cte, max(distance, 0.10)))
+            # Limita a correção lateral a ±20° para evitar sobreesterçamento
+            # e conflito com a correção BNO perto do destino.
+            cte_correction_deg = max(-20.0, min(20.0, cte_correction_deg))
             # CTE positivo (esquerda da linha) → corrige para a direita (subtrai)
             angle_error -= cte_correction_deg
 
@@ -835,6 +838,10 @@ class RobotNavigator(QObject):
         current_time = time.time()
         if self.final_approach_start_time is None:
             self.final_approach_start_time = current_time
+            # Limpa referência BNO: na aproximação final o controle angular é feito
+            # pelo angle_diff (atan2 direto ao alvo). Manter o _bno_yaw_ref da fase
+            # de navegação causa conflito que gira o robô vários graus ao chegar.
+            self._bno_yaw_ref = None
 
         if current_time - self.final_approach_start_time > self.final_approach_timeout:
             self.motors.stop()
