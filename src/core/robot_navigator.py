@@ -70,7 +70,7 @@ class RobotNavigator(QObject):
         self.should_return_to_base = True
 
         self.final_approach_start_time = None
-        self.final_approach_timeout = 25.0
+        self.final_approach_timeout = 10.0
 
         self.use_direct_navigation = True
 
@@ -785,36 +785,45 @@ class RobotNavigator(QObject):
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
 
-        final_tolerance = 0.03  # 3 cm
+        final_tolerance = 0.08  # 8 cm — usuário confirmou 5 cm aceitável
         if total_distance <= final_tolerance:
             self.motors.stop()
             self.final_approach_start_time = None
-            logger.info("Destino alcançado com precisão: %.1f cm", total_distance * 100)
+            logger.info("Destino alcançado: %.1f cm", total_distance * 100)
             return True
 
         elapsed_approach = current_time - self.final_approach_start_time
 
-        # Regra "só ida": para no POI sem exigir alinhamento angular
-        if not self.is_returning_to_base and total_distance < 0.25 and elapsed_approach >= 0.5:
+        # Regra "só ida": para no POI sem exigir alinhamento angular.
+        # 50 cm / 1 s — generoso para compensar deriva de odometria.
+        if not self.is_returning_to_base and total_distance < 0.50 and elapsed_approach >= 1.0:
             self.motors.stop()
             self.final_approach_start_time = None
-            logger.info("POI alcançado (só ida): %.1f cm", total_distance * 100)
+            logger.info("POI alcançado (só ida, %.0f cm): parando.", total_distance * 100)
             return True
 
-        # Timeouts progressivos para evitar giros prolongados
-        if total_distance < 0.06 and elapsed_approach > 8.0:
+        # Override por tempo: se em modo "só ida" há mais de 6 s, declara chegada
+        # independente da distância (evita giro infinito por deriva de odometria).
+        if not self.is_returning_to_base and elapsed_approach > 6.0:
+            self.motors.stop()
+            self.final_approach_start_time = None
+            logger.info("POI: timeout de 6 s atingido (%.0f cm). Declarando chegada.", total_distance * 100)
+            return True
+
+        # Timeouts progressivos (retorno à base e casos gerais)
+        if total_distance < 0.06 and elapsed_approach > 5.0:
             self.motors.stop()
             self.final_approach_start_time = None
             return True
-        if total_distance < 0.15 and elapsed_approach > 10.0:
+        if total_distance < 0.15 and elapsed_approach > 7.0:
             self.motors.stop()
             self.final_approach_start_time = None
             return True
-        if total_distance < 0.50 and elapsed_approach > 12.0:
+        if total_distance < 0.50 and elapsed_approach > 8.0:
             self.motors.stop()
             self.final_approach_start_time = None
             return True
-        if total_distance < 1.00 and elapsed_approach > 8.0:
+        if total_distance < 1.00 and elapsed_approach > 4.0:
             self.motors.stop()
             self.final_approach_start_time = None
             return True
@@ -1019,15 +1028,18 @@ class RobotNavigator(QObject):
         is_direct_navigation = (not self.path or len(self.path) <= 2)
 
         if is_direct_navigation:
-            if distance_to_target > 0.20:
+            # Para POI (só ida): entra em aproximação final com margem ampla
+            # para que a regra "só ida" possa atuar antes de girar indefinidamente.
+            entry_threshold = 0.50 if not self.is_returning_to_base else 0.20
+            if distance_to_target > entry_threshold:
                 pass
-            elif distance_to_target > 0.06:
+            elif distance_to_target > 0.08:
                 self.navigation_state = "FINAL_APPROACH_DESTINATION"
                 self.current_target = self.original_destination
                 self.final_approach_start_time = None
                 return
             else:
-                if distance_to_target < 0.03:
+                if distance_to_target < 0.08:
                     self._transition_to_paused_at_destination()
                     return
             self._move_towards_target()
@@ -1046,12 +1058,15 @@ class RobotNavigator(QObject):
 
         is_near_final_destination = (self.path_index >= len(self.path) - 1)
 
-        if is_near_final_destination and distance_to_target < 0.15:
+        # Para POI: entra em aproximação final mais cedo (50 cm) para evitar giro
+        final_approach_trigger = 0.50 if not self.is_returning_to_base else 0.15
+        if is_near_final_destination and distance_to_target < final_approach_trigger:
             self.navigation_state = "FINAL_APPROACH_DESTINATION"
             self.current_target = self.original_destination
             return
 
-        if distance_to_target < 0.20:
+        # Avança waypoint com tolerância maior (30 cm) para compensar deriva de odometria
+        if distance_to_target < 0.30:
             self.path_index += 1
             if self.path_index < len(self.path):
                 self.current_target = self.path[self.path_index]
@@ -1111,7 +1126,7 @@ class RobotNavigator(QObject):
             self.final_approach_start_time = None
             return
 
-        if distance_to_target < 0.20:
+        if distance_to_target < 0.30:
             self.path_index += 1
             if self.path_index < len(self.path):
                 self.current_target = self.path[self.path_index]
