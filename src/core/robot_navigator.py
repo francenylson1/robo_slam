@@ -273,8 +273,7 @@ class RobotNavigator(QObject):
 
         elif self.use_direct_navigation:
             logger.info("Retorno direto à base (sem áreas proibidas).")
-            self._bno_yaw_offset = None
-            self._bno_yaw_ref = None
+            self._initialize_bno_offset()
             self.path = [self.current_position, self.base_position]
             self.path_index = 0
             self.current_target = self.base_position
@@ -298,8 +297,7 @@ class RobotNavigator(QObject):
                 path_to_base = [self.current_position, self.base_position]
             logger.info("Retorno via PathFinder: %d waypoints.", len(path_to_base))
 
-        self._bno_yaw_offset = None
-        self._bno_yaw_ref = None
+        self._initialize_bno_offset()
         if len(path_to_base) > 0:
             path_to_base[0] = self.current_position
         if len(path_to_base) > 0:
@@ -500,6 +498,7 @@ class RobotNavigator(QObject):
         )
 
         self._nav_start_time = time.time()
+        self._initialize_bno_offset()
         self.navigation_state = "NAVIGATING_TO_DESTINATION" if abs(angle_error) < 10.0 else "ORIENTING_TO_TARGET"
 
     def _setup_navigation_path(self, path: List[Tuple[float, float]], destination: Tuple[float, float]):
@@ -533,6 +532,7 @@ class RobotNavigator(QObject):
         )
 
         self._nav_start_time = time.time()
+        self._initialize_bno_offset()
         self.navigation_state = "NAVIGATING_TO_DESTINATION" if angle_error < 20.0 else "ORIENTING_TO_TARGET"
 
     def get_navigation_status(self) -> dict:
@@ -669,6 +669,25 @@ class RobotNavigator(QObject):
         while deg < -180:
             deg += 360
         return deg
+
+    def _initialize_bno_offset(self):
+        """
+        Fase 2: Inicializa o offset BNO a partir do ângulo ATUAL antes de qualquer
+        movimento. Garante que a correção BNO (Fase 1) seja precisa desde o primeiro
+        giro, evitando que a odometria durante a curva inicial contamine o offset.
+        Deve ser chamado quando o ângulo é confiável (início de navegação).
+        """
+        if not USE_BNO_IN_NAVIGATION or self._get_bno_yaw is None:
+            return
+        yaw = self._get_bno_yaw()
+        if yaw is not None:
+            self._bno_yaw_offset = self._normalize_angle_deg(self.current_angle - yaw)
+            self._bno_yaw_ref = None
+            logger.info(
+                "BNO Fase2: offset inicializado antes do 1º giro: offset=%.1f° "
+                "(ângulo=%.1f°, BNO=%.1f°)",
+                self._bno_yaw_offset, self.current_angle, yaw
+            )
 
     def _ensure_bno_yaw_ref(self):
         """Obtém primeira leitura válida de yaw para uso como referência."""
