@@ -4,6 +4,7 @@ Arquivo de configuração do projeto Robô Garçom Autônomo.
 
 import platform
 import os
+import logging
 
 def is_raspberry_pi():
     """Verifica se está rodando em um Raspberry Pi."""
@@ -92,14 +93,32 @@ WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 WINDOW_TITLE = "Robô Garçom Autônomo"
 
+def setup_logging():
+    """Configura o sistema de logging centralizado do projeto."""
+    log_dir = os.path.dirname(LOG_FILE)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+
+    level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format=LOG_FORMAT,
+        datefmt=LOG_DATE_FORMAT,
+        handlers=[
+            logging.FileHandler(LOG_FILE, encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
+    )
+
 # Mensagem de ambiente (executada apenas quando o módulo é importado diretamente)
 if __name__ == '__main__':
+    setup_logging()
     if is_development():
-        print("Executando em modo de desenvolvimento (simulação)")
+        logging.info("Executando em modo de desenvolvimento (simulação)")
     else:
-        print("Executando em Raspberry Pi")
+        logging.info("Executando em Raspberry Pi")
         if not LIDAR_AVAILABLE:
-            print("Aviso: Sensores LIDAR não disponíveis (modo simulado)")
+            logging.warning("Sensores LIDAR não disponíveis (modo simulado)")
 
 # Configurações do RPLIDAR
 RPLIDAR_PORT = "/dev/ttyUSB0"  # Porta padrão do RPLIDAR
@@ -114,7 +133,7 @@ BNO08X_GPIO_RST = 26            # GPIO para RST: 26 = driver HIGH no início (se
 BNO08X_GPIO_INT = 27            # Pino GPIO para interrupção (data ready - opcional, uso futuro)
 
 # Correção de rumo (linha reta) com BNO08x - usada por teleop e testes
-BNO_STRAIGHT_KP = 1.4           # Ganho: 1.4 para reduzir desvio para a direita (afinar: ver docs/AFINACAO_DESVIO_NAVEGACAO.md)
+BNO_STRAIGHT_KP = 1.2           # Ganho: 1.4 para reduzir desvio para a direita (afinar: ver docs/AFINACAO_DESVIO_NAVEGACAO.md)
 BNO_STRAIGHT_MAX_CORRECTION_TPS = 12.0  # Limite máximo de TPS de correção por ciclo
 # True = quando o robô curva para a esquerda, corrigir acelerando roda direita (convenção deste robô)
 BNO_STRAIGHT_INVERT_CORRECTION = True

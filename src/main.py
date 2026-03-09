@@ -29,6 +29,10 @@ def init_qt():
         sys.exit(1)
 
 if __name__ == '__main__':
+    # Configura o logging centralizado antes de qualquer import do projeto
+    from src.core.config import setup_logging
+    setup_logging()
+
     # Inicializa o Qt
     app = init_qt()
     
