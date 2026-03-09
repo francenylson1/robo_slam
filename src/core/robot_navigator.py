@@ -72,6 +72,14 @@ class RobotNavigator(QObject):
         self.final_approach_start_time = None
         self.final_approach_timeout = 10.0
 
+        # Watchdog de navegação: evita giro infinito no estado NAVIGATING
+        self._nav_start_time: Optional[float] = None
+        self._nav_max_duration = 30.0      # máximo 30 s de navegação total
+        self._last_progress_pos = None     # posição na última verificação de progresso
+        self._last_progress_time: Optional[float] = None
+        self._progress_check_interval = 5.0  # verifica progresso a cada 5 s
+        self._stuck_threshold = 0.05       # considera preso se moveu < 5 cm em 5 s
+
         self.use_direct_navigation = True
 
         # BNO08x: integração opcional (USE_BNO_IN_NAVIGATION no config)
@@ -491,6 +499,7 @@ class RobotNavigator(QObject):
             math.sqrt(dx ** 2 + dy ** 2), angle_error
         )
 
+        self._nav_start_time = time.time()
         self.navigation_state = "NAVIGATING_TO_DESTINATION" if abs(angle_error) < 10.0 else "ORIENTING_TO_TARGET"
 
     def _setup_navigation_path(self, path: List[Tuple[float, float]], destination: Tuple[float, float]):
@@ -523,6 +532,7 @@ class RobotNavigator(QObject):
             len(self.path), self.current_target, angle_error
         )
 
+        self._nav_start_time = time.time()
         self.navigation_state = "NAVIGATING_TO_DESTINATION" if angle_error < 20.0 else "ORIENTING_TO_TARGET"
 
     def get_navigation_status(self) -> dict:
@@ -823,7 +833,7 @@ class RobotNavigator(QObject):
             self.motors.stop()
             self.final_approach_start_time = None
             return True
-        if total_distance < 1.00 and elapsed_approach > 4.0:
+        if total_distance < 1.00 and elapsed_approach > 10.0:
             self.motors.stop()
             self.final_approach_start_time = None
             return True
@@ -1026,6 +1036,38 @@ class RobotNavigator(QObject):
         if self.current_target is None or self.current_position is None:
             self._finalize_navigation()
             return
+
+        current_time = time.time()
+
+        # Watchdog 1: timeout global de navegação (protege contra giro infinito em qualquer estado)
+        if self._nav_start_time and not self.is_returning_to_base:
+            elapsed_total = current_time - self._nav_start_time
+            if elapsed_total > self._nav_max_duration:
+                logger.warning(
+                    "Watchdog: timeout global de %.0fs atingido. Forçando chegada ao POI.",
+                    self._nav_max_duration
+                )
+                self.motors.stop()
+                self._transition_to_paused_at_destination()
+                return
+
+        # Watchdog 2: se virtual já está perto o suficiente do destino final,
+        # força FINAL_APPROACH mesmo sem ter chegado ao waypoint atual.
+        # Resolve o caso de deriva de odometria em caminhos diagonais.
+        if self.original_destination and not self.is_returning_to_base:
+            dist_to_final = math.sqrt(
+                (self.original_destination[0] - self.current_position[0]) ** 2 +
+                (self.original_destination[1] - self.current_position[1]) ** 2
+            )
+            if dist_to_final <= 0.50:
+                logger.info(
+                    "Virtual a %.0f cm do POI; forçando FINAL_APPROACH (deriva de odometria).",
+                    dist_to_final * 100
+                )
+                self.navigation_state = "FINAL_APPROACH_DESTINATION"
+                self.current_target = self.original_destination
+                self.final_approach_start_time = None
+                return
 
         distance_to_target = self._calculate_distance(self.current_position, self.current_target)
         is_direct_navigation = (not self.path or len(self.path) <= 2)
