@@ -950,8 +950,10 @@ class RobotNavigator(QObject):
         left_tps = (left_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
         right_tps = (right_wheel_speed_ms / ROBOT_WHEEL_CIRCUMFERENCE_M) * TICKS_PER_REVOLUTION
 
-        if linear_speed_ms > 0.0:
-            left_tps, right_tps = self._apply_bno_straight_correction(left_tps, right_tps)
+        # BNO não é aplicado na aproximação final:
+        # o controle angular aqui é feito pelo angle_diff (atan2 direto ao alvo),
+        # que é preciso e suficiente. Aplicar BNO causa conflito e gira o robô
+        # na direção errada ao chegar ao POI.
 
         self.motors.set_target_speed(left_tps, right_tps)
         return False
