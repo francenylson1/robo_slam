@@ -838,20 +838,25 @@ class RobotNavigator(QObject):
         current_time = time.time()
         if self.final_approach_start_time is None:
             self.final_approach_start_time = current_time
-            # Limpa referência BNO: na aproximação final o controle angular é feito
-            # pelo angle_diff (atan2 direto ao alvo). Manter o _bno_yaw_ref da fase
-            # de navegação causa conflito que gira o robô vários graus ao chegar.
             self._bno_yaw_ref = None
+            # Guarda distância de entrada para detectar falta de progresso.
+            self._fa_entry_distance = None  # será definido no próximo bloco
 
         if current_time - self.final_approach_start_time > self.final_approach_timeout:
             self.motors.stop()
             self.final_approach_start_time = None
+            self._fa_entry_distance = None
             logger.warning("Timeout na aproximação final (%.0fs). Considerando chegada.", self.final_approach_timeout)
             return True
 
         dx = final_target[0] - self.current_position[0]
         dy = final_target[1] - self.current_position[1]
         total_distance = math.sqrt(dx ** 2 + dy ** 2)
+
+        # Registra distância inicial (primeiro ciclo após a entrada)
+        if self._fa_entry_distance is None:
+            self._fa_entry_distance = total_distance
+
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
 
@@ -859,18 +864,36 @@ class RobotNavigator(QObject):
         if total_distance <= final_tolerance:
             self.motors.stop()
             self.final_approach_start_time = None
+            self._fa_entry_distance = None
             logger.info("Destino alcançado: %.1f cm", total_distance * 100)
             return True
 
         elapsed_approach = current_time - self.final_approach_start_time
 
         # Regra "só ida": para no POI sem exigir alinhamento angular preciso.
-        # 15 cm / 1 s — aceitável para o garçom (usuário confirmou 5-10 cm ok).
         if not self.is_returning_to_base and total_distance < 0.15 and elapsed_approach >= 1.0:
             self.motors.stop()
             self.final_approach_start_time = None
+            self._fa_entry_distance = None
             logger.info("POI alcançado (só ida, %.0f cm): parando.", total_distance * 100)
             return True
+
+        # Detecção de giro sem progresso (só ida):
+        # Quando o robô físico já está no POI mas a posição virtual mostra deriva
+        # de odometria, _stable_final_approach fica girando o robô fisicamente
+        # por até 6s sem avançar. Esta regra para o robô após 2s se o progresso
+        # em direção ao alvo virtual for menor que 10 cm.
+        if not self.is_returning_to_base and elapsed_approach > 2.0:
+            progress = (self._fa_entry_distance or total_distance) - total_distance
+            if progress < 0.10:
+                self.motors.stop()
+                self.final_approach_start_time = None
+                self._fa_entry_distance = None
+                logger.info(
+                    "Aproximação sem progresso (%.0f cm em %.1f s). Chegada declarada.",
+                    total_distance * 100, elapsed_approach
+                )
+                return True
 
         # Override por tempo: se em modo "só ida" há mais de 6 s, declara chegada
         # independente da distância (evita giro infinito por deriva de odometria).
@@ -888,14 +911,17 @@ class RobotNavigator(QObject):
         if total_distance < 0.15 and elapsed_approach > 7.0:
             self.motors.stop()
             self.final_approach_start_time = None
+            self._fa_entry_distance = None
             return True
         if total_distance < 0.50 and elapsed_approach > 8.0:
             self.motors.stop()
             self.final_approach_start_time = None
+            self._fa_entry_distance = None
             return True
         if total_distance < 1.00 and elapsed_approach > 10.0:
             self.motors.stop()
             self.final_approach_start_time = None
+            self._fa_entry_distance = None
             return True
 
         # Velocidade adaptativa conforme distância.
