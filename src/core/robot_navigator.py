@@ -705,10 +705,28 @@ class RobotNavigator(QObject):
         right_tps = base_tps + corr
         return left_tps, right_tps
 
+    def _calculate_cte(self, position: Tuple[float, float],
+                       path_start: Tuple[float, float],
+                       path_end: Tuple[float, float]) -> float:
+        """
+        Cross-Track Error (CTE): distância perpendicular assinada do robô ao
+        segmento de caminho entre path_start e path_end.
+        Positivo = robô à esquerda da linha; negativo = robô à direita.
+        """
+        dx = path_end[0] - path_start[0]
+        dy = path_end[1] - path_start[1]
+        segment_len = math.sqrt(dx ** 2 + dy ** 2)
+        if segment_len < 0.001:
+            return 0.0
+        # Produto cruzado 2D: (B-A) × (P-A) / |B-A|
+        rx = position[0] - path_start[0]
+        ry = position[1] - path_start[1]
+        return (dx * ry - dy * rx) / segment_len
+
     def _move_towards_target(self):
         """
-        Navega direto para o waypoint atual (current_target).
-        Controle proporcional de velocidade linear e angular combinado.
+        Navega direto para o waypoint atual (current_target) com correção de
+        trajetória transversal (CTE) para manter o robô no traçado planejado.
         """
         if self.current_target is None:
             self.motors.set_target_speed(0, 0)
@@ -724,13 +742,27 @@ class RobotNavigator(QObject):
         current_angle_normalized = self.current_angle if self.current_angle >= 0 else self.current_angle + 360
         angle_error = (target_angle - current_angle_normalized + 180) % 360 - 180
 
+        # --- Correção de trajetória transversal (CTE) ---
+        # Calcula o desvio perpendicular do robô em relação ao segmento atual
+        # e adiciona uma correção angular proporcional ao desvio.
+        # Isso mantém o robô na linha planejada, não apenas mirando no waypoint.
+        cte = 0.0
+        if self.path and self.path_index > 0 and self.path_index < len(self.path):
+            prev_waypoint = self.path[self.path_index - 1]
+            cte = self._calculate_cte(self.current_position, prev_waypoint, self.current_target)
+            # Converte CTE em correção angular (atan para suavidade)
+            # Ganho 1.2: equilibrio entre correção eficaz e oscilação
+            cte_correction_deg = math.degrees(math.atan2(1.2 * cte, max(distance, 0.10)))
+            # CTE positivo (esquerda da linha) → corrige para a direita (subtrai)
+            angle_error -= cte_correction_deg
+
         if not hasattr(self, '_move_log_counter'):
             self._move_log_counter = 0
         self._move_log_counter += 1
         if self._move_log_counter % 20 == 0:
             logger.debug(
-                "move_towards: dist=%.2fm ang_err=%.1f° alvo=%s",
-                distance, angle_error, self.current_target
+                "move_towards: dist=%.2fm ang_err=%.1f° cte=%.2fm alvo=%s",
+                distance, angle_error, cte, self.current_target
             )
 
         if abs(angle_error) > 90.0:
