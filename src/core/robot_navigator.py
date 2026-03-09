@@ -794,9 +794,9 @@ class RobotNavigator(QObject):
 
         elapsed_approach = current_time - self.final_approach_start_time
 
-        # Regra "só ida": para no POI sem exigir alinhamento angular.
-        # 50 cm / 1 s — generoso para compensar deriva de odometria.
-        if not self.is_returning_to_base and total_distance < 0.50 and elapsed_approach >= 1.0:
+        # Regra "só ida": para no POI sem exigir alinhamento angular preciso.
+        # 15 cm / 1 s — aceitável para o garçom (usuário confirmou 5-10 cm ok).
+        if not self.is_returning_to_base and total_distance < 0.15 and elapsed_approach >= 1.0:
             self.motors.stop()
             self.final_approach_start_time = None
             logger.info("POI alcançado (só ida, %.0f cm): parando.", total_distance * 100)
@@ -828,17 +828,20 @@ class RobotNavigator(QObject):
             self.final_approach_start_time = None
             return True
 
-        # Velocidade adaptativa conforme distância
+        # Velocidade adaptativa conforme distância.
+        # angle_tolerance: graus máximos permitidos antes de bloquear o avanço.
+        # Valores maiores para distâncias maiores permitem aproximação mesmo com
+        # leve desvio de odometria, evitando giro estacionário.
         if total_distance < 0.05:
-            speed_factor, angle_tolerance = 0.25, 2.0
-        elif total_distance < 0.08:
-            speed_factor, angle_tolerance = 0.35, 2.5
-        elif total_distance < 0.12:
-            speed_factor, angle_tolerance = 0.50, 3.0
-        elif total_distance < 0.18:
-            speed_factor, angle_tolerance = 0.65, 4.0
+            speed_factor, angle_tolerance = 0.25, 5.0
+        elif total_distance < 0.10:
+            speed_factor, angle_tolerance = 0.40, 8.0
+        elif total_distance < 0.20:
+            speed_factor, angle_tolerance = 0.60, 15.0
+        elif total_distance < 0.40:
+            speed_factor, angle_tolerance = 0.75, 20.0
         else:
-            speed_factor, angle_tolerance = 0.80, 5.0
+            speed_factor, angle_tolerance = 0.80, 25.0
 
         if not hasattr(self, '_final_approach_log_counter'):
             self._final_approach_log_counter = 0
