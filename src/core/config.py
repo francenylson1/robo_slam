@@ -137,7 +137,7 @@ BNO08X_GPIO_RST = 26            # GPIO para RST: 26 = driver HIGH no início (se
 BNO08X_GPIO_INT = 27            # Pino GPIO para interrupção (data ready - opcional, uso futuro)
 
 # Correção de rumo (linha reta) com BNO08x - usada por teleop e testes
-BNO_STRAIGHT_KP = 1.2           # Ganho: 1.4 para reduzir desvio para a direita (afinar: ver docs/AFINACAO_DESVIO_NAVEGACAO.md)
+BNO_STRAIGHT_KP = 0.7           # Ganho reduzido: correções mais suaves para evitar desvio brusco (era 1.2)
 BNO_STRAIGHT_MAX_CORRECTION_TPS = 12.0  # Limite máximo de TPS de correção por ciclo
 # True = quando o robô curva para a esquerda, corrigir acelerando roda direita (convenção deste robô)
 BNO_STRAIGHT_INVERT_CORRECTION = True

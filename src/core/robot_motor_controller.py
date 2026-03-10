@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # === CORREÇÃO DE DERIVA LATERAL ===
 # Motor esquerdo reduzido para compensar deriva à direita.
 # Ajuste fino: ver docs/AFINACAO_DESVIO_NAVEGACAO.md
-LEFT_MOTOR_CORRECTION_FACTOR = 0.9200000
+LEFT_MOTOR_CORRECTION_FACTOR = 0.9500000
 RIGHT_MOTOR_CORRECTION_FACTOR = 1.000000
 
 if GPIO_AVAILABLE:
