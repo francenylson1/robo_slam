@@ -145,7 +145,11 @@ BNO_FIRST_READ_TIMEOUT = 2.5
 USE_BNO_IN_NAVIGATION = True   # Fase 1: True para ativar BNO (só nas retas se USE_BNO_ON_STRAIGHTS_ONLY=True)
 # Fase 1 – BNO só nas retas: quando True, ângulo da pose usa BNO apenas se |Δθ| < STRAIGHT_ANGLE_THRESHOLD_DEG
 USE_BNO_ON_STRAIGHTS_ONLY = True
-STRAIGHT_ANGLE_THRESHOLD_DEG = 3.0   # por ciclo (~0.1s): abaixo disso = "reta"; 3° dá mais uso ao BNO e reduz deriva
+# 0.0 = BNO não sobrescreve o ângulo odométrico (evita travamento do ângulo virtual durante giros intencionais).
+# O BNO continua sendo usado apenas para correção de trajetória em linha reta (_apply_bno_straight_correction).
+# Problema identificado: threshold > 0 fazia o BNO bloquear o ângulo virtual durante correções lentas
+# (< 3°/ciclo), impedindo que a odometria rastreasse giros físicos de 90-180°.
+STRAIGHT_ANGLE_THRESHOLD_DEG = 0.0
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz
