@@ -50,7 +50,11 @@ ROBOT_ADJUSTMENT_TURN_SPEED = 0.25 # Velocidade de giro para ajustes finos (lent
 # Constante legada - Manter por compatibilidade, mas com valor seguro
 ROBOT_FORWARD_SPEED = 0.30         # (LEGADO) Alinhado com ROBOT_SPEED (aumentado 20%)
 
-ROBOT_INITIAL_POSITION = (5.7, 11.5)  # (x, y) em metros - posição base inicial do robô (ajustado para dentro do mapa)
+# Posição inicial do robô no sistema virtual (resolução YAML 0.023904 m/px).
+# Origem física: X=3.40m da parede oeste, Y=4.24m da parede sul → pixel PGM (74, 162).
+# Fórmula de atualização: px=(x_fisico/(6/131), (12-y_sul)/(12/251)) → world=(px*0.023904).
+# ATENÇÃO: Este valor é sobrescrito por _set_robot_initial_position_from_pgm() ao carregar PGM.
+ROBOT_INITIAL_POSITION = (1.77, 3.87)  # coordenadas virtuais (sistema interno meia-escala)
 ROBOT_INITIAL_ANGLE = 270            # graus - apontando para cima
 
 # Configurações de simulação

@@ -1157,8 +1157,11 @@ class MainWindow(QMainWindow):
                     self.status_label.setText(f"Mapa PGM carregado: {map_name}")
                     # Reseta flag de alterações não salvas ao carregar novo mapa
                     self.has_unsaved_changes = False
-                    # Define posição inicial do robô baseada no mapa PGM (X=62, Y=213 em pixels)
-                    self._set_robot_initial_position_from_pgm(62, 213)
+                    # Define posição inicial do robô baseada no mapa PGM
+                    # Pixel (74, 162) = físico: X=3.40m da parede oeste, Y=4.24m da parede sul
+                    # Conversão: px_x = 3.40/(6.0/131)=74, px_y = (12.0-4.24)/(12.0/251)=162
+                    # Coord. virtuais resultantes: (1.77, 3.87)m no sistema interno (resolução YAML)
+                    self._set_robot_initial_position_from_pgm(74, 162)
                     # Não mostra mensagem de sucesso para não interromper o fluxo
                     # Apenas atualiza o status
                 else:
@@ -1238,8 +1241,11 @@ class MainWindow(QMainWindow):
                 self.status_label.setText(f"Mapa PGM carregado: {map_name}")
                 # Reseta flag de alterações não salvas ao carregar novo mapa
                 self.has_unsaved_changes = False
-                # Define posição inicial do robô baseada no mapa PGM (X=62, Y=213 em pixels)
-                self._set_robot_initial_position_from_pgm(62, 213)
+                # Define posição inicial do robô baseada no mapa PGM
+                # Pixel (74, 162) = físico: X=3.40m da parede oeste, Y=4.24m da parede sul
+                # Conversão: px_x = 3.40/(6.0/131)=74, px_y = (12.0-4.24)/(12.0/251)=162
+                # Coord. virtuais resultantes: (1.77, 3.87)m no sistema interno (resolução YAML)
+                self._set_robot_initial_position_from_pgm(74, 162)
                 # Não mostra mensagem de sucesso para não interromper o fluxo
             else:
                 QMessageBox.warning(self, "Erro", "Não foi possível carregar o mapa PGM.")
