@@ -80,6 +80,9 @@ class RobotNavigator(QObject):
         self._progress_check_interval = 5.0  # verifica progresso a cada 5 s
         self._stuck_threshold = 0.05       # considera preso se moveu < 5 cm em 5 s
 
+        # Timeout para estado ORIENTING_TO_TARGET (evita giro infinito por BNO)
+        self._orient_start_time: Optional[float] = None
+
         self.use_direct_navigation = True
 
         # BNO08x: integração opcional (USE_BNO_IN_NAVIGATION no config)
@@ -130,6 +133,8 @@ class RobotNavigator(QObject):
 
         if hasattr(self, '_orient_stability_counter'):
             self._orient_stability_counter = 0
+        self._orient_start_time = None
+        self._fa_entry_distance = None
 
         self.forbidden_areas = preserved_forbidden_areas
         self.path_finder.set_forbidden_areas(preserved_forbidden_areas)
@@ -593,6 +598,22 @@ class RobotNavigator(QObject):
         if not hasattr(self, '_orient_stability_counter'):
             self._orient_stability_counter = 0
 
+        # Timeout: proteção contra giro infinito caso o ângulo virtual não convirja.
+        if self._orient_start_time is None:
+            self._orient_start_time = time.time()
+        elif time.time() - self._orient_start_time > 5.0:
+            elapsed = time.time() - self._orient_start_time
+            logger.warning(
+                "Timeout na orientação (%.0fs): forçando NAVIGATING (erro angular persistente).",
+                elapsed
+            )
+            self.motors.stop()
+            self._orient_start_time = None
+            self._orient_stability_counter = 0
+            state_key = "RETURNING_TO_BASE" if self.is_returning_to_base else "NAVIGATING_TO_DESTINATION"
+            self.navigation_state = state_key
+            return
+
         dx = self.current_target[0] - self.current_position[0]
         dy = self.current_target[1] - self.current_position[1]
         target_angle_raw = math.degrees(math.atan2(dy, dx))
@@ -622,6 +643,7 @@ class RobotNavigator(QObject):
                     abs(angle_error), stability_threshold, state_key
                 )
                 self._orient_stability_counter = 0
+                self._orient_start_time = None
                 self.navigation_state = state_key
                 return
             else:
@@ -1059,6 +1081,12 @@ class RobotNavigator(QObject):
         # Fase 1: BNO só em trechos retos
         if use_bno_angle and USE_BNO_ON_STRAIGHTS_ONLY:
             use_bno_angle = use_bno_angle and (abs(delta_angle_deg) < STRAIGHT_ANGLE_THRESHOLD_DEG)
+            # Durante orientação intencional para um waypoint, o robô gira de propósito.
+            # O BNO não deve sobrescrever o ângulo virtual nesse estado, pois giros lentos
+            # (< 3°/ciclo) acionam o override e congelam o ângulo virtual enquanto o
+            # robô físico gira livremente — criando um loop de giro infinito sem saída.
+            if self.navigation_state == "ORIENTING_TO_TARGET":
+                use_bno_angle = False
 
         if use_bno_angle:
             yaw = self._get_bno_yaw()
