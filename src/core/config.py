@@ -146,7 +146,9 @@ TURN_TPS_DEFAULT = 12.0
 # Timeout (s) para obter a primeira leitura válida de yaw antes de linha reta (evita "BNO sem leitura")
 BNO_FIRST_READ_TIMEOUT = 2.5
 # Navegação: False = pose e controle só odometria (estável); True = BNO na pose e correção de rumo
-USE_BNO_IN_NAVIGATION = True   # Fase 1: True para ativar BNO (só nas retas se USE_BNO_ON_STRAIGHTS_ONLY=True)
+# DESATIVADO: BNO de motores conflita com CTE causando desvios no meio do percurso.
+# O CTE (Cross-Track Error) já garante o seguimento da rota; BNO é redundante e instável.
+USE_BNO_IN_NAVIGATION = False  # Fase 1: desativado - CTE é suficiente para seguir a rota
 # Fase 1 – BNO só nas retas: quando True, ângulo da pose usa BNO apenas se |Δθ| < STRAIGHT_ANGLE_THRESHOLD_DEG
 USE_BNO_ON_STRAIGHTS_ONLY = True
 # 0.0 = BNO não sobrescreve o ângulo odométrico (evita travamento do ângulo virtual durante giros intencionais).
