@@ -85,10 +85,11 @@ class RobotNavigator(QObject):
 
         self.use_direct_navigation = True
 
-        # BNO08x: integração opcional (USE_BNO_IN_NAVIGATION no config)
+        # BNO08x: filtro complementar (USE_BNO_IN_NAVIGATION no config)
         self._get_bno_yaw = None
         self._bno_yaw_ref = None
         self._bno_yaw_offset = None
+        self._bno_prev_yaw = None
         if is_raspberry_pi() and USE_BNO_IN_NAVIGATION:
             try:
                 from tools.bno08x_init import init_bno
@@ -114,6 +115,7 @@ class RobotNavigator(QObject):
         # Re-anclar BNO ao referencial do mapa na próxima atualização de pose
         self._bno_yaw_offset = None
         self._bno_yaw_ref = None
+        self._bno_prev_yaw = None
 
         self.navigation_active = False
         self.current_target = None
@@ -148,6 +150,7 @@ class RobotNavigator(QObject):
         self.current_angle = self._normalize_angle_deg(float(angle_deg))
         self._bno_yaw_offset = None
         self._bno_yaw_ref = None
+        self._bno_prev_yaw = None
 
     def set_speed_multiplier(self, multiplier: float):
         """Define o multiplicador de velocidade (1.0 a 1.3)."""
@@ -1057,8 +1060,13 @@ class RobotNavigator(QObject):
 
     def _update_pose_with_odometry(self):
         """
-        Atualiza posição e ângulo do robô com base na odometria.
-        Usa BNO para o ângulo em trechos retos (Fase 1) se configurado.
+        Atualiza posição e ângulo com odometria + filtro complementar BNO.
+
+        O filtro complementar funde odometria e BNO suavemente:
+          angulo_final = angulo_odom + alpha * (angulo_bno - angulo_odom)
+        Com alpha=BNO_FILTER_ALPHA (ex: 0.15), o BNO corrige deriva angular
+        de forma gradual sem causar correções bruscas. Spikes de leitura do BNO
+        são descartados via BNO_SPIKE_THRESHOLD_DEG.
         """
         ticks_data = self.motors.get_and_reset_ticks()
         if not ticks_data:
@@ -1073,35 +1081,35 @@ class RobotNavigator(QObject):
         delta_angle_rad = (dist_left - dist_right) / ROBOT_WHEEL_BASE_M
         delta_angle_deg = math.degrees(delta_angle_rad)
 
-        use_bno_angle = (
-            USE_BNO_IN_NAVIGATION
-            and self._get_bno_yaw is not None
-            and not self.precise_rotation_active
-        )
-        # Fase 1: BNO só em trechos retos
-        if use_bno_angle and USE_BNO_ON_STRAIGHTS_ONLY:
-            use_bno_angle = use_bno_angle and (abs(delta_angle_deg) < STRAIGHT_ANGLE_THRESHOLD_DEG)
-            # Durante orientação intencional para um waypoint, o robô gira de propósito.
-            # O BNO não deve sobrescrever o ângulo virtual nesse estado, pois giros lentos
-            # (< 3°/ciclo) acionam o override e congelam o ângulo virtual enquanto o
-            # robô físico gira livremente — criando um loop de giro infinito sem saída.
-            if self.navigation_state == "ORIENTING_TO_TARGET":
-                use_bno_angle = False
+        # Passo 1: odometria pura (base de sempre)
+        new_angle = self._normalize_angle_deg(self.current_angle + delta_angle_deg)
 
-        if use_bno_angle:
+        # Passo 2: filtro complementar BNO — corrige deriva angular suavemente
+        # Desativado durante: giro preciso e orientação intencional para waypoint
+        if (USE_BNO_IN_NAVIGATION
+                and self._get_bno_yaw is not None
+                and not self.precise_rotation_active
+                and self.navigation_state != "ORIENTING_TO_TARGET"):
             yaw = self._get_bno_yaw()
             if yaw is not None:
                 if self._bno_yaw_offset is None:
-                    self._bno_yaw_offset = self._normalize_angle_deg(self.current_angle - yaw)
-                self.current_angle = self._normalize_angle_deg(yaw + self._bno_yaw_offset)
-            else:
-                self.current_angle = self._normalize_angle_deg(self.current_angle + delta_angle_deg)
-        else:
-            self.current_angle += delta_angle_deg
-            if self.current_angle > 180:
-                self.current_angle -= 360
-            elif self.current_angle < -180:
-                self.current_angle += 360
+                    # Primeira leitura: inicializa referencial do BNO
+                    self._bno_yaw_offset = self._normalize_angle_deg(new_angle - yaw)
+                    self._bno_prev_yaw = yaw
+                else:
+                    # Rejeição de spike: descarta leitura anômala
+                    prev = self._bno_prev_yaw if self._bno_prev_yaw is not None else yaw
+                    yaw_delta = abs(self._normalize_angle_deg(yaw - prev))
+                    if yaw_delta <= BNO_SPIKE_THRESHOLD_DEG:
+                        # Converte yaw BNO para o referencial do robô
+                        bno_angle = self._normalize_angle_deg(yaw + self._bno_yaw_offset)
+                        # Blenda suavemente: odometria + fração do erro do BNO
+                        angle_diff = self._normalize_angle_deg(bno_angle - new_angle)
+                        new_angle = self._normalize_angle_deg(new_angle + BNO_FILTER_ALPHA * angle_diff)
+                        self._bno_prev_yaw = yaw
+                    # Spike detectado: mantém new_angle como odometria pura neste ciclo
+
+        self.current_angle = new_angle
 
         if not self.precise_rotation_active:
             angle_rad = math.radians(self.current_angle)

@@ -145,10 +145,16 @@ BNO_STRAIGHT_INVERT_CORRECTION = True
 TURN_TPS_DEFAULT = 12.0
 # Timeout (s) para obter a primeira leitura válida de yaw antes de linha reta (evita "BNO sem leitura")
 BNO_FIRST_READ_TIMEOUT = 2.5
-# Navegação: False = pose e controle só odometria (estável); True = BNO na pose e correção de rumo
-# DESATIVADO: BNO de motores conflita com CTE causando desvios no meio do percurso.
-# O CTE (Cross-Track Error) já garante o seguimento da rota; BNO é redundante e instável.
-USE_BNO_IN_NAVIGATION = False  # Fase 1: desativado - CTE é suficiente para seguir a rota
+# Navegação: False = pose e controle só odometria; True = filtro complementar BNO+odometria
+USE_BNO_IN_NAVIGATION = True   # Filtro complementar: BNO corrige deriva angular suavemente
+
+# Filtro complementar BNO: peso do BNO na fusão de ângulo (0.0=só odometria, 1.0=só BNO)
+# 0.15 = 15% BNO por ciclo → corrige erro de 10° em ~2s. Seguro mesmo com BNO estável.
+BNO_FILTER_ALPHA = 0.15
+
+# Rejeição de spike: ignora leitura BNO se variar mais que este valor entre ciclos (graus)
+# Logs mostraram variação máxima de 0.2° → threshold de 5° nunca dispara em condições normais
+BNO_SPIKE_THRESHOLD_DEG = 5.0
 # Fase 1 – BNO só nas retas: quando True, ângulo da pose usa BNO apenas se |Δθ| < STRAIGHT_ANGLE_THRESHOLD_DEG
 USE_BNO_ON_STRAIGHTS_ONLY = True
 # 0.0 = BNO não sobrescreve o ângulo odométrico (evita travamento do ângulo virtual durante giros intencionais).
