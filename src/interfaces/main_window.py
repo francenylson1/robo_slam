@@ -396,20 +396,20 @@ class MainWindow(QMainWindow):
             self.btn_forward.setStyleSheet("font-size: 14px; font-weight: bold;")
         direction_grid.addWidget(self.btn_forward, 0, 1)
         
-        # Botão GIRO MANUAL ESQUERDA (22° padrão)
-        self.btn_rotate_manual_left = QPushButton("↺ 180° ESQ" if self.is_small_screen else "↺ 180° ESQUERDA")
+        # Botão GIRO ESQUERDA — ângulo definido pelo slider abaixo
+        self.btn_rotate_manual_left = QPushButton("↺ 90° ESQ" if self.is_small_screen else "↺ 90° ESQUERDA")
         self.btn_rotate_manual_left.setFixedSize(rotate_width, rotate_height)
-        self.btn_rotate_manual_left.clicked.connect(self._manual_turn_left)
+        self.btn_rotate_manual_left.clicked.connect(lambda: self._execute_precise_rotation("left"))
         if self.is_small_screen:
             self.btn_rotate_manual_left.setStyleSheet("font-size: 9px; font-weight: bold; background-color: #2196F3; color: white;")
         else:
             self.btn_rotate_manual_left.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
         direction_grid.addWidget(self.btn_rotate_manual_left, 1, 0)
-        
-        # Botão GIRO MANUAL DIREITA (22° padrão)
-        self.btn_rotate_manual_right = QPushButton("↻ 180° DIR" if self.is_small_screen else "↻ 180° DIREITA")
+
+        # Botão GIRO DIREITA — ângulo definido pelo slider abaixo
+        self.btn_rotate_manual_right = QPushButton("↻ 90° DIR" if self.is_small_screen else "↻ 90° DIREITA")
         self.btn_rotate_manual_right.setFixedSize(rotate_width, rotate_height)
-        self.btn_rotate_manual_right.clicked.connect(self._manual_turn_right)
+        self.btn_rotate_manual_right.clicked.connect(lambda: self._execute_precise_rotation("right"))
         if self.is_small_screen:
             self.btn_rotate_manual_right.setStyleSheet("font-size: 9px; font-weight: bold; background-color: #2196F3; color: white;")
         else:
@@ -428,15 +428,18 @@ class MainWindow(QMainWindow):
         # Adiciona o grid ao layout manual
         manual_layout.addLayout(direction_grid)
 
-        # Slider para ângulo customizável (integrado ao layout principal)
+        # Slider de ângulo: controla o giro dos botões ↺ e ↻ (15° a 180°)
         angle_layout = QHBoxLayout()
-        angle_layout.addWidget(QLabel("Ângulo por clique:"))
+        angle_layout.addWidget(QLabel("Ângulo:"))
         self.angle_slider = QSlider(Qt.Orientation.Horizontal)
-        self.angle_slider.setRange(15, 90)  # 15° a 90° por clique
-        self.angle_slider.setValue(45)      # Padrão: 45°
+        self.angle_slider.setRange(15, 180)  # 15° a 180°
+        self.angle_slider.setValue(90)       # Padrão: 90°
+        self.angle_slider.setTickPosition(QSlider.TicksBelow)
+        self.angle_slider.setTickInterval(45)
         self.angle_slider.valueChanged.connect(self._on_angle_slider_changed)
         angle_layout.addWidget(self.angle_slider)
-        self.angle_label = QLabel("45°")
+        self.angle_label = QLabel("90°")
+        self.angle_label.setMinimumWidth(35)
         angle_layout.addWidget(self.angle_label)
         manual_layout.addLayout(angle_layout)
 
@@ -1998,19 +2001,23 @@ class MainWindow(QMainWindow):
 
         angle_per_click = self.angle_slider.value()
         
-        # 🎯 TEMPOS CALIBRADOS para máxima precisão (baseado em testes)
+        # Tempos calibrados por faixa de ângulo (escala linear a partir de 90°)
         if angle_per_click <= 15:
-            rotation_time = 0.25  # 15° em 0.25s (aumentado para mais precisão)
+            rotation_time = 0.25
         elif angle_per_click <= 30:
-            rotation_time = 0.45  # 30° em 0.45s (aumentado para mais precisão)
+            rotation_time = 0.45
         elif angle_per_click <= 45:
-            rotation_time = 0.85  # 45° em 0.85s (aumentado para mais precisão)
+            rotation_time = 0.85
         elif angle_per_click <= 60:
-            rotation_time = 0.85  # 60° em 0.85s
+            rotation_time = 0.85
         elif angle_per_click <= 90:
-            rotation_time = 1.25  # 90° em 1.25s (aumentado para mais precisão)
+            rotation_time = 1.25
+        elif angle_per_click <= 120:
+            rotation_time = 1.65   # 120° ≈ 1.33× o tempo de 90°
+        elif angle_per_click <= 150:
+            rotation_time = 2.05   # 150° ≈ 1.67× o tempo de 90°
         else:
-            rotation_time = 1.6   # Fallback para ângulos maiores (aumentado)
+            rotation_time = 2.50   # 180° ≈ 2× o tempo de 90°
 
         # 🚀 BYPASS do PID com proteção de segurança máxima
         # 8% da potência total do motor (SEGURANÇA MÁXIMA - reduzido de 10%)
@@ -2186,56 +2193,27 @@ class MainWindow(QMainWindow):
     #         print(f"⚠️ SYNC_DEBUG: Erro na sincronização: {e}")
 
     def _manual_turn_left(self):
-        """Executa giro manual de 180° para a esquerda"""
-        if self.navigation_active:
-            QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
-            return
-        
-        try:
-            print("🔄 INTERFACE: Executando giro manual esquerda de 180°")
-            self.navigator.manual_turn_left()
-            
-            # Atualiza a posição do robô na interface
-            current_pos = self.navigator.current_position
-            current_angle = self.navigator.current_angle
-            self.map_widget.update_robot_position(current_pos[0], current_pos[1], current_angle)
-            
-            print(f"🔄 INTERFACE: Giro manual concluído - Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f}), Ângulo: {current_angle:.1f}°")
-            
-        except Exception as e:
-            QMessageBox.warning(self, "Erro", f"Erro ao executar giro manual:\n{e}")
-            print(f"⚠️ INTERFACE: Erro no giro manual: {e}")
+        """Mantido para compatibilidade — delega ao sistema unificado de giro."""
+        self._execute_precise_rotation("left")
 
     def _manual_turn_right(self):
-        """Executa giro manual de 180° para a direita"""
-        if self.navigation_active:
-            QMessageBox.warning(self, "Aviso", "Aguarde o término da navegação atual.")
-            return
-        
-        try:
-            print("🔄 INTERFACE: Executando giro manual direita de 180°")
-            self.navigator.manual_turn_right()
-            
-            # Atualiza a posição do robô na interface
-            current_pos = self.navigator.current_position
-            current_angle = self.navigator.current_angle
-            self.map_widget.update_robot_position(current_pos[0], current_pos[1], current_angle)
-            
-            print(f"🔄 INTERFACE: Giro manual concluído - Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f}), Ângulo: {current_angle:.1f}°")
-            
-        except Exception as e:
-            QMessageBox.warning(self, "Erro", f"Erro ao executar giro manual:\n{e}")
-            print(f"⚠️ INTERFACE: Erro no giro manual: {e}")
+        """Mantido para compatibilidade — delega ao sistema unificado de giro."""
+        self._execute_precise_rotation("right")
 
     def _on_angle_slider_changed(self, value: int):
-        """Atualiza o ângulo de rotação por clique."""
-        self.angle_label.setText(f"Ângulo por clique: {value}°")
-        
-        # Atualiza textos dos botões (mantém compatibilidade)
-        if hasattr(self, 'btn_rotate_precise_left'):
-            self.btn_rotate_precise_left.setText(f"↺ {value}° ESQUERDA")
-        if hasattr(self, 'btn_rotate_precise_right'):
-            self.btn_rotate_precise_right.setText(f"↻ {value}° DIREITA")
+        """Atualiza o ângulo de rotação e os labels dos botões de giro."""
+        self.angle_label.setText(f"{value}°")
+        label_short = f"{value}°"
+        if hasattr(self, 'btn_rotate_manual_left'):
+            if self.is_small_screen:
+                self.btn_rotate_manual_left.setText(f"↺ {label_short} ESQ")
+            else:
+                self.btn_rotate_manual_left.setText(f"↺ {label_short} ESQUERDA")
+        if hasattr(self, 'btn_rotate_manual_right'):
+            if self.is_small_screen:
+                self.btn_rotate_manual_right.setText(f"↻ {label_short} DIR")
+            else:
+                self.btn_rotate_manual_right.setText(f"↻ {label_short} DIREITA")
 
     def _set_new_starting_position(self):
         """Define a posição atual como nova posição de partida"""
