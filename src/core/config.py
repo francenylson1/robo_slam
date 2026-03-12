@@ -66,6 +66,20 @@ NAVIGATION_GOAL_TOLERANCE = 0.20  # 20cm - Distância para considerar que chegou
 NAVIGATION_ANGLE_TOLERANCE = 5.0   # 5 graus - Força um alinhamento melhor antes de avançar
 NAVIGATION_OBSTACLE_DISTANCE = 0.35  # 35cm - Reduzido para robô menor (era 0.5m)
 
+# Configurações de ida/volta
+# Tempo de pausa no destino antes de retornar à base.
+# Para uso real (garçom): aumentar para 10–30s dependendo da operação.
+ARRIVAL_PAUSE_TIME = 5.0           # segundos parado no POI antes de retornar
+
+# Timeout máximo para a navegação de IDA (evita loop infinito se robô travar).
+# Para percursos de 4-5m a 0.30 m/s: ~15s de movimento + 10s de margem = 45s.
+# Aumentar proporcionalmente para rotas longas (25m → ~100s).
+NAVIGATION_MAX_DURATION_S = 45.0   # segundos máximos para chegar ao POI
+
+# Timeout máximo para a navegação de VOLTA (watchdog de retorno).
+# Mesmo critério da ida: garante que o robô não fique preso retornando.
+RETURN_MAX_DURATION_S = 45.0       # segundos máximos para retornar à base
+
 # Configurações de precisão avançada
 NAVIGATION_ULTRA_PRECISION_TOLERANCE = 0.02  # 2cm - Máxima precisão para chegada ao destino
 NAVIGATION_FINE_APPROACH_DISTANCE = 0.30  # 30cm - Reduzido para robô menor (era 0.5m)

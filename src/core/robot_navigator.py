@@ -61,7 +61,7 @@ class RobotNavigator(QObject):
 
         self.precise_rotation_active = False
 
-        self.arrival_pause_time = 2.0
+        self.arrival_pause_time = ARRIVAL_PAUSE_TIME
         self.arrival_time = None
         self.is_paused_at_destination = False
 
@@ -72,9 +72,10 @@ class RobotNavigator(QObject):
         self.final_approach_start_time = None
         self.final_approach_timeout = 10.0
 
-        # Watchdog de navegação: evita giro infinito no estado NAVIGATING
+        # Watchdog de navegação: evita loop infinito nos estados NAVIGATING e RETURNING
         self._nav_start_time: Optional[float] = None
-        self._nav_max_duration = 30.0      # máximo 30 s de navegação total
+        self._nav_max_duration = NAVIGATION_MAX_DURATION_S
+        self._return_start_time: Optional[float] = None
         self._last_progress_pos = None     # posição na última verificação de progresso
         self._last_progress_time: Optional[float] = None
         self._progress_check_interval = 5.0  # verifica progresso a cada 5 s
@@ -137,6 +138,8 @@ class RobotNavigator(QObject):
             self._orient_stability_counter = 0
         self._orient_start_time = None
         self._fa_entry_distance = None
+        self._nav_start_time = None
+        self._return_start_time = None
 
         self.forbidden_areas = preserved_forbidden_areas
         self.path_finder.set_forbidden_areas(preserved_forbidden_areas)
@@ -282,6 +285,7 @@ class RobotNavigator(QObject):
         elif self.use_direct_navigation:
             logger.info("Retorno direto à base (sem áreas proibidas).")
             self._initialize_bno_offset()
+            self._return_start_time = time.time()
             self.path = [self.current_position, self.base_position]
             self.path_index = 0
             self.current_target = self.base_position
@@ -306,6 +310,7 @@ class RobotNavigator(QObject):
             logger.info("Retorno via PathFinder: %d waypoints.", len(path_to_base))
 
         self._initialize_bno_offset()
+        self._return_start_time = time.time()
         if len(path_to_base) > 0:
             path_to_base[0] = self.current_position
         if len(path_to_base) > 0:
@@ -1253,6 +1258,18 @@ class RobotNavigator(QObject):
         if self.current_target is None or self.current_position is None:
             self._finalize_navigation()
             return
+
+        # Watchdog de retorno: se demorar demais, finaliza para evitar loop infinito.
+        if self._return_start_time is not None:
+            elapsed_return = time.time() - self._return_start_time
+            if elapsed_return > RETURN_MAX_DURATION_S:
+                logger.warning(
+                    "Watchdog retorno: timeout de %.0fs atingido. Finalizando navegação.",
+                    RETURN_MAX_DURATION_S
+                )
+                self.motors.stop()
+                self._finalize_navigation()
+                return
 
         distance_to_target = self._calculate_distance(self.current_position, self.current_target)
         is_direct_navigation = (not self.path or len(self.path) <= 2)
