@@ -146,7 +146,7 @@ TURN_TPS_DEFAULT = 12.0
 # Timeout (s) para obter a primeira leitura válida de yaw antes de linha reta (evita "BNO sem leitura")
 BNO_FIRST_READ_TIMEOUT = 2.5
 # Navegação: False = pose e controle só odometria; True = filtro complementar BNO+odometria
-USE_BNO_IN_NAVIGATION = True   # Filtro complementar: BNO corrige deriva angular suavemente
+USE_BNO_IN_NAVIGATION = False  # BNO desativado: pose e controle apenas por odometria + CTE
 
 # Filtro complementar BNO: peso do BNO na fusão de ângulo (0.0=só odometria, 1.0=só BNO)
 # 0.15 = 15% BNO por ciclo → corrige erro de 10° em ~2s. Seguro mesmo com BNO estável.
