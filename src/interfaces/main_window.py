@@ -2216,37 +2216,74 @@ class MainWindow(QMainWindow):
                 self.btn_rotate_manual_right.setText(f"↻ {label_short} DIREITA")
 
     def _set_new_starting_position(self):
-        """Define a posição atual como nova posição de partida"""
+        """Define a posição atual como nova posição de partida com seleção de ângulo de referência."""
         current_pos = self.navigator.current_position
         current_angle = self.navigator.current_angle
-        
+
+        # Passo 1: confirmação de posição
         reply = QMessageBox.question(
-            self, 
+            self,
             "Definir Nova Partida",
             f"Definir posição atual como nova partida?\n\n"
             f"Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f})\n"
-            f"Ângulo: {current_angle:.1f}°\n\n"
-            f"Esta será a nova referência para cálculos de percurso.",
+            f"Ângulo odométrico atual: {current_angle:.1f}°\n\n"
+            f"No próximo passo você poderá corrigir o ângulo de orientação\n"
+            f"para que o robô virtual fique alinhado com o robô físico.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            self.map_widget.set_current_path([])
-            
-            self.navigator.reset_to_initial_state()
-            self.navigator.current_position = current_pos
-            self.navigator.current_angle = current_angle
-            
-            self.map_widget.update_robot_position(current_pos[0], current_pos[1], current_angle)
-            
-            QMessageBox.information(
-                self, 
-                "Nova Partida Definida",
-                f"Posição de partida atualizada!\n\n"
-                f"Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f})\n"
-                f"Ângulo: {current_angle:.1f}°\n\n"
-                f"O sistema agora calculará novos percursos a partir desta posição."
-            )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Passo 2: seleção do ângulo real do robô físico
+        angle_options = [
+            f"Manter odometria ({current_angle:.1f}°)",
+            "0°   — apontando para LESTE  (→)",
+            "90°  — apontando para NORTE  (↑) sul do mapa",
+            "180° — apontando para OESTE  (←)",
+            "270° — apontando para SUL    (↓) padrão da base",
+        ]
+        from PyQt5.QtWidgets import QInputDialog
+        choice, ok = QInputDialog.getItem(
+            self,
+            "Orientação do Robô Físico",
+            f"Para qual direção o robô físico está apontando agora?\n"
+            f"(Odometria registrou: {current_angle:.1f}°)\n\n"
+            f"Selecione o ângulo real:",
+            angle_options,
+            0,   # padrão: manter odometria
+            False
+        )
+        if not ok:
+            return
+
+        angle_map = {
+            angle_options[0]: current_angle,
+            angle_options[1]: 0.0,
+            angle_options[2]: 90.0,
+            angle_options[3]: 180.0,
+            angle_options[4]: 270.0,
+        }
+        new_angle = angle_map.get(choice, current_angle)
+
+        # Aplica nova posição, ângulo e base
+        self.map_widget.set_current_path([])
+        self.navigator.reset_to_initial_state()
+        self.navigator.current_position = current_pos
+        self.navigator.current_angle = new_angle
+        self.navigator.base_position = current_pos   # novo ponto de retorno
+
+        self.map_widget.update_robot_position(current_pos[0], current_pos[1], new_angle)
+
+        angle_corrected = f" (corrigido de {current_angle:.1f}°)" if abs(new_angle - current_angle) > 1.0 else ""
+        QMessageBox.information(
+            self,
+            "Nova Partida Definida",
+            f"Posição de partida atualizada!\n\n"
+            f"Posição: ({current_pos[0]:.2f}, {current_pos[1]:.2f})\n"
+            f"Ângulo: {new_angle:.1f}°{angle_corrected}\n\n"
+            f"Esta posição também é a nova base de retorno."
+        )
+        print(f"📍 NOVA_PARTIDA: pos={current_pos}, ângulo={new_angle:.1f}°{angle_corrected}, base atualizada")
 
     def _return_to_base(self):
         """Inicia navegação de retorno para a base original com sincronia melhorada e debug"""
