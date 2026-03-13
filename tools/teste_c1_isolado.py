@@ -46,9 +46,9 @@ async def run_scan(lidar, args):
         # Detecta nova varredura (ângulo volta de ~360 para ~0)
         if last_angle is not None and last_angle > 350 and ang < 10:
             scan_count += 1
-            valid = [p for p in points if p.get("d_mm", 0) > 0]
+            valid = [p for p in points if (p.get("d_mm") or 0) > 0]
             if valid:
-                d_min = min(p["d_mm"] for p in valid)
+                d_min = min((p.get("d_mm") or 0) for p in valid)
                 n = len(points)
                 print(f"Scan {scan_count}: {n} pontos | Obstáculo mais próximo: {d_min:.0f} mm ({d_min/1000:.2f} m)")
             points = []
