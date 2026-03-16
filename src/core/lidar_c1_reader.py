@@ -23,6 +23,8 @@ MIN_IGNORE_M = 0.15
 PARACHOQUES_MIN_IGNORE_M = 0.22
 DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 460800
+# Se o 1º scan não completar em 5 s, consideramos livre para não bloquear navegação indefinidamente
+FIRST_SCAN_TIMEOUT_SEC = 5.0
 
 
 def _norm_angle(deg: float) -> float:
@@ -71,6 +73,7 @@ class LidarC1Reader:
 
         # Inicialmente 0 m: bloqueia movimento até o primeiro scan (segurança).
         self._obstacle_distance_m: float = 0.0
+        self._first_scan_done: bool = False  # Para log único do 1º scan
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -148,16 +151,32 @@ class LidarC1Reader:
                 if last_angle is not None and last_angle > 350 and ang < 10:
                     d_obst = self._process_scan_points(points)
                     with self._lock:
+                        prev = self._obstacle_distance_m
                         self._obstacle_distance_m = d_obst
+                        if prev == 0.0:  # Primeiro scan após init
+                            d_str = f"{d_obst:.2f} m" if d_obst != float("inf") else "livre (inf)"
+                            logger.info("Lidar C1: primeiro scan OK — distância frontal = %s", d_str)
                     points = []
 
                 last_angle = ang
 
+        async def first_scan_timeout():
+            """Se o 1º scan não completar em N s, desbloqueia (evita travamento eterno)."""
+            await asyncio.sleep(FIRST_SCAN_TIMEOUT_SEC)
+            with self._lock:
+                if self._obstacle_distance_m == 0.0:
+                    self._obstacle_distance_m = float("inf")
+                    logger.warning(
+                        "Lidar C1: 1º scan não completou em %.0f s — desbloqueando (distância=inf).",
+                        FIRST_SCAN_TIMEOUT_SEC,
+                    )
+
         async def main():
             t1 = asyncio.create_task(self._lidar.simple_scan())
             t2 = asyncio.create_task(consume())
+            t3 = asyncio.create_task(first_scan_timeout())
             try:
-                await asyncio.gather(t1, t2)
+                await asyncio.gather(t1, t2, t3)
             except asyncio.CancelledError:
                 pass
             finally:

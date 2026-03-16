@@ -23,7 +23,9 @@ def is_development():
 GPIO_AVAILABLE = is_raspberry_pi()
 LIDAR_AVAILABLE = False  # Legado — uso geral de Lidar
 # C1 integrado à navegação: parada automática quando obstáculo < LIDAR_OBSTACLE_MIN_DISTANCE
-LIDAR_C1_ENABLED = True   # True = tenta conectar C1 na Pi; False = desativa
+# DESATIVADO (16/03/2026): causou travamento após teste; navegação voltou a versão estável sem C1.
+# Para reativar: LIDAR_C1_ENABLED = True (e revisar parachoques ~96mm, timeout 1º scan)
+LIDAR_C1_ENABLED = False  # True = tenta conectar C1 na Pi; False = desativa
 LIDAR_OBSTACLE_MIN_DISTANCE = 0.45  # Parar motores se obstáculo < 45 cm (validado em testes Mar/2026)
 
 # Configurações do ambiente

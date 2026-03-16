@@ -98,6 +98,17 @@ O C1 está **apenas funcionando no teste isolado**. Próximos passos para entend
 - **Montagem:** C1 na frente do robô (parachoques); corpo vermelho atrás. Cabo do C1 → traseira (0°).
 - **Configuração para obstáculos:** `--front-deg 200 --front-center 180` (centro 180° = frente). Parachoques em 120°–240° (~94 mm). Ignorar < 150 mm; parada se < 350 mm.
 
+### Incidente 16/03/2026 — C1 desativado temporariamente
+- **Sintoma:** Em teste de navegação com C1 ativo, o robô parou ao obstáculo "empurrando um pouco", ficou parado e depois declarou chegada ao POI mesmo longe do destino. Após o teste, o robô **travou**: apenas gira (esquerda/direita), não anda para frente.
+- **Causas prováveis:**
+  1. **Bloqueio eterno:** `_obstacle_distance_m` começa em 0 m; se o 1º scan nunca completar (C1 em estado ruim, serial ocupada), `has_obstacle()` fica sempre True → motores travados para avanço.
+  2. **Parada tardia:** 0,45 m pode ser grande para parar a tempo; o robô chegou a "empurrar" o obstáculo antes de parar.
+  3. **Falha de segmentação** ao fechar o app (shutdown do C1).
+- **Correções implementadas:**
+  1. **C1 desativado:** `LIDAR_C1_ENABLED = False` em `config.py` — navegação voltou à versão estável sem Lidar.
+  2. **Timeout de 5 s:** Em `lidar_c1_reader.py`, se o 1º scan não completar em 5 s, `_obstacle_distance_m = inf` para evitar bloqueio indefinido (quando reativar C1).
+- **Para reativar C1:** Alterar `LIDAR_C1_ENABLED = True` em `config.py`. Revisar parachoques ~96 mm, considerar `LIDAR_OBSTACLE_MIN_DISTANCE = 0.35` para parar mais cedo. Ver `docs/REVISAO_INCIDENTE_16MAR2026_C1.md`.
+
 ---
 
 ## 7. Estrutura de arquivos relevante
