@@ -9,10 +9,12 @@
 
 | Conclusão | Detalhe |
 |-----------|---------|
-| **Faixa frontal correta** | `--robot-model dev` (200° centrado em 0°) está correto para este robô |
-| **Onde está o corpo** | ~120° de arco entre 120° e 240° (min 94–130 mm) |
-| **Área livre** | ~240° (setores fora do corpo) |
-| **Obstáculo à frente** | Parede/objeto a ~1,25 m na direção livre |
+| **Posição do C1** | Frente do robô — sensor no parachoques preto, à frente do corpo vermelho |
+| **0° (cabo)** | Traseira → aponta para o corpo vermelho |
+| **180° (frente)** | Direção de movimento → parachoques e estruturas em C (~94 mm) |
+| **Faixa frontal para obstáculos** | Centro **180°**, largura 200° |
+| **Limiar corpo** | Ignorar leituras < 150 mm (parachoques) |
+| **Limiar parada** | Obstáculo real em 150–350 mm à frente |
 | **Próximo passo** | Etapa 2: `--min-stop` e `--min-warn` → Etapa 3: integrar à navegação |
 
 ---
@@ -30,23 +32,25 @@
 - **Direção com maior distância:** Scan 1: ~10°, Scan 2: ~350° (variação entre scans)
 
 #### Interpretação
-- O corpo do robô ocupa o arco **120°–240°** (lateral/traseira do sensor)
-- A frente (direção com mais espaço livre) está em torno de **0°** ou **350°** (zona do cabo ou adjacente)
-- A leitura de ~94 mm nos setores ocupados é típica do corpo ou do alcance mínimo do C1
+- O arco **120°–240°** contém o **parachoques** e estruturas em C que circundam o C1 (~94–130 mm)
+- O C1 está na **frente** do robô (parachoques); o corpo vermelho fica atrás (0°)
+- **180°** = direção de movimento = frente do robô (parachoques mais próximo)
 
 #### Esquema simplificado (visto de cima)
 
 ```
-        0° (cabo) ← frente livre
+        0° (cabo) = TRASEIRA
+        corpo vermelho atrás
               ↑
      livre    |    livre
   260°────────┼────────100°
               |
-     OCUPADO  |  OCUPADO
-   ( corpo )  |  ( corpo )
+  PARACHOQUES |  PARACHOQUES
+  (94–130 mm) |  (94–130 mm)
   120°────────┼────────240°
               |
-          180°
+          180° = FRENTE
+        (direção de movimento)
 ```
 
 ---
@@ -61,9 +65,9 @@
 - **Mínimo 360°:** 94–95 mm → frontal = 360°
 
 #### Interpretação
-- A faixa frontal **apontou para o corpo** (120°–240° está dentro de 80°–280°)
-- **180° NÃO é a frente** neste robô — é a direção do corpo
-- O comando `--front-center 180` não deve ser usado para este modelo
+- A faixa frontal centrada em 180° **apontou para a frente** (direção de movimento)
+- O mínimo 94 mm é o **parachoques** à frente do C1 — correto
+- **180° é a frente** do robô; use `--front-center 180` para detecção de obstáculos
 
 ---
 
@@ -77,21 +81,28 @@
 - **Mínimo 360°:** 94–98 mm (corpo)
 
 #### Interpretação
-- A faixa frontal **exclui o corpo** (120°–240°) e olha apenas para a zona livre
-- O mínimo frontal ~1,25 m indica parede ou obstáculo fixo à frente
-- **O preset `dev` está correto** para este robô
-- A direção de movimento corresponde a **0°** (ou próximo: 350°–10°)
+- Faixa 260°→0°→100° olha para **trás e laterais** (exclui 120°–240°)
+- O mínimo ~1,25 m é parede/obstáculo **atrás** ou nas laterais (não à frente)
+- Para **obstáculos à frente** use centro **180°**, não 0°
 
 ---
 
 ## 3. Configuração validada para este robô
 
+### Montagem física (confirmada)
+- **C1:** sensor no parachoques preto, na **frente** do robô
+- **Corpo vermelho:** atrás do C1 (traseira)
+- **0°:** traseira (cabo aponta para o corpo)
+- **180°:** frente (direção de movimento)
+
+### Parâmetros para detecção de obstáculos
+
 | Parâmetro | Valor | Uso |
 |-----------|--------|-----|
-| **Faixa frontal** | 200° | Preset `dev` |
-| **Centro** | 0° | Direção do cabo = frente |
-| **Área do corpo** | 120°–240° | Desprezar para detecção de obstáculos |
-| **Distância típica à frente** | ~1,25 m | Parede ou limite do ambiente no teste |
+| **Faixa frontal** | 200° | `--front-deg 200` |
+| **Centro** | **180°** | `--front-center 180` — frente = direção de movimento |
+| **Limiar corpo (ignorar)** | < 150 mm | Parachoques à frente do C1 |
+| **Limiar parada** | < 350 mm | Obstáculo real à frente |
 
 ---
 

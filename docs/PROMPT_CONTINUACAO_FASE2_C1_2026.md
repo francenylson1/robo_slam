@@ -78,7 +78,7 @@ O C1 está **apenas funcionando no teste isolado**. Próximos passos para entend
 ### Etapa 1 — Filtrar por ângulo ✅ Concluída (Mar/2026)
 - **Objetivo:** Considerar apenas pontos "à frente" do robô.
 - **Implementação:** `--front-deg`, `--front-center`, `--robot-model`, `--diagnose` no `teste_c1_isolado.py`.
-- **Resultado:** Preset `dev` (200° centro 0°) validado. Ver `docs/FASE2_ANALISE_TESTES_C1_2026.md`.
+- **Resultado:** C1 na frente (parachoques). Para obstáculos: `--front-deg 200 --front-center 180`. Ver `docs/FASE2_ANALISE_TESTES_C1_2026.md`.
 
 ### Etapa 2 — Definir distâncias mínimas
 - **Objetivo:** Definir limiares de parada (ex.: 0.35 m) e alerta (ex.: 0.50 m).
@@ -95,7 +95,8 @@ O C1 está **apenas funcionando no teste isolado**. Próximos passos para entend
 
 ### Resultados dos testes (Março 2026)
 - **Etapa 1 validada:** `--diagnose`, `--front-deg`, `--robot-model` funcionando. Ver `docs/FASE2_ANALISE_TESTES_C1_2026.md`.
-- **Configuração validada:** `--robot-model dev` (200° centrado em 0°). Corpo do robô em ~120°–240°; área livre ~240°. Mínimo frontal estável: ~1,25 m (parede/obstáculo no ambiente).
+- **Montagem:** C1 na frente do robô (parachoques); corpo vermelho atrás. Cabo do C1 → traseira (0°).
+- **Configuração para obstáculos:** `--front-deg 200 --front-center 180` (centro 180° = frente). Parachoques em 120°–240° (~94 mm). Ignorar < 150 mm; parada se < 350 mm.
 
 ---
 
