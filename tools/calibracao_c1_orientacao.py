@@ -33,6 +33,7 @@ import asyncio
 import csv
 import json
 import sys
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -265,6 +266,13 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
     lidar = RPLidar(port, baud, timeout=0.2)
     resultado = CalibracaoResultado()
 
+    # Reset do C1 para limpar buffer e evitar "sync bytes" de sessão anterior
+    try:
+        lidar.reset()
+        time.sleep(1.5)
+    except Exception:
+        pass
+
     print("\n" + "=" * 70)
     print("CALIBRAÇÃO DE ORIENTAÇÃO — RP Lidar C1")
     print("   Mapeia ângulos do sensor para posições do robô (frente, esq, dir, trás)")
@@ -279,24 +287,6 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
         print("   Certifique-se de que NADA está à frente, atrás ou nas laterais.")
         input("   Pressione ENTER quando estiver pronto... ")
 
-        lidar.stop_event.clear()
-        if hasattr(asyncio, "TaskGroup"):
-            async def _scan():
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(lidar.simple_scan())
-                    await coletar_scans(lidar, n_scans)
-            asyncio.get_event_loop().run_until_complete(_scan())
-        else:
-            t1 = asyncio.create_task(lidar.simple_scan())
-            asyncio.get_event_loop().run_until_complete(coletar_scans(lidar, n_scans))
-            t1.cancel()
-
-        points1 = asyncio.get_event_loop().run_until_complete(coletar_scans(lidar, 0))
-        # Recollect - the above might have consumed. Let me fix: we need to run the scan and collect in parallel.
-        # Actually the coletar_scans runs until n_scans. So we need to run simple_scan and coletar_scans in parallel.
-        # Let me refactor - create an async main that does both.
-
-        # I'll simplify: run a single async main that does scan + collect
         lidar.stop_event.clear()
         collected = []
 
@@ -330,8 +320,15 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
                 collected = await consume()
                 t1.cancel()
 
-        lidar.stop_event.clear()
-        asyncio.get_event_loop().run_until_complete(_run())
+        try:
+            asyncio.run(_run())
+        except BaseException as e:
+            if isinstance(e, ValueError) or type(e).__name__ == "ExceptionGroup":
+                print("\n   ❌ Erro de comunicação com o C1 (sync bytes / protocolo).")
+                print("   → Desconecte o cabo USB do C1, espere 3 segundos e reconecte.")
+                print("   → Se o main.py ou outro processo usou o C1 antes, feche-o e tente novamente.")
+                return 1
+            raise
 
         if not collected:
             print("   ⚠️ Nenhum ponto válido coletado. Verifique a conexão.")
