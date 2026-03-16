@@ -12,6 +12,7 @@ Uso:
   python tools/teste_c1_isolado.py --robot-model dev         # Modelo atual (~200°)
   python tools/teste_c1_isolado.py --robot-model wide       # Faixa frontal ampla
   python tools/teste_c1_isolado.py --diagnose --scans 2      # Descobrir 0° e área livre
+  python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --min-stop 0.35 --min-warn 0.50 --scans 5
 
 Requer: pip install rplidarc1 (Python 3.10+)
 """
@@ -177,9 +178,24 @@ async def run_scan(lidar, args):
                     if frontal:
                         d_min_all = min((p.get("d_mm") or 0) for p in valid)
                         d_min_front = min((p.get("d_mm") or 0) for p in frontal)
-                        print(f"Scan {scan_count}: {n_total} pts | "
-                              f" frontal ({n_front} pts): min={d_min_front:.0f} mm ({d_min_front/1000:.2f} m) | "
-                              f" 360° min={d_min_all:.0f} mm")
+                        msg = (f"Scan {scan_count}: {n_total} pts | "
+                               f" frontal ({n_front} pts): min={d_min_front:.0f} mm ({d_min_front/1000:.2f} m) | "
+                               f" 360° min={d_min_all:.0f} mm")
+                        # Status obstáculo: ignora < min_ignore (corpo), alerta/parada acima disso
+                        min_ignore_m = getattr(args, "min_ignore", 0.15)
+                        min_stop_m = getattr(args, "min_stop", None)
+                        min_warn_m = getattr(args, "min_warn", None)
+                        if min_stop_m is not None or min_warn_m is not None:
+                            min_ignore_mm = int(min_ignore_m * 1000)
+                            obst = [p for p in frontal if (p.get("d_mm") or 0) >= min_ignore_mm]
+                            d_obst = min((p.get("d_mm") or 0) for p in obst) / 1000.0 if obst else float("inf")
+                            if min_stop_m is not None and d_obst < min_stop_m:
+                                msg += " | 🛑 PARAR"
+                            elif min_warn_m is not None and d_obst < min_warn_m:
+                                msg += " | ⚠️ ALERTA"
+                            else:
+                                msg += " | ✓ OK"
+                        print(msg)
                     else:
                         print(f"Scan {scan_count}: {n_total} pts | frontal ({n_front} pts): sem dados válidos")
                 else:
@@ -221,6 +237,13 @@ async def main_async(args):
     if front_width is not None:
         rng = get_frontal_range_desc(front_center, front_width)
         print(f"   Faixa frontal: {rng}")
+        min_stop = getattr(args, "min_stop", None)
+        min_warn = getattr(args, "min_warn", None)
+        if min_stop is not None or min_warn is not None:
+            min_ign = getattr(args, "min_ignore", 0.15)
+            s_stop = f" | parar < {min_stop:.2f} m" if min_stop is not None else ""
+            s_warn = f" | alerta < {min_warn:.2f} m" if min_warn is not None else ""
+            print(f"   Limiares: ignorar < {min_ign:.2f} m{s_stop}{s_warn}")
     else:
         print("   Faixa frontal: 360° (todos os pontos)")
     print()
@@ -302,6 +325,13 @@ def main():
         default=None,
         help=f"Preset de modelo: narrow(60°), medium(90°), wide(120°), dev(200°), hemi(180°), panoramic(270°)",
     )
+    fg2 = parser.add_argument_group("Limiares de obstáculo (Etapa 2)")
+    fg2.add_argument("--min-ignore", type=float, default=0.15, metavar="M",
+                     help="Ignorar pontos < M m (corpo/parachoques). Padrão: 0.15 (150 mm)")
+    fg2.add_argument("--min-stop", type=float, default=0.35, metavar="M",
+                     help="Considerar PARAR se obstáculo frontal < M m. Padrão: 0.35 (350 mm)")
+    fg2.add_argument("--min-warn", type=float, default=0.50, metavar="M",
+                     help="Considerar ALERTA se obstáculo frontal < M m. Padrão: 0.50 (500 mm)")
     args = parser.parse_args()
     # Resolve front_width: robot-model sobrescreve --front-deg
     if args.robot_model is not None:
@@ -314,6 +344,12 @@ def main():
     args.diagnose = getattr(args, "diagnose", False)
     if args.diagnose and (args.scans is None or args.scans == 0):
         args.scans = 2  # Diagnóstico precisa de pelo menos 2 varreduras
+    # Se faixa frontal definida e limiares não passados, usa padrões (obstáculos)
+    if args.front_width is not None:
+        if args.min_stop is None:
+            args.min_stop = 0.35
+        if args.min_warn is None:
+            args.min_warn = 0.50
     sys.exit(asyncio.run(main_async(args)))
 
 

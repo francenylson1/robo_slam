@@ -80,10 +80,10 @@ O C1 está **apenas funcionando no teste isolado**. Próximos passos para entend
 - **Implementação:** `--front-deg`, `--front-center`, `--robot-model`, `--diagnose` no `teste_c1_isolado.py`.
 - **Resultado:** C1 na frente (parachoques). Para obstáculos: `--front-deg 200 --front-center 180`. Ver `docs/FASE2_ANALISE_TESTES_C1_2026.md`.
 
-### Etapa 2 — Definir distâncias mínimas
+### Etapa 2 — Definir distâncias mínimas ✅ Concluída (Mar/2026)
 - **Objetivo:** Definir limiares de parada (ex.: 0.35 m) e alerta (ex.: 0.50 m).
-- **Implementação sugerida:** Parâmetros `--min-stop 0.35` e `--min-warn 0.50` no script de teste; exibir alerta quando obstáculo mais próximo na faixa frontal for menor que o limite.
-- **Teste:** Aproximar objeto à frente e verificar se o script indica corretamente quando está abaixo dos limites.
+- **Implementação:** Parâmetros `--min-stop 0.35`, `--min-warn 0.50`, `--min-ignore 0.15` no script. Exibe PARAR / ALERTA / OK conforme obstáculo frontal (ignorando pontos < 150 mm = corpo).
+- **Teste:** `python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --scans 5` — aproximar objeto à frente e conferir ALERTA/PARAR.
 
 ### Etapa 3 — Integrar ao fluxo de navegação
 - **Objetivo:** Durante a navegação, ler o C1 em um loop/thread assíncrona e parar os motores se obstáculo &lt; limite na frente.
