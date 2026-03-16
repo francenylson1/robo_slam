@@ -886,6 +886,25 @@ class RobotNavigator(QObject):
         # Registra distância inicial (primeiro ciclo após a entrada)
         if self._fa_entry_distance is None:
             self._fa_entry_distance = total_distance
+            self._fa_min_distance = total_distance
+
+        # Guarda menor distância alcançada (para detectar ultrapassagem do POI)
+        self._fa_min_distance = min(getattr(self, '_fa_min_distance', total_distance), total_distance)
+
+        # Detecção de ultrapassagem: passou pelo POI e está se afastando.
+        min_dist = getattr(self, '_fa_min_distance', total_distance)
+        if (not self.is_returning_to_base and
+                min_dist < 0.35 and
+                total_distance > min_dist + 0.08):
+            self.motors.stop()
+            self.final_approach_start_time = None
+            self._fa_entry_distance = None
+            self._fa_min_distance = None
+            logger.info(
+                "POI ultrapassado (estava a %.0f cm, agora a %.0f cm). Declarando chegada.",
+                min_dist * 100, total_distance * 100
+            )
+            return True
 
         target_angle = math.degrees(math.atan2(dy, dx))
         angle_diff = (target_angle - self.current_angle + 180) % 360 - 180
@@ -913,7 +932,10 @@ class RobotNavigator(QObject):
         # de odometria, _stable_final_approach fica girando o robô fisicamente
         # por até 6s sem avançar. Esta regra para o robô após 2s se o progresso
         # em direção ao alvo virtual for menor que 10 cm.
-        if not self.is_returning_to_base and elapsed_approach > 2.0:
+        # Não aplicar se Lidar está bloqueando (obstáculo na frente) — aguardar liberar.
+        # Usa "sticky": considera bloqueado se detectou obstáculo nos últimos 8 s (evita gaps de scan).
+        lidar_blocking = self.motors.is_lidar_blocking_or_recent(window_sec=8.0)
+        if not self.is_returning_to_base and elapsed_approach > 2.0 and not lidar_blocking:
             progress = (self._fa_entry_distance or total_distance) - total_distance
             if progress < 0.10:
                 self.motors.stop()
@@ -927,7 +949,8 @@ class RobotNavigator(QObject):
 
         # Override por tempo: se em modo "só ida" há mais de 6 s, declara chegada
         # independente da distância (evita giro infinito por deriva de odometria).
-        if not self.is_returning_to_base and elapsed_approach > 6.0:
+        # Não aplicar se Lidar está bloqueando — robô parou por obstáculo, aguardar liberar.
+        if not self.is_returning_to_base and elapsed_approach > 6.0 and not lidar_blocking:
             self.motors.stop()
             self.final_approach_start_time = None
             logger.info("POI: timeout de 6 s atingido (%.0f cm). Declarando chegada.", total_distance * 100)

@@ -69,7 +69,8 @@ class LidarC1Reader:
         self.parachoques_min_ignore_m = parachoques_min_ignore_m
         self.min_ignore_m = min_ignore_m
 
-        self._obstacle_distance_m: float = float("inf")
+        # Inicialmente 0 m: bloqueia movimento até o primeiro scan (segurança).
+        self._obstacle_distance_m: float = 0.0
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()

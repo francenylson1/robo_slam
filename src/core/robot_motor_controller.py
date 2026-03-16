@@ -122,6 +122,7 @@ class RobotMotorController(QObject):
 
         # Lidar C1: parada automática quando obstáculo < LIDAR_OBSTACLE_MIN_DISTANCE (Etapa 3)
         self.lidar_reader = None
+        self._last_obstacle_detected_at: float = 0.0  # Timestamp da última detecção (para blocking "sticky")
         if GPIO_AVAILABLE and LIDAR_C1_ENABLED:
             try:
                 from src.core.lidar_c1_reader import LidarC1Reader
@@ -261,6 +262,8 @@ class RobotMotorController(QObject):
         if self.lidar_reader and self.lidar_reader.has_obstacle():
             if left_tps != 0 or right_tps != 0:
                 logger.info("Lidar C1: obstáculo < %.2f m — parando motores.", LIDAR_OBSTACLE_MIN_DISTANCE)
+                self._last_obstacle_detected_at = time.time()
+                self.disable_pid_control()  # Parada imediata com freio (não esperar PID)
             left_tps = 0.0
             right_tps = 0.0
 
@@ -282,6 +285,19 @@ class RobotMotorController(QObject):
         if not GPIO_AVAILABLE:
             self.simulated_left_tps = left_tps_corrected
             self.simulated_right_tps = right_tps_corrected
+
+    def is_lidar_blocking_or_recent(self, window_sec: float = 5.0) -> bool:
+        """
+        Retorna True se Lidar está bloqueando AGORA ou bloqueou recentemente (janela em segundos).
+        Usado pelo navegador para não declarar chegada por timeout quando obstáculo parou o robô.
+        """
+        if not self.lidar_reader:
+            return False
+        if self.lidar_reader.has_obstacle():
+            return True
+        if self._last_obstacle_detected_at > 0 and (time.time() - self._last_obstacle_detected_at) < window_sec:
+            return True
+        return False
 
     def _initialize_pid_controllers(self):
         """Inicializa os controladores PID com o perfil atual."""
