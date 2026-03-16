@@ -254,6 +254,10 @@ def run_test(
 
 def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) -> int:
     """Modo wizard: guia o usuário passo a passo."""
+    # Garantir path do projeto para import de tools.teste_c1_isolado
+    _root = Path(__file__).resolve().parent.parent
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
     try:
         from rplidarc1.scanner import RPLidar
     except ImportError:
@@ -263,15 +267,7 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
             print("❌ Pacote 'rplidarc1' não instalado. Execute: pip install rplidarc1")
             return 1
 
-    lidar = RPLidar(port, baud, timeout=0.2)
     resultado = CalibracaoResultado()
-
-    # Reset do C1 para limpar buffer e evitar "sync bytes" de sessão anterior
-    try:
-        lidar.reset()
-        time.sleep(1.5)
-    except Exception:
-        pass
 
     print("\n" + "=" * 70)
     print("CALIBRAÇÃO DE ORIENTAÇÃO — RP Lidar C1")
@@ -287,48 +283,26 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
         print("   Certifique-se de que NADA está à frente, atrás ou nas laterais.")
         input("   Pressione ENTER quando estiver pronto... ")
 
-        lidar.stop_event.clear()
-        collected = []
-
-        async def _run():
-            nonlocal collected
-            async def consume():
-                pts = []
-                la = None
-                cnt = 0
-                while not lidar.stop_event.is_set():
-                    try:
-                        d = await asyncio.wait_for(lidar.output_queue.get(), timeout=0.5)
-                    except asyncio.TimeoutError:
-                        continue
-                    pts.append(d)
-                    ang = d.get("a_deg", 0)
-                    if la is not None and la > 350 and ang < 10:
-                        cnt += 1
-                        if n_scans > 0 and cnt >= n_scans:
-                            lidar.stop_event.set()
-                            break
-                    la = ang
-                return [p for p in pts if (p.get("d_mm") or 0) > 0]
-
-            if hasattr(asyncio, "TaskGroup"):
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(lidar.simple_scan())
-                    collected = await consume()
-            else:
-                t1 = asyncio.create_task(lidar.simple_scan())
-                collected = await consume()
-                t1.cancel()
-
+        # Usa a mesma lógica do teste_c1_isolado (que funciona) via collect_scan_points_sync
+        _proj = Path(__file__).resolve().parent.parent
+        if str(_proj) not in sys.path:
+            sys.path.insert(0, str(_proj))
         try:
-            asyncio.run(_run())
-        except BaseException as e:
-            if isinstance(e, ValueError) or type(e).__name__ == "ExceptionGroup":
-                print("\n   ❌ Erro de comunicação com o C1 (sync bytes / protocolo).")
-                print("   → Desconecte o cabo USB do C1, espere 3 segundos e reconecte.")
-                print("   → Se o main.py ou outro processo usou o C1 antes, feche-o e tente novamente.")
+            from tools.teste_c1_isolado import collect_scan_points_sync
+            collected = collect_scan_points_sync(port=port, baud=baud, n_scans=n_scans or 3)
+        except ImportError:
+            try:
+                from teste_c1_isolado import collect_scan_points_sync
+                collected = collect_scan_points_sync(port=port, baud=baud, n_scans=n_scans or 3)
+            except ImportError:
+                print("   ❌ Não foi possível importar collect_scan_points_sync.")
+                print("   Execute a partir da raiz: cd ~/robo_slam && python tools/calibracao_c1_orientacao.py --wizard")
                 return 1
-            raise
+        except Exception as e:
+            print(f"\n   ❌ Erro ao coletar scans: {e}")
+            if "sync" in str(e).lower() or "ValueError" in str(type(e).__name__):
+                print("   → Desconecte o cabo USB do C1, espere 3 segundos e reconecte.")
+            return 1
 
         if not collected:
             print("   ⚠️ Nenhum ponto válido coletado. Verifique a conexão.")
@@ -352,56 +326,11 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
         print("   na direção em que ele SE MOVE, a 50–80 cm de distância.")
         input("   Pressione ENTER quando estiver pronto... ")
 
-        lidar.stop_event.clear()
-        collected2 = []
-        async def _run2():
-            nonlocal collected2
-            pts = []
-            la = None
-            cnt = 0
-            while not lidar.stop_event.is_set():
-                try:
-                    d = await asyncio.wait_for(lidar.output_queue.get(), timeout=0.5)
-                except asyncio.TimeoutError:
-                    continue
-                pts.append(d)
-                ang = d.get("a_deg", 0)
-                if la is not None and la > 350 and ang < 10:
-                    cnt += 1
-                    if n_scans >= 1 and cnt >= n_scans:
-                        lidar.stop_event.set()
-                        break
-                la = ang
-            collected2 = [p for p in pts if (p.get("d_mm") or 0) > 0]
-
-        if hasattr(asyncio, "TaskGroup"):
-            async def _run2_full():
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(lidar.simple_scan())
-                    pts = []
-                    la = None
-                    cnt = 0
-                    while not lidar.stop_event.is_set():
-                        try:
-                            d = await asyncio.wait_for(lidar.output_queue.get(), timeout=0.5)
-                        except asyncio.TimeoutError:
-                            continue
-                        pts.append(d)
-                        ang = d.get("a_deg", 0)
-                        if la is not None and la > 350 and ang < 10:
-                            cnt += 1
-                            if n_scans >= 1 and cnt >= n_scans:
-                                lidar.stop_event.set()
-                                break
-                        la = ang
-                    return [p for p in pts if (p.get("d_mm") or 0) > 0]
-            lidar.stop_event.clear()
-            collected2 = asyncio.get_event_loop().run_until_complete(_run2_full())
-        else:
-            lidar.stop_event.clear()
-            t1 = asyncio.create_task(lidar.simple_scan())
-            asyncio.get_event_loop().run_until_complete(_run2())
-            t1.cancel()
+        try:
+            collected2 = collect_scan_points_sync(port=port, baud=baud, n_scans=n_scans or 2)
+        except Exception as e:
+            print(f"\n   ❌ Erro: {e}")
+            collected2 = []
 
         res = encontrar_angulo_obstaculo(collected2, 300, 1500)
         if res:
@@ -420,37 +349,11 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
         print("   a 90° da frente (perpendicular), a ~50–80 cm.")
         input("   Pressione ENTER quando estiver pronto... ")
 
-        lidar.stop_event.clear()
-        collected3 = []
-        async def _run3():
-            pts = []
-            la = None
-            cnt = 0
-            while not lidar.stop_event.is_set():
-                try:
-                    d = await asyncio.wait_for(lidar.output_queue.get(), timeout=0.5)
-                except asyncio.TimeoutError:
-                    continue
-                pts.append(d)
-                ang = d.get("a_deg", 0)
-                if la is not None and la > 350 and ang < 10:
-                    cnt += 1
-                    if n_scans >= 1 and cnt >= n_scans:
-                        lidar.stop_event.set()
-                        break
-                la = ang
-            return [p for p in pts if (p.get("d_mm") or 0) > 0]
-
-        if hasattr(asyncio, "TaskGroup"):
-            async def _run3_full():
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(lidar.simple_scan())
-                    return await _run3()
-            collected3 = asyncio.get_event_loop().run_until_complete(_run3_full())
-        else:
-            t1 = asyncio.create_task(lidar.simple_scan())
-            collected3 = asyncio.get_event_loop().run_until_complete(_run3())
-            t1.cancel()
+        try:
+            collected3 = collect_scan_points_sync(port=port, baud=baud, n_scans=n_scans or 2)
+        except Exception as e:
+            print(f"\n   Erro: {e}")
+            collected3 = []
 
         res = encontrar_angulo_obstaculo(collected3, 300, 1500)
         if res:
@@ -465,17 +368,11 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
         print("   RETIRE o objeto da esquerda. Coloque à DIREITA do robô (90° da frente).")
         input("   Pressione ENTER quando estiver pronto... ")
 
-        lidar.stop_event.clear()
-        if hasattr(asyncio, "TaskGroup"):
-            async def _run4_full():
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(lidar.simple_scan())
-                    return await _run3()  # same logic
-            collected4 = asyncio.get_event_loop().run_until_complete(_run4_full())
-        else:
-            t1 = asyncio.create_task(lidar.simple_scan())
-            collected4 = asyncio.get_event_loop().run_until_complete(_run3())
-            t1.cancel()
+        try:
+            collected4 = collect_scan_points_sync(port=port, baud=baud, n_scans=n_scans or 2)
+        except Exception as e:
+            print(f"\n   ❌ Erro: {e}")
+            collected4 = []
 
         res = encontrar_angulo_obstaculo(collected4, 300, 1500)
         if res:
@@ -490,17 +387,11 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
         print("   RETIRE o objeto. Coloque ATRÁS do robô (na traseira), ~50–80 cm.")
         input("   Pressione ENTER quando estiver pronto... ")
 
-        lidar.stop_event.clear()
-        if hasattr(asyncio, "TaskGroup"):
-            async def _run5_full():
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(lidar.simple_scan())
-                    return await _run3()
-            collected5 = asyncio.get_event_loop().run_until_complete(_run5_full())
-        else:
-            t1 = asyncio.create_task(lidar.simple_scan())
-            collected5 = asyncio.get_event_loop().run_until_complete(_run3())
-            t1.cancel()
+        try:
+            collected5 = collect_scan_points_sync(port=port, baud=baud, n_scans=n_scans or 2)
+        except Exception as e:
+            print(f"\n   ❌ Erro: {e}")
+            collected5 = []
 
         res = encontrar_angulo_obstaculo(collected5, 300, 1500)
         if res:
@@ -529,13 +420,7 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
 
     except KeyboardInterrupt:
         print("\n\n⚠️ Interrompido pelo usuário.")
-    finally:
-        try:
-            lidar.stop_event.set()
-            lidar.reset()
-            lidar.shutdown()
-        except Exception:
-            pass
+    # Sem finally com lidar — cada passo usa collect_scan_points_sync (nova conexão por passo)
 
     if output_path:
         out = {}

@@ -144,6 +144,61 @@ def _print_diagnose(valid_points: list) -> None:
     print()
 
 
+def collect_scan_points(port: str = DEFAULT_PORT, baud: int = DEFAULT_BAUD, n_scans: int = 3):
+    """
+    Coleta n_scans do C1 e retorna lista de pontos {a_deg, d_mm}.
+    Usa a mesma lógica que main_async (healthcheck + TaskGroup) — para calibracao_c1_orientacao.
+    """
+    try:
+        from rplidarc1.scanner import RPLidar
+    except ImportError:
+        from rplidarc1 import RPLidar
+
+    async def _do():
+        lidar = RPLidar(port, baud, timeout=0.2)
+        try:
+            lidar.healthcheck()
+        except Exception:
+            pass
+        pts = []
+        la = None
+        cnt = 0
+
+        async def consume():
+            nonlocal pts, la, cnt
+            while not lidar.stop_event.is_set():
+                try:
+                    d = await asyncio.wait_for(lidar.output_queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
+                pts.append(d)
+                ang = d.get("a_deg", 0)
+                if la is not None and la > 350 and ang < 10:
+                    cnt += 1
+                    if cnt >= n_scans:
+                        lidar.stop_event.set()
+                        break
+                la = ang
+            return [p for p in pts if (p.get("d_mm") or 0) > 0]
+
+        if hasattr(asyncio, "TaskGroup"):
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(lidar.simple_scan())
+                result = await consume()
+        else:
+            t1 = asyncio.create_task(lidar.simple_scan())
+            result = await consume()
+            t1.cancel()
+        try:
+            lidar.reset()
+            lidar.shutdown()
+        except Exception:
+            pass
+        return result
+
+    return asyncio.run(_do())
+
+
 async def run_scan(lidar, args):
     """Lê da fila e exibe estatísticas a cada batch de pontos."""
     points = []
@@ -221,6 +276,115 @@ async def run_scan(lidar, args):
                 lidar.stop_event.set()
                 break
         last_angle = ang
+
+
+def collect_scan_points(port: str = DEFAULT_PORT, baud: int = DEFAULT_BAUD, n_scans: int = 3) -> list:
+    """
+    Coleta n_scans do C1 e retorna lista de pontos [{a_deg, d_mm}, ...].
+    Usa a mesma lógica que main_async (que funciona na Pi). Para calibracao_c1_orientacao.
+    """
+    try:
+        from rplidarc1.scanner import RPLidar
+    except ImportError:
+        try:
+            from rplidarc1 import RPLidar
+        except ImportError:
+            raise ImportError("rplidarc1 não instalado") from None
+
+    async def _do():
+        lidar = RPLidar(port, baud, timeout=0.2)
+        try:
+            lidar.healthcheck()
+        except Exception:
+            pass
+        pts = []
+        la = None
+        cnt = 0
+        lidar.stop_event.clear()
+
+        async def consume():
+            nonlocal pts, la, cnt
+            while not lidar.stop_event.is_set():
+                try:
+                    d = await asyncio.wait_for(lidar.output_queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
+                pts.append(d)
+                ang = d.get("a_deg", 0)
+                if la is not None and la > 350 and ang < 10:
+                    cnt += 1
+                    if cnt >= n_scans:
+                        lidar.stop_event.set()
+                        break
+                la = ang
+            return [p for p in pts if (p.get("d_mm") or 0) > 0]
+
+        if hasattr(asyncio, "TaskGroup"):
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(lidar.simple_scan())
+                result = await consume()
+        else:
+            t1 = asyncio.create_task(lidar.simple_scan())
+            result = await consume()
+            t1.cancel()
+        try:
+            lidar.reset()
+            lidar.shutdown()
+        except Exception:
+            pass
+        return result
+
+    return asyncio.run(_do())
+
+
+def collect_scan_points_sync(port: str = DEFAULT_PORT, baud: int = DEFAULT_BAUD, n_scans: int = 3):
+    """Coleta n_scans do C1 e retorna lista de pontos. Mesma lógica que main (que funciona)."""
+    try:
+        from rplidarc1.scanner import RPLidar
+    except ImportError:
+        from rplidarc1 import RPLidar
+
+    async def _do():
+        lidar = RPLidar(port, baud, timeout=0.2)
+        try:
+            lidar.healthcheck()
+        except Exception:
+            pass
+        pts, la, cnt = [], None, 0
+
+        async def consume():
+            nonlocal pts, la, cnt
+            while not lidar.stop_event.is_set():
+                try:
+                    d = await asyncio.wait_for(lidar.output_queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
+                pts.append(d)
+                ang = d.get("a_deg", 0)
+                if la is not None and la > 350 and ang < 10:
+                    cnt += 1
+                    if cnt >= n_scans:
+                        lidar.stop_event.set()
+                        break
+                la = ang
+            return [p for p in pts if (p.get("d_mm") or 0) > 0]
+
+        if hasattr(asyncio, "TaskGroup"):
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(lidar.simple_scan())
+                result = await consume()
+        else:
+            t1 = asyncio.create_task(lidar.simple_scan())
+            result = await consume()
+            t1.cancel()
+        try:
+            lidar.reset()
+            lidar.shutdown()
+        except Exception:
+            pass
+        return result
+
+    return asyncio.run(_do())
 
 
 async def main_async(args):
