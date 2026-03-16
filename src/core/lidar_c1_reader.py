@@ -149,6 +149,17 @@ class LidarC1Reader:
                 points.append(data)
                 ang = data.get("a_deg", 0)
 
+                # Via rápida: se ponto frontal está perto, atualiza imediatamente (parar mais eficiente)
+                d_mm = data.get("d_mm") or 0
+                if d_mm > 0 and _is_in_frontal_cone(ang, self.front_center, self.front_width):
+                    min_ignore_mm = int(self._min_ignore_for_point(ang) * 1000)
+                    if d_mm >= min_ignore_mm:
+                        d_m = d_mm / 1000.0
+                        if d_m < self.min_stop_m:
+                            with self._lock:
+                                if d_m < self._obstacle_distance_m or self._obstacle_distance_m == float("inf"):
+                                    self._obstacle_distance_m = d_m
+
                 if last_angle is not None and last_angle > 350 and ang < 10:
                     d_obst = self._process_scan_points(points)
                     with self._lock:

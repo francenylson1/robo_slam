@@ -106,4 +106,61 @@ python3 src/main.py
 
 ---
 
-**Resumo:** `git checkout robo_slam_2026_lidar_c1` → `git pull` → `python tools/teste_c1_isolado.py` → `python3 src/main.py`
+## 8. Próximos testes (Fase 2 — eficiência da parada)
+
+Objetivo: validar que o robô **para com eficiência** diante de obstáculos (sem desvio, foco em parada).
+
+### Teste 1 — Parada ao aproximar
+1. Inicie navegação para um POI distante.
+2. Coloque a lixeira (ou caixa) à frente do robô em ~50 cm.
+3. **Esperado:** robô para em até ~1–2 s (via rápida no C1).
+4. **Obs:** distância de parada = 45 cm (LIDAR_OBSTACLE_MIN_DISTANCE).
+
+### Teste 2 — Obstáculo removido e recolocado
+1. Com robô parado por obstáculo, **retire** a lixeira.
+2. **Esperado:** robô retoma após próximo scan completo (~200 ms).
+3. **Coloque** a lixeira novamente à frente.
+4. **Esperado:** robô para rapidamente (via rápida).
+
+### Teste 3 — Navegação sem obstáculo
+1. Navegação para POI sem colocar obstáculos.
+2. **Esperado:** robô chega ao destino normalmente.
+3. Se watchdog cancelar ("obstáculo bloqueou"): obstáculo ainda no cone ou corpo detectado — conferir calibração.
+
+### Teste 4 — Cancelamento por obstáculo (watchdog)
+1. Coloque obstáculo fixo no caminho (ex.: lixeira).
+2. Robô para e fica parado 45+ segundos.
+3. **Esperado:** mensagem "⚠️ Navegação cancelada — obstáculo bloqueou o caminho", não "chegada com sucesso".
+
+### Teste 5 — Fechamento do app
+1. Após qualquer navegação, fechar o app de forma controlada (botão fechar).
+2. **Esperado:** sem falha de segmentação (proteção GPIO).
+3. Se houver falha, reiniciar a Raspberry Pi antes do próximo teste.
+
+### Teste 5 — Fechamento do app
+1. Após navegação, fechar o app de forma controlada.
+2. **Esperado:** sem falha de segmentação (proteção GPIO no encerramento).
+
+### Teste 5 — Fechamento do app
+1. Após qualquer navegação, feche o app de forma controlada.
+2. **Esperado:** sem falha de segmentação (proteção GPIO).
+3. Se houver falha, reinicie a Raspberry Pi antes do próximo teste.
+
+### Critérios de sucesso
+- Para diante de obstáculo < 45 cm.
+- Reage rápido ao colocar obstáculo (via rápida).
+- Retoma ao remover obstáculo.
+- Não declara chegada quando parado por obstáculo.
+
+---
+
+**Resumo de atualização:** `git pull origin robo_slam_2026_lidar_c1` → `python3 src/main.py`
+
+---
+
+**Resumo:** `git pull origin robo_slam_2026_lidar_c1` → `python tools/teste_c1_isolado.py` → `python3 src/main.py`
+- App fecha sem falha de segmentação.
+
+---
+
+**Resumo:** `git pull origin robo_slam_2026_lidar_c1` → `python tools/teste_c1_isolado.py` → `python3 src/main.py`
