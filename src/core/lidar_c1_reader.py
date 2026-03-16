@@ -15,10 +15,11 @@ from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Parâmetros validados em testes (Março 2026)
-FRONT_CENTER_DEG = 180.0
-FRONT_WIDTH_DEG = 200.0
-PARACHOQUES_ZONE = (120.0, 240.0)
+# Parâmetros calibrados via tools/calibracao_c1_orientacao.py (Mar/2026)
+# Frente do robô = 350° | corpo/estrutura = 120°–240° (95mm)
+FRONT_CENTER_DEG = 350.0
+FRONT_WIDTH_DEG = 60.0
+PARACHOQUES_ZONE = (120.0, 240.0)  # Ignorar reflexos do corpo do robô
 MIN_IGNORE_M = 0.15
 PARACHOQUES_MIN_IGNORE_M = 0.22
 DEFAULT_PORT = "/dev/ttyUSB0"

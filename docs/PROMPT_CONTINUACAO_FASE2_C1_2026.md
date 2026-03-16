@@ -98,7 +98,15 @@ O C1 está **apenas funcionando no teste isolado**. Próximos passos para entend
 - **Montagem:** C1 na frente do robô (parachoques); corpo vermelho atrás. Cabo do C1 → traseira (0°).
 - **Configuração para obstáculos:** `--front-deg 200 --front-center 180` (centro 180° = frente). Parachoques em 120°–240° (~94 mm). Ignorar < 150 mm; parada se < 350 mm.
 
-### Incidente 16/03/2026 — C1 desativado temporariamente
+### Calibração 16/03/2026 — Parâmetros corrigidos
+- **Resultado do wizard:** Frente = 350° (não 180°), corpo em 120°–240°, Esq=270°, Dir=90°, Trás=250°.
+- **lidar_c1_reader.py:** `FRONT_CENTER_DEG=350`, `FRONT_WIDTH_DEG=60` (cone frontal 320°–20°).
+- **config.py:** `LIDAR_C1_ENABLED=True` (reativado após calibração).
+
+### Guia prático — Atualizar na Raspberry Pi
+- Ver **`docs/ATUALIZAR_RASPBERRY_C1_MAR2026.md`** — passos completos: `git pull`, teste isolado, rodar app, troubleshooting.
+
+### Incidente 16/03/2026 — C1 desativado temporariamente (resolvido, reativado)
 - **Sintoma:** Em teste de navegação com C1 ativo, o robô parou ao obstáculo "empurrando um pouco", ficou parado e depois declarou chegada ao POI mesmo longe do destino. Após o teste, o robô **travou**: apenas gira (esquerda/direita), não anda para frente.
 - **Causas prováveis:**
   1. **Bloqueio eterno:** `_obstacle_distance_m` começa em 0 m; se o 1º scan nunca completar (C1 em estado ruim, serial ocupada), `has_obstacle()` fica sempre True → motores travados para avanço.
@@ -174,6 +182,8 @@ Preciso [descreva aqui a tarefa específica que deseja realizar].
 
 **Ambiente:** Desktop Ubuntu 24 (desenvolvimento) ↔ Raspberry Pi (hardware do robô físico).
 
+**Guia específico C1 na Raspberry:** `docs/ATUALIZAR_RASPBERRY_C1_MAR2026.md`
+
 ### Regra geral
 Sempre que houver alterações no código: **commitar e dar push no GitHub**, depois **atualizar na Raspberry Pi**.
 
@@ -187,10 +197,13 @@ git push origin robo_slam_2026_lidar_c1
 ```
 
 ### Na Raspberry Pi (atualizar do GitHub)
+**Guia completo:** `docs/ATUALIZAR_RASPBERRY_C1_MAR2026.md`
+
 **Se não houver alterações locais:**
 ```bash
 cd ~/robo_slam
 git fetch origin
+git checkout robo_slam_2026_lidar_c1
 git pull origin robo_slam_2026_lidar_c1
 ```
 
