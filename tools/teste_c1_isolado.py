@@ -13,6 +13,8 @@ Uso:
   python tools/teste_c1_isolado.py --robot-model wide       # Faixa frontal ampla
   python tools/teste_c1_isolado.py --diagnose --scans 2      # Descobrir 0° e área livre
   python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --min-stop 0.35 --min-warn 0.50 --scans 5
+  # Faixa ampla (200°) — detecta pedestre pela lateral. Parachoques em 120°-240° excluídos por threshold.
+  python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --scans 5
 
 Requer: pip install rplidarc1 (Python 3.10+)
 """
@@ -181,13 +183,22 @@ async def run_scan(lidar, args):
                         msg = (f"Scan {scan_count}: {n_total} pts | "
                                f" frontal ({n_front} pts): min={d_min_front:.0f} mm ({d_min_front/1000:.2f} m) | "
                                f" 360° min={d_min_all:.0f} mm")
-                        # Status obstáculo: ignora < min_ignore (corpo), alerta/parada acima disso
+                        # Status obstáculo: faixa AMPLA (200°+) para detectar pedestre pela lateral.
+                        # Zona parachoques (120°-240°): ignora < parachoques_min_ignore (evita falsos).
+                        # Laterais (80°-120°, 240°-280°): ignora < min_ignore (150 mm).
                         min_ignore_m = getattr(args, "min_ignore", 0.15)
                         min_stop_m = getattr(args, "min_stop", None)
                         min_warn_m = getattr(args, "min_warn", None)
+                        parach_lo, parach_hi = getattr(args, "parachoques_zone", (120, 240))
+                        parach_min_m = getattr(args, "parachoques_min_ignore", 0.22)
+                        obs_width = getattr(args, "obstacle_cone_deg", None) or width
                         if min_stop_m is not None or min_warn_m is not None:
-                            min_ignore_mm = int(min_ignore_m * 1000)
-                            obst = [p for p in frontal if (p.get("d_mm") or 0) >= min_ignore_mm]
+                            def _min_ignore_for_point(p):
+                                a = _norm_angle(p.get("a_deg", 0))
+                                in_parach = parach_lo <= a <= parach_hi
+                                return int(parach_min_m * 1000) if in_parach else int(min_ignore_m * 1000)
+                            obst_raw = [p for p in valid if is_in_frontal_cone(p.get("a_deg", 0), center, obs_width)]
+                            obst = [p for p in obst_raw if (p.get("d_mm") or 0) >= _min_ignore_for_point(p)]
                             d_obst = min((p.get("d_mm") or 0) for p in obst) / 1000.0 if obst else float("inf")
                             if min_stop_m is not None and d_obst < min_stop_m:
                                 msg += " | 🛑 PARAR"
@@ -241,9 +252,14 @@ async def main_async(args):
         min_warn = getattr(args, "min_warn", None)
         if min_stop is not None or min_warn is not None:
             min_ign = getattr(args, "min_ignore", 0.15)
+            obs_cone = getattr(args, "obstacle_cone_deg", None)
+            pz = getattr(args, "parachoques_zone", (120, 240))
+            pzm = getattr(args, "parachoques_min_ignore", 0.22)
             s_stop = f" | parar < {min_stop:.2f} m" if min_stop is not None else ""
             s_warn = f" | alerta < {min_warn:.2f} m" if min_warn is not None else ""
-            print(f"   Limiares: ignorar < {min_ign:.2f} m{s_stop}{s_warn}")
+            s_obs = f" | cone obstáculo: {obs_cone:.0f}°" if obs_cone is not None else " | faixa total"
+            s_parach = f" | parachoques {pz[0]:.0f}°-{pz[1]:.0f}°: ignorar < {pzm:.2f} m"
+            print(f"   Limiares: ignorar < {min_ign:.2f} m{s_stop}{s_warn}{s_obs}{s_parach}")
     else:
         print("   Faixa frontal: 360° (todos os pontos)")
     print()
@@ -332,7 +348,20 @@ def main():
                      help="Considerar PARAR se obstáculo frontal < M m. Padrão: 0.35 (350 mm)")
     fg2.add_argument("--min-warn", type=float, default=0.50, metavar="M",
                      help="Considerar ALERTA se obstáculo frontal < M m. Padrão: 0.50 (500 mm)")
+    fg2.add_argument("--obstacle-cone-deg", type=float, default=None, metavar="GRAUS",
+                     help="Cone para PARAR/ALERTA. Padrão: mesma faixa frontal (máximo cobertura lateral)")
+    fg2.add_argument("--parachoques-zone", type=str, default="120:240", metavar="LO:HI",
+                     help="Ângulos do parachoques (ignorar reflexos). Padrão: 120:240")
+    fg2.add_argument("--parachoques-min-ignore", type=float, default=0.22, metavar="M",
+                     help="Na zona parachoques, ignorar < M m. Padrão: 0.22 (220 mm)")
     args = parser.parse_args()
+    # Parse parachoques_zone "LO:HI" → (lo, hi)
+    zone_str = getattr(args, "parachoques_zone", "120:240") or "120:240"
+    try:
+        lo_s, hi_s = zone_str.strip().split(":")
+        args.parachoques_zone = (float(lo_s), float(hi_s))
+    except (ValueError, AttributeError):
+        args.parachoques_zone = (120.0, 240.0)
     # Resolve front_width: robot-model sobrescreve --front-deg
     if args.robot_model is not None:
         args.front_width = float(ROBOT_MODEL_PRESETS[args.robot_model])
