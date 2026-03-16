@@ -378,10 +378,14 @@ class RobotMotorController(QObject):
         logger.debug("Controle PID desativado.")
         self.pid_enabled = False
         if GPIO_AVAILABLE and GPIO:
-            self.pwm_E.ChangeDutyCycle(0)
-            self.pwm_D.ChangeDutyCycle(0)
-            GPIO.output(self.break_E, GPIO.HIGH)
-            GPIO.output(self.break_D, GPIO.HIGH)
+            try:
+                self.pwm_E.ChangeDutyCycle(0)
+                self.pwm_D.ChangeDutyCycle(0)
+                GPIO.output(self.break_E, GPIO.HIGH)
+                GPIO.output(self.break_D, GPIO.HIGH)
+            except (RuntimeError, AttributeError) as e:
+                # GPIO.cleanup() já foi chamado — ignorar para evitar falha ao encerrar app
+                logger.debug("disable_pid_control: GPIO indisponível (cleanup?): %s", e)
         self.pid_left.reset()
         self.pid_right.reset()
 

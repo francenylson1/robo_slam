@@ -82,9 +82,28 @@ python tools/teste_c1_isolado.py --port /dev/ttyUSB0 --scans 10
 
 ---
 
+## Atualização 16/03/2026 (noite) — Watchdog e GPIO
+
+### Problema: robô parava antes do POI (obstáculo) e após ~45 s declarava "chegada"
+
+- **Causa:** Watchdog de 45 s forçava "chegada ao POI" mesmo com robô parado por obstáculo C1.
+- **Correção:** Em `robot_navigator.py`, antes de forçar chegada no timeout, verificar `is_lidar_blocking_or_recent()`. Se obstáculo na frente → cancelar navegação (não declarar chegada).
+- **Método:** `_cancel_navigation_blocked_by_obstacle()` → finaliza com flag `_cancelled_by_obstacle`.
+- **UI:** `main_window` exibe "⚠️ Navegação cancelada — obstáculo bloqueou o caminho" em vez de "chegada com sucesso".
+
+### Problema: Falha de segmentação / RuntimeError GPIO ao encerrar
+
+- **Causa:** `disable_pid_control()` chamava `GPIO.output()` após `GPIO.cleanup()`.
+- **Correção:** `try/except (RuntimeError, AttributeError)` em `disable_pid_control()` para evitar crash ao fechar app.
+
+---
+
 ## Arquivos alterados
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/core/config.py` | `LIDAR_C1_ENABLED = False` |
+| `src/core/config.py` | `LIDAR_C1_ENABLED = False` (revertido para True em calibração posterior) |
 | `src/core/lidar_c1_reader.py` | `FIRST_SCAN_TIMEOUT_SEC`, tarefa `first_scan_timeout()` |
+| `src/core/robot_navigator.py` | Watchdog: checar Lidar antes de forçar chegada; `_cancel_navigation_blocked_by_obstacle()` |
+| `src/core/robot_motor_controller.py` | `disable_pid_control`: try/except para GPIO |
+| `src/interfaces/main_window.py` | Mensagem "Navegação cancelada" quando `cancelled_by_obstacle` |

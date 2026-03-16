@@ -80,9 +80,13 @@ class RobotNavigator(QObject):
         self._last_progress_time: Optional[float] = None
         self._progress_check_interval = 5.0  # verifica progresso a cada 5 s
         self._stuck_threshold = 0.05       # considera preso se moveu < 5 cm em 5 s
+        self._cancelled_by_obstacle = False  # True quando watchdog cancela por obstáculo C1
 
         # Timeout para estado ORIENTING_TO_TARGET (evita giro infinito por BNO)
         self._orient_start_time: Optional[float] = None
+
+        # C1 bloqueou o caminho (watchdog timeout) — UI exibe mensagem específica
+        self._cancelled_by_obstacle = False
 
         self.use_direct_navigation = True
 
@@ -242,6 +246,11 @@ class RobotNavigator(QObject):
             self._orient_stability_counter = 0
         logger.info("Navegação finalizada.")
 
+    def _cancel_navigation_blocked_by_obstacle(self):
+        """Cancela navegação quando obstáculo C1 bloqueou o caminho (watchdog timeout)."""
+        self._cancelled_by_obstacle = True
+        self._finalize_navigation()
+
     def _calculate_and_execute_return_angle(self):
         """
         Calcula o ângulo para retornar à base e inicia o retorno.
@@ -385,6 +394,7 @@ class RobotNavigator(QObject):
         )
 
         self.reset_to_initial_state(preserve_position=True)
+        self._cancelled_by_obstacle = False  # Reset ao iniciar nova navegação
 
         self.navigation_active = True
         self.start_time = time.time()
@@ -556,7 +566,8 @@ class RobotNavigator(QObject):
             return {
                 "state": "COMPLETED", "progress": 1.0, "estimated_time_remaining": 0.0,
                 "current_target": None, "position": self.current_position, "angle": self.current_angle,
-                "is_returning_to_base": False, "is_paused_at_destination": False
+                "is_returning_to_base": False, "is_paused_at_destination": False,
+                "cancelled_by_obstacle": getattr(self, "_cancelled_by_obstacle", False)
             }
 
         if not self.navigation_active:
@@ -1192,9 +1203,17 @@ class RobotNavigator(QObject):
         current_time = time.time()
 
         # Watchdog 1: timeout global de navegação (protege contra giro infinito em qualquer estado)
+        # Se Lidar está bloqueando (obstáculo na frente), NÃO forçar chegada — cancelar navegação.
         if self._nav_start_time and not self.is_returning_to_base:
             elapsed_total = current_time - self._nav_start_time
             if elapsed_total > self._nav_max_duration:
+                if self.motors.is_lidar_blocking_or_recent(window_sec=10.0):
+                    logger.warning(
+                        "Watchdog: timeout %.0fs com obstáculo C1 na frente. Cancelando navegação (não chegou ao POI).",
+                        self._nav_max_duration
+                    )
+                    self._cancel_navigation_blocked_by_obstacle()
+                    return
                 logger.warning(
                     "Watchdog: timeout global de %.0fs atingido. Forçando chegada ao POI.",
                     self._nav_max_duration

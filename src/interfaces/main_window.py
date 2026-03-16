@@ -674,9 +674,17 @@ class MainWindow(QMainWindow):
                 self._navigation_completed_shown = True
                 # Finaliza navegação na interface
                 self._complete_navigation_and_reset()
-                # Mensagem conforme tipo de conclusão (só ida ou ida e volta)
-                had_return = getattr(self.navigator, '_navigation_had_return_to_base', True)
-                if had_return:
+                # Mensagem conforme tipo de conclusão
+                cancelled_by_obstacle = nav_status.get("cancelled_by_obstacle", False)
+                if cancelled_by_obstacle:
+                    msg = (
+                        "⚠️ Navegação cancelada\n\n"
+                        "O robô parou por obstáculo detectado pelo Lidar C1\n"
+                        "e não conseguiu chegar ao POI em até 45 segundos.\n\n"
+                        "Remova o obstáculo e inicie nova navegação."
+                    )
+                    QMessageBox.warning(self, "⚠️ Navegação cancelada", msg)
+                elif getattr(self.navigator, '_navigation_had_return_to_base', True):
                     msg = (
                         "🎉 Navegação concluída com sucesso!\n\n"
                         "O robô completou todo o percurso:\n"
@@ -1934,6 +1942,7 @@ class MainWindow(QMainWindow):
         """Completa a navegação e faz reset completo da interface para permitir nova navegação"""
         self.navigation_active = False
         self.navigator.navigation_active = False
+        self.navigator._cancelled_by_obstacle = False  # Reset para próxima navegação
         self.navigator.motors.stop()
         
         self.map_widget.set_current_path([])
