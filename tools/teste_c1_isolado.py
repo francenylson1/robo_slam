@@ -12,7 +12,7 @@ Uso:
   python tools/teste_c1_isolado.py --robot-model dev         # Modelo atual (~200°)
   python tools/teste_c1_isolado.py --robot-model wide       # Faixa frontal ampla
   python tools/teste_c1_isolado.py --diagnose --scans 2      # Descobrir 0° e área livre
-  python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --min-stop 0.35 --min-warn 0.50 --scans 5
+  python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --scans 5  # padrão: parar < 0.45 m, alerta < 0.60 m
   # Faixa ampla (200°) — detecta pedestre pela lateral. Parachoques em 120°-240° excluídos por threshold.
   python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --scans 5
 
@@ -344,10 +344,10 @@ def main():
     fg2 = parser.add_argument_group("Limiares de obstáculo (Etapa 2)")
     fg2.add_argument("--min-ignore", type=float, default=0.15, metavar="M",
                      help="Ignorar pontos < M m (corpo/parachoques). Padrão: 0.15 (150 mm)")
-    fg2.add_argument("--min-stop", type=float, default=0.35, metavar="M",
-                     help="Considerar PARAR se obstáculo frontal < M m. Padrão: 0.35 (350 mm)")
-    fg2.add_argument("--min-warn", type=float, default=0.50, metavar="M",
-                     help="Considerar ALERTA se obstáculo frontal < M m. Padrão: 0.50 (500 mm)")
+    fg2.add_argument("--min-stop", type=float, default=0.45, metavar="M",
+                     help="Considerar PARAR se obstáculo frontal < M m. Padrão: 0.45 (450 mm)")
+    fg2.add_argument("--min-warn", type=float, default=0.60, metavar="M",
+                     help="Considerar ALERTA se obstáculo frontal < M m. Padrão: 0.60 (600 mm)")
     fg2.add_argument("--obstacle-cone-deg", type=float, default=None, metavar="GRAUS",
                      help="Cone para PARAR/ALERTA. Padrão: mesma faixa frontal (máximo cobertura lateral)")
     fg2.add_argument("--parachoques-zone", type=str, default="120:240", metavar="LO:HI",
@@ -376,9 +376,9 @@ def main():
     # Se faixa frontal definida e limiares não passados, usa padrões (obstáculos)
     if args.front_width is not None:
         if args.min_stop is None:
-            args.min_stop = 0.35
+            args.min_stop = 0.45
         if args.min_warn is None:
-            args.min_warn = 0.50
+            args.min_warn = 0.60
     sys.exit(asyncio.run(main_async(args)))
 
 
