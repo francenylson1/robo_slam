@@ -81,16 +81,16 @@ O C1 está **apenas funcionando no teste isolado**. Próximos passos para entend
 - **Resultado:** C1 na frente (parachoques). Para obstáculos: `--front-deg 200 --front-center 180`. Ver `docs/FASE2_ANALISE_TESTES_C1_2026.md`.
 
 ### Etapa 2 — Definir distâncias mínimas ✅ Concluída (Mar/2026)
-- **Objetivo:** Definir limiares de parada (ex.: 0.35 m) e alerta (ex.: 0.50 m).
-- **Implementação:** Parâmetros `--min-stop 0.35`, `--min-warn 0.50`, `--min-ignore 0.15` no script. Exibe PARAR / ALERTA / OK conforme obstáculo frontal (ignorando pontos < 150 mm = corpo).
-- **Teste:** `python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --scans 5` — aproximar objeto à frente e conferir ALERTA/PARAR.
+- **Objetivo:** Definir limiares de parada (ex.: 0.45 m) e alerta (ex.: 0.60 m).
+- **Implementação:** Parâmetros `--min-stop 0.45`, `--min-warn 0.60`, zona parachoques 120°–240°, `--parachoques-min-ignore 0.22`. Exibe PARAR / ALERTA / OK conforme obstáculo frontal/lateral.
+- **Teste:** `python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --scans 5` — aproximar objeto à frente/lateral e conferir ALERTA/PARAR.
 
-### Etapa 3 — Integrar ao fluxo de navegação
+### Etapa 3 — Integrar ao fluxo de navegação ✅ Concluída (Mar/2026)
 - **Objetivo:** Durante a navegação, ler o C1 em um loop/thread assíncrona e parar os motores se obstáculo &lt; limite na frente.
-- **Implementação sugerida:**
-  - Módulo `src/core/lidar_c1_reader.py` para encapsular leitura e decisão (obstáculo próximo?).
-  - Chamar de `robot_navigator.py` ou `robot_motor_controller.py` antes de aplicar velocidades.
-  - Parâmetro em `config.py`: `LIDAR_OBSTACLE_MIN_DISTANCE = 0.35` (parar se &lt; 35 cm na frente).
+- **Implementação:**
+  - Módulo `src/core/lidar_c1_reader.py` — leitura C1 em background, mesma lógica do teste isolado (faixa 200°, zona parachoques).
+  - Integrado em `robot_motor_controller.py`: em `set_target_speed`, se `lidar_reader.has_obstacle()` → força (0, 0).
+  - Config: `LIDAR_C1_ENABLED = True`, `LIDAR_OBSTACLE_MIN_DISTANCE = 0.45` (validado em testes).
 - **Teste:** Colocar obstáculo no caminho durante navegação e confirmar parada automática.
 
 ### Resultados dos testes (Março 2026)

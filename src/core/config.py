@@ -21,7 +21,10 @@ def is_development():
 
 # Configurações específicas do ambiente
 GPIO_AVAILABLE = is_raspberry_pi()
-LIDAR_AVAILABLE = False  # Mude para True quando os sensores chegarem
+LIDAR_AVAILABLE = False  # Legado — uso geral de Lidar
+# C1 integrado à navegação: parada automática quando obstáculo < LIDAR_OBSTACLE_MIN_DISTANCE
+LIDAR_C1_ENABLED = True   # True = tenta conectar C1 na Pi; False = desativa
+LIDAR_OBSTACLE_MIN_DISTANCE = 0.45  # Parar motores se obstáculo < 45 cm (validado em testes Mar/2026)
 
 # Configurações do ambiente
 ENVIRONMENT_WIDTH = 6  # metros

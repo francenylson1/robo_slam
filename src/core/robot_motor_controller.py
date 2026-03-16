@@ -9,11 +9,12 @@ from PyQt5.QtCore import QObject, pyqtSignal
 # Adiciona o diretório raiz ao PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from src.core.environment import GPIO_AVAILABLE
+from src.core.environment import GPIO_AVAILABLE, is_raspberry_pi
 from src.core.pid_controller import PIDController
 from src.core.config import (TICKS_PER_REVOLUTION, MANUAL_CONTROL_MAX_TPS,
                             PID_PROFILES, SAFETY_MAX_MOTOR_POWER_PERCENT,
-                            SAFETY_POWER_MONITOR_INTERVAL, SAFETY_POWER_VIOLATION_TIMEOUT)
+                            SAFETY_POWER_MONITOR_INTERVAL, SAFETY_POWER_VIOLATION_TIMEOUT,
+                            LIDAR_C1_ENABLED, LIDAR_OBSTACLE_MIN_DISTANCE)
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,17 @@ class RobotMotorController(QObject):
             GPIO.output(self.break_E, GPIO.HIGH)
         else:
             logger.info("Controlador de motores: MODO SIMULADO.")
+
+        # Lidar C1: parada automática quando obstáculo < LIDAR_OBSTACLE_MIN_DISTANCE (Etapa 3)
+        self.lidar_reader = None
+        if GPIO_AVAILABLE and LIDAR_C1_ENABLED:
+            try:
+                from src.core.lidar_c1_reader import LidarC1Reader
+                self.lidar_reader = LidarC1Reader(min_stop_m=LIDAR_OBSTACLE_MIN_DISTANCE)
+                self.lidar_reader.start()
+            except Exception as e:
+                logger.warning("Lidar C1 não disponível: %s. Parada por obstáculo desativada.", e)
+                self.lidar_reader = None
 
     def _hall_sensor_monitor_thread(self):
         """Thread de polling dos sensores Hall."""
@@ -244,7 +256,14 @@ class RobotMotorController(QObject):
         """
         Define a velocidade alvo para o controle PID em ticks por segundo (tps).
         Aplica correção de deriva lateral baseada em calibração.
+        Se Lidar C1 detectar obstáculo < limite, força velocidade 0 (parada automática).
         """
+        if self.lidar_reader and self.lidar_reader.has_obstacle():
+            if left_tps != 0 or right_tps != 0:
+                logger.info("Lidar C1: obstáculo < %.2f m — parando motores.", LIDAR_OBSTACLE_MIN_DISTANCE)
+            left_tps = 0.0
+            right_tps = 0.0
+
         left_tps_corrected = left_tps * LEFT_MOTOR_CORRECTION_FACTOR
         right_tps_corrected = right_tps * RIGHT_MOTOR_CORRECTION_FACTOR
 
@@ -494,6 +513,12 @@ class RobotMotorController(QObject):
 
     def cleanup(self):
         """Limpa os recursos do GPIO de forma segura."""
+        if self.lidar_reader:
+            try:
+                self.lidar_reader.stop()
+            except Exception as e:
+                logger.warning("Erro ao parar Lidar C1: %s", e)
+            self.lidar_reader = None
         if GPIO_AVAILABLE and GPIO:
             logger.info("Iniciando limpeza dos recursos do RobotMotorController...")
             self.shutdown_event.set()
