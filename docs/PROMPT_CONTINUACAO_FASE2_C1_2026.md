@@ -75,10 +75,10 @@ Projeto de robô autônomo para aplicação educacional (alunos) e exploração 
 
 O C1 está **apenas funcionando no teste isolado**. Próximos passos para entendê-lo e integrá-lo:
 
-### Etapa 1 — Filtrar por ângulo
+### Etapa 1 — Filtrar por ângulo ✅ Concluída (Mar/2026)
 - **Objetivo:** Considerar apenas pontos "à frente" do robô.
-- **Implementação sugerida:** Criar opção no `teste_c1_isolado.py` (ex.: `--front-deg 60`) para exibir só pontos em uma faixa angular (ex.: 330°–30° = 60° central).
-- **Teste:** Rodar com diferentes faixas e conferir se os valores fazem sentido (paredes à frente, laterais, etc.).
+- **Implementação:** `--front-deg`, `--front-center`, `--robot-model`, `--diagnose` no `teste_c1_isolado.py`.
+- **Resultado:** Preset `dev` (200° centro 0°) validado. Ver `docs/FASE2_ANALISE_TESTES_C1_2026.md`.
 
 ### Etapa 2 — Definir distâncias mínimas
 - **Objetivo:** Definir limiares de parada (ex.: 0.35 m) e alerta (ex.: 0.50 m).
@@ -92,6 +92,10 @@ O C1 está **apenas funcionando no teste isolado**. Próximos passos para entend
   - Chamar de `robot_navigator.py` ou `robot_motor_controller.py` antes de aplicar velocidades.
   - Parâmetro em `config.py`: `LIDAR_OBSTACLE_MIN_DISTANCE = 0.35` (parar se &lt; 35 cm na frente).
 - **Teste:** Colocar obstáculo no caminho durante navegação e confirmar parada automática.
+
+### Resultados dos testes (Março 2026)
+- **Etapa 1 validada:** `--diagnose`, `--front-deg`, `--robot-model` funcionando. Ver `docs/FASE2_ANALISE_TESTES_C1_2026.md`.
+- **Configuração validada:** `--robot-model dev` (200° centrado em 0°). Corpo do robô em ~120°–240°; área livre ~240°. Mínimo frontal estável: ~1,25 m (parede/obstáculo no ambiente).
 
 ---
 
@@ -154,9 +158,52 @@ Preciso [descreva aqui a tarefa específica que deseja realizar].
 
 ---
 
-## 10. Observações técnicas
+## 10. Fluxo de desenvolvimento (Desktop → GitHub → Raspberry Pi)
 
-- **Raspberry Pi:** `git pull` pode exigir `git stash` ou `git checkout -- data/robot.db` se houver alterações locais.
+**Ambiente:** Desktop Ubuntu 24 (desenvolvimento) ↔ Raspberry Pi (hardware do robô físico).
+
+### Regra geral
+Sempre que houver alterações no código: **commitar e dar push no GitHub**, depois **atualizar na Raspberry Pi**.
+
+### No Desktop (após alterações)
+```bash
+cd ~/robo_slam   # ou caminho do projeto
+git add .
+git status       # conferir o que será commitado
+git commit -m "Descrição da alteração"
+git push origin robo_slam_2026_lidar_c1
+```
+
+### Na Raspberry Pi (atualizar do GitHub)
+**Se não houver alterações locais:**
+```bash
+cd ~/robo_slam
+git fetch origin
+git pull origin robo_slam_2026_lidar_c1
+```
+
+**Se houver alterações locais (ex.: `data/robot.db` modificado):**
+```bash
+cd ~/robo_slam
+git stash                              # guarda alterações locais (robot.db, etc.)
+git pull origin robo_slam_2026_lidar_c1
+git stash pop                          # restaura robot.db (mantém seus dados locais)
+```
+
+**Alternativa — descartar alterações em robot.db:**
+```bash
+git checkout -- data/robot.db           # descarta mudanças em robot.db
+git pull origin robo_slam_2026_lidar_c1
+```
+
+### Erro comum
+`error: cannot pull with rebase: You have unstaged changes.`  
+→ Use `git stash` antes do `git pull`, depois `git stash pop` para restaurar.
+
+---
+
+## 11. Observações técnicas
+
+- **Raspberry Pi:** `git pull` pode exigir `git stash` quando `data/robot.db` (ou outros arquivos) tiver alterações locais.
 - **C1:** Usar sempre `rplidarc1` (não `rplidar`); o C1 usa protocolo diferente e retorna "Descriptor length mismatch" com rplidar genérico.
 - **Python:** rplidarc1 exige Python 3.10+ (TaskGroup); Raspberry Pi com Python 3.11 está OK.
-- **Sincronização desktop ↔ Pi:** Commit e push no desktop; `git pull` no Pi (com stash se necessário).
