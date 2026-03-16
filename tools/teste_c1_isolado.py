@@ -27,7 +27,7 @@ DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 460800
 
 # Presets por modelo de robô — largura total da faixa frontal (graus)
-# 0° = frente do sensor; ângulo aumenta no sentido horário
+# 350° = frente do robô (calibração Mar/2026); 0° = direção do cabo; sentido horário
 ROBOT_MODEL_PRESETS = {
     "narrow":   60,   # Visão estreita (ex: robôs compactos, corredores)
     "medium":   90,   # Padrão moderado
@@ -436,7 +436,7 @@ async def main_async(args):
             print("   ⚠️ Sensor pode ter problemas. Verifique conexão e alimentação.")
 
         print("\n📡 Iniciando leitura de varreduras...")
-        print("   Ângulo 0° = frente do sensor; sentido horário.")
+        print("   350° = frente do robô (calibração Mar/2026); 0° = direção do cabo. Sentido horário.")
         print("-" * 60)
 
         if hasattr(asyncio, "TaskGroup"):
@@ -490,14 +490,14 @@ def main():
         metavar="GRAUS",
         type=float,
         default=None,
-        help="Largura total do cone frontal em graus (ex: 60, 200). Centro = 0° (frente do sensor)",
+        help="Largura total do cone frontal em graus (ex: 60, 200). Centro = 350° (frente do robô, calibração Mar/2026)",
     )
     fg.add_argument(
         "--front-center",
         metavar="GRAUS",
         type=float,
-        default=0,
-        help="Ângulo central da faixa frontal (padrão: 0° = frente do sensor)",
+        default=350,
+        help="Ângulo central da faixa frontal (padrão: 350° = frente do robô, calibração Mar/2026)",
     )
     fg.add_argument(
         "--robot-model",
