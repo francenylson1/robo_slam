@@ -129,6 +129,7 @@ class RobotMotorController(QObject):
                 from src.core.lidar_c1_reader import LidarC1Reader
                 self.lidar_reader = LidarC1Reader(min_stop_m=LIDAR_OBSTACLE_MIN_DISTANCE)
                 self.lidar_reader.start()
+                logger.info("Lidar C1 integrado aos motores — parada automática < %.2f m.", LIDAR_OBSTACLE_MIN_DISTANCE)
             except Exception as e:
                 logger.warning("Lidar C1 não disponível: %s. Parada por obstáculo desativada.", e)
                 self.lidar_reader = None

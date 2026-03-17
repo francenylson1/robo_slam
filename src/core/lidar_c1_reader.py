@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 
 # Parâmetros calibrados via tools/calibracao_c1_orientacao.py (Mar/2026)
 # Frente do robô = 350° | corpo/estrutura = 120°–240° (95mm)
+# FRONT_WIDTH_DEG: 120° (era 60°) — cone 60° era estreito demais, lixeira fora do cone não era detectada
 FRONT_CENTER_DEG = 350.0
-FRONT_WIDTH_DEG = 60.0
+FRONT_WIDTH_DEG = 120.0
 PARACHOQUES_ZONE = (120.0, 240.0)  # Ignorar reflexos do corpo do robô
 MIN_IGNORE_M = 0.15
 PARACHOQUES_MIN_IGNORE_M = 0.22
@@ -238,7 +239,10 @@ class LidarC1Reader:
         self._thread = threading.Thread(target=self._thread_run, daemon=True)
         self._thread.start()
         self._running = True
-        logger.info("Lidar C1 reader iniciado (parar se obstáculo < %.2f m).", self.min_stop_m)
+        logger.info(
+            "Lidar C1 ativo: cone %.0f° (centro %.0f°), parar se < %.2f m.",
+            self.front_width, self.front_center, self.min_stop_m
+        )
         return True
 
     def stop(self):
