@@ -261,17 +261,19 @@ class RobotMotorController(QObject):
         Aplica correção de deriva lateral baseada em calibração.
         Se Lidar C1 detectar obstáculo < limite, força velocidade 0 (parada automática).
         """
-        # Diagnóstico: a cada 1 s quando movendo, logar distância frontal (antes de potential overwrite)
+        # Diagnóstico: a cada 0.5 s quando movendo — print() visível no terminal (independente de log level)
         if self.lidar_reader and (left_tps != 0 or right_tps != 0):
             t = time.time()
-            if t - getattr(self, '_last_lidar_diag_log_time', 0) >= 1.0:
+            if t - getattr(self, '_last_lidar_diag_log_time', 0) >= 0.5:
                 self._last_lidar_diag_log_time = t
                 d = self.lidar_reader.obstacle_distance()
-                d_str = f"{d:.2f}" if d != float("inf") else "livre"
+                d_str = f"{d:.2f}m" if d != float("inf") else "livre"
+                print(f"📡 LIDAR C1: distância frontal = {d_str} (parar se < {LIDAR_OBSTACLE_MIN_DISTANCE:.2f}m)", flush=True)
                 logger.info("Lidar C1 diagnóstico: distância frontal = %s m (parar se < %.2f m)", d_str, LIDAR_OBSTACLE_MIN_DISTANCE)
 
         if self.lidar_reader and self.lidar_reader.has_obstacle():
             if left_tps != 0 or right_tps != 0:
+                print(f"🛑 LIDAR C1: OBSTÁCULO < {LIDAR_OBSTACLE_MIN_DISTANCE:.2f}m — PARANDO MOTORES!", flush=True)
                 logger.info("Lidar C1: obstáculo < %.2f m — parando motores.", LIDAR_OBSTACLE_MIN_DISTANCE)
                 self._last_obstacle_detected_at = time.time()
                 self.disable_pid_control()  # Parada imediata com freio (não esperar PID)

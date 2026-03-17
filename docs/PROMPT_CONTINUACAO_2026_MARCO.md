@@ -42,7 +42,9 @@ Conforme `docs/ESTRATEGIA_ODOMETRIA_E_BNO_GRADATIVO.md`:
 | **1** | **BNO só nas retas** | **CONCLUÍDA** | Critério “reta”: \|Δθ\| < limiar (3°). Em retas: ângulo da pose usa BNO; correção de rumo BNO aplicada ao avançar. Em giros: só odometria. Navegação estável; POI sem giro; desvio à direita atenuado (afinação posterior). |
 | **2** | **BNO nos giros** | **PENDENTE** | Durante o giro: ângulo só odometria. Ao terminar o giro: correção única do ângulo com BNO (ex.: como em `teste_bno_suite.py --use-bno-turn`). |
 | **3** | **Localização no mapa PGM** | **PENDENTE** | Usar mapa (e eventualmente LIDAR) para corrigir pose (x, y, θ) no mapa; navegação mais confiável a mesas/POIs. |
-| **4** | **Ajustes** | **PENDENTE** | Ajuste fino de: linhas retas, curvas, desvios de obstáculos ou áreas proibidas (parte de desvio/evitação ainda não implementada). Inclui afinagem de BNO e, se aplicável, localização. |
+| **4** | **Integração Odometria + BNO + RPLidar sensor C1** | **PENDENTE** | Implementar o uso do sensor C1 Lidar para corrigir pose (x, y, θ) com mais precisão no mapa; navegação mais confiável a mesas/POIs. |
+| **5** | **Geração de mapas com Aurora Slamtec** | **PENDENTE** | Melhorias na geração dos mapas com Aurora, edição, gerenciamento, tratamento, processamento e otimização de mapas consistentes e navegáveis com precisão. |
+| **6** | **Ajustes** | **PENDENTE** | Ajuste fino de: linhas retas, curvas, desvios de obstáculos ou áreas proibidas (parte de desvio/evitação ainda não implementada). Inclui afinagem de BNO e, se aplicável, localização. |
 
 ---
 
@@ -87,8 +89,8 @@ Conforme `docs/ESTRATEGIA_ODOMETRIA_E_BNO_GRADATIVO.md`:
 1. Abra um **novo chat** no Cursor.
 2. Cole ou anexe este arquivo: `docs/PROMPT_CONTINUACAO_2026_MARCO.md`.
 3. Escreva algo como: *“Quero continuar o projeto de navegação do robô. Use o prompt anexado como contexto. Próximo passo: [Fase 2 – BNO nos giros / Fase 3 – localização no mapa PGM / Fase 4 – ajustes finos / ou tarefa específica].”*
-4. Lembre: após alterações, fazer **commit e push** e informar o usuário para atualizar a Raspberry com `git pull`.
+4. A nossa estrutura de desenvolvimento é assim: 1º desenvolvimento aqui no desktop; 2º após todas as alterações atualizar e subir para o git e 3º informar os comandos para atualizar a versão na Raspberry que é a plataforma de testes físicos. POR ESSE MOTIVO SEMPRE LEMBRE: após alterações, fazer **commit e push** e informar o usuário para atualizar a Raspberry e com quais comandos: `git pull`... etc
 
 ---
 
-*Documento gerado para continuidade em novo chat. Reflete o estado após Fase 1 concluída (BNO só nas retas), POI sem giro estável, e afinagem inicial do desvio. Fases 2, 3 e 4 pendentes.*
+*Documento gerado para continuidade em novo chat. Reflete o estado após Fase 1 concluída (BNO só nas retas), POI sem giro estável, e afinagem inicial do desvio. Fases 2, 3, 4, 5 E 6 pendentes.*

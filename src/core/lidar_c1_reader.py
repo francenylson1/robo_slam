@@ -15,11 +15,11 @@ from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Parâmetros calibrados via tools/calibracao_c1_orientacao.py (Mar/2026)
-# Frente do robô = 350° | corpo/estrutura = 120°–240° (95mm)
-# FRONT_WIDTH_DEG: 120° (era 60°) — cone 60° era estreito demais, lixeira fora do cone não era detectada
-FRONT_CENTER_DEG = 350.0
-FRONT_WIDTH_DEG = 120.0
+# Parâmetros conforme docs/FASE2_ANALISE_TESTES_C1_2026.md e testes físicos
+# 0° = cabo/traseira (corpo vermelho) | 180° = FRENTE (direção de movimento, parachoques)
+# CORRIGIDO: estava 350° (errado) — por isso lixeira à frente (180°) nunca era detectada
+FRONT_CENTER_DEG = 180.0
+FRONT_WIDTH_DEG = 180.0
 PARACHOQUES_ZONE = (120.0, 240.0)  # Ignorar reflexos do corpo do robô
 MIN_IGNORE_M = 0.15
 PARACHOQUES_MIN_IGNORE_M = 0.22
