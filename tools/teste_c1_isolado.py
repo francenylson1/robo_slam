@@ -234,10 +234,7 @@ async def run_scan(lidar, args):
                     n_total, n_front = len(points), len(frontal)
                     if frontal:
                         d_min_all = min((p.get("d_mm") or 0) for p in valid)
-                        d_min_front = min((p.get("d_mm") or 0) for p in frontal)
-                        msg = (f"Scan {scan_count}: {n_total} pts | "
-                               f" frontal ({n_front} pts): min={d_min_front:.0f} mm ({d_min_front/1000:.2f} m) | "
-                               f" 360° min={d_min_all:.0f} mm")
+                        d_min_front_raw = min((p.get("d_mm") or 0) for p in frontal)
                         # Status obstáculo: faixa AMPLA (200°+) para detectar pedestre pela lateral.
                         # Zona parachoques (120°-240°): ignora < parachoques_min_ignore (evita falsos).
                         # Laterais (80°-120°, 240°-280°): ignora < min_ignore (150 mm).
@@ -247,14 +244,27 @@ async def run_scan(lidar, args):
                         parach_lo, parach_hi = getattr(args, "parachoques_zone", (120, 240))
                         parach_min_m = getattr(args, "parachoques_min_ignore", 0.22)
                         obs_width = getattr(args, "obstacle_cone_deg", None) or width
+
+                        def _min_ignore_for_point(p):
+                            a = _norm_angle(p.get("a_deg", 0))
+                            in_parach = parach_lo <= a <= parach_hi
+                            return int(parach_min_m * 1000) if in_parach else int(min_ignore_m * 1000)
+
+                        obst_raw = [p for p in valid if is_in_frontal_cone(p.get("a_deg", 0), center, obs_width)]
+                        obst = [p for p in obst_raw if (p.get("d_mm") or 0) >= _min_ignore_for_point(p)]
+                        d_obst_mm = min((p.get("d_mm") or 0) for p in obst) if obst else None
+                        d_obst = d_obst_mm / 1000.0 if d_obst_mm is not None else float("inf")
+
+                        # Exibe: corpo (bruto) | obstáculo válido (após filtro) = lixeira/obstáculo real
+                        corpo_str = f"corpo={d_min_front_raw:.0f}mm" if d_min_front_raw < parach_min_m * 1000 else ""
+                        if d_obst_mm is not None:
+                            obst_str = f"obst={d_obst_mm:.0f}mm ({d_obst_mm/1000:.2f}m)"
+                        else:
+                            obst_str = "obst=— (livre)"
+                        msg = (f"Scan {scan_count}: {n_total} pts | frontal ({n_front} pts): "
+                               f"{corpo_str + ' | ' if corpo_str else ''}{obst_str} | "
+                               f"360° min={d_min_all:.0f}mm")
                         if min_stop_m is not None or min_warn_m is not None:
-                            def _min_ignore_for_point(p):
-                                a = _norm_angle(p.get("a_deg", 0))
-                                in_parach = parach_lo <= a <= parach_hi
-                                return int(parach_min_m * 1000) if in_parach else int(min_ignore_m * 1000)
-                            obst_raw = [p for p in valid if is_in_frontal_cone(p.get("a_deg", 0), center, obs_width)]
-                            obst = [p for p in obst_raw if (p.get("d_mm") or 0) >= _min_ignore_for_point(p)]
-                            d_obst = min((p.get("d_mm") or 0) for p in obst) / 1000.0 if obst else float("inf")
                             if min_stop_m is not None and d_obst < min_stop_m:
                                 msg += " | 🛑 PARAR"
                             elif min_warn_m is not None and d_obst < min_warn_m:
