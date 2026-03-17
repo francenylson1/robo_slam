@@ -76,6 +76,8 @@ class LidarC1Reader:
         # Inicialmente 0 m: bloqueia movimento até o primeiro scan (segurança).
         self._obstacle_distance_m: float = 0.0
         self._first_scan_done: bool = False  # Para log único do 1º scan
+        # Não sobrescrever obstáculo com inf em um único scan (evita "perder" detecção)
+        self._consecutive_clear_scans: int = 0
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -165,7 +167,22 @@ class LidarC1Reader:
                     d_obst = self._process_scan_points(points)
                     with self._lock:
                         prev = self._obstacle_distance_m
-                        self._obstacle_distance_m = d_obst
+                        if d_obst != float("inf"):
+                            # Nova distância válida: atualiza e reseta contador
+                            self._obstacle_distance_m = d_obst
+                            self._consecutive_clear_scans = 0
+                        else:
+                            # Scan retornou "livre" — não sobrescrever imediatamente se há obstáculo detectado
+                            # (corrige bug: varredura completa perdia lixeira e limpava via rápida)
+                            if prev < self.min_stop_m:
+                                self._consecutive_clear_scans += 1
+                                if self._consecutive_clear_scans >= 2:
+                                    self._obstacle_distance_m = float("inf")
+                                    self._consecutive_clear_scans = 0
+                                    logger.debug("Lidar C1: 2 scans consecutivos livres — desbloqueando.")
+                            else:
+                                self._obstacle_distance_m = float("inf")
+                                self._consecutive_clear_scans = 0
                         if prev == 0.0:  # Primeiro scan após init
                             d_str = f"{d_obst:.2f} m" if d_obst != float("inf") else "livre (inf)"
                             logger.info("Lidar C1: primeiro scan OK — distância frontal = %s", d_str)

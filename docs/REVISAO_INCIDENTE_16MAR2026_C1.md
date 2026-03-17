@@ -98,12 +98,34 @@ python tools/teste_c1_isolado.py --port /dev/ttyUSB0 --scans 10
 
 ---
 
+## Atualização 17/03/2026 — Bug “lixeira não para”: varredura limpava obstáculo
+
+### Problema relatado nos testes
+
+- **40 cm:** robô não inicia navegação (correto: obstáculo muito perto).
+- **60 cm:** robô inicia, mas **não para** ao chegar na lixeira.
+- Ao final: mensagem "Navegação cancelada — obstáculo pelo Lidar C1" após ~45 s (watchdog).
+
+### Causa identificada
+
+A **via rápida** do Lidar (por ponto frontal próximo) atualiza `_obstacle_distance_m` imediatamente e o robô para. Porém, ao final de cada varredura completa (360°), `_process_scan_points` pode retornar `inf` se o cone frontal não tiver raios na lixeira (ângulo, reflexão fraca). O código **sobrescrevia** `_obstacle_distance_m` com `inf`, limpando a detecção. O robô voltava a andar e não parava de forma confiável.
+
+### Correções implementadas
+
+1. **Lidar C1 (`lidar_c1_reader.py`):** Não sobrescrever detecção de obstáculo com `inf` em um único scan. Exigir **2 varreduras consecutivas “livres”** antes de considerar caminho livre, evitando perder a lixeira por uma varredura ruim.
+
+2. **Distância mínima (`config.py`):** `LIDAR_OBSTACLE_MIN_DISTANCE = 0.50` m (era 0.45 m) para parar mais cedo e dar margem.
+
+3. **Log de diagnóstico:** Log de distância frontal a cada **1 s** (antes 2 s), para facilitar debug.
+
+---
+
 ## Arquivos alterados
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/core/config.py` | `LIDAR_C1_ENABLED = False` (revertido para True em calibração posterior) |
-| `src/core/lidar_c1_reader.py` | `FIRST_SCAN_TIMEOUT_SEC`, tarefa `first_scan_timeout()` |
+| `src/core/config.py` | `LIDAR_C1_ENABLED`, `LIDAR_OBSTACLE_MIN_DISTANCE = 0.50` |
+| `src/core/lidar_c1_reader.py` | `FIRST_SCAN_TIMEOUT_SEC`, tarefa `first_scan_timeout()`, **correção: não sobrescrever obstáculo com inf** (2 scans consecutivos para desbloquear) |
 | `src/core/robot_navigator.py` | Watchdog: checar Lidar antes de forçar chegada; `_cancel_navigation_blocked_by_obstacle()` |
-| `src/core/robot_motor_controller.py` | `disable_pid_control`: try/except para GPIO |
+| `src/core/robot_motor_controller.py` | `disable_pid_control`: try/except para GPIO; log diagnóstico a cada 1 s |
 | `src/interfaces/main_window.py` | Mensagem "Navegação cancelada" quando `cancelled_by_obstacle` |

@@ -123,7 +123,7 @@ class RobotMotorController(QObject):
         # Lidar C1: parada automática quando obstáculo < LIDAR_OBSTACLE_MIN_DISTANCE (Etapa 3)
         self.lidar_reader = None
         self._last_obstacle_detected_at: float = 0.0  # Timestamp da última detecção (para blocking "sticky")
-        self._last_lidar_diag_log_time: float = 0.0  # Throttle para log diagnóstico (a cada 2 s quando em movimento)
+        self._last_lidar_diag_log_time: float = 0.0  # Throttle para log diagnóstico (a cada 1 s quando em movimento)
         if GPIO_AVAILABLE and LIDAR_C1_ENABLED:
             try:
                 from src.core.lidar_c1_reader import LidarC1Reader
@@ -261,10 +261,10 @@ class RobotMotorController(QObject):
         Aplica correção de deriva lateral baseada em calibração.
         Se Lidar C1 detectar obstáculo < limite, força velocidade 0 (parada automática).
         """
-        # Diagnóstico: a cada 2 s quando movendo, logar distância frontal (antes de potential overwrite)
+        # Diagnóstico: a cada 1 s quando movendo, logar distância frontal (antes de potential overwrite)
         if self.lidar_reader and (left_tps != 0 or right_tps != 0):
             t = time.time()
-            if t - getattr(self, '_last_lidar_diag_log_time', 0) >= 2.0:
+            if t - getattr(self, '_last_lidar_diag_log_time', 0) >= 1.0:
                 self._last_lidar_diag_log_time = t
                 d = self.lidar_reader.obstacle_distance()
                 d_str = f"{d:.2f}" if d != float("inf") else "livre"
