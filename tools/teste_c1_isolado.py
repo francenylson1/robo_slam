@@ -15,13 +15,16 @@ Uso:
   python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --scans 5  # padrão: parar < 0.45 m, alerta < 0.60 m
   # Faixa ampla (200°) — detecta pedestre pela lateral. Parachoques em 120°-240° excluídos por threshold.
   python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --scans 5
+  python tools/teste_c1_isolado.py --front-deg 180 --front-center 180 --breakdown --scans 3  # ver distância por ângulo (52cm vs 1.12m)
 
 Requer: pip install rplidarc1 (Python 3.10+)
 """
 
 import argparse
 import asyncio
+import csv
 import sys
+from pathlib import Path
 
 DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 460800
@@ -141,6 +144,68 @@ def _print_diagnose(valid_points: list) -> None:
         print("   Direção com MAIOR distância: ~{:.0f}° (min={:.0f} mm) — provável FRENTE livre".format(
             best_angle, best_dist))
     print("   Referência: 0° = direção do cabo preto do sensor. Ver docs/FASE2_TESTES_C1_COMO_SABER_0_GRAUS.md")
+    print()
+
+
+def _print_frontal_breakdown(
+    valid_points: list,
+    center_deg: float,
+    width_deg: float,
+    sector_deg: float = 15.0,
+) -> None:
+    """
+    Imprime distância mínima por setor na faixa frontal.
+    Útil para descobrir de qual ângulo vêm 52 cm vs 1.12 m (objeto vs parede).
+    """
+    frontal = [p for p in valid_points if is_in_frontal_cone(p.get("a_deg", 0), center_deg, width_deg)]
+    if not frontal:
+        print("\n   [Breakdown frontal] Sem pontos na faixa.")
+        return
+
+    half = width_deg / 2.0
+    c = _norm_angle(center_deg)
+    start = _norm_angle(c - half)
+    end = _norm_angle(c + half)
+
+    # Setores dentro da faixa frontal
+    sectors = []
+    if start < end:
+        ang = start
+        while ang < end:
+            lo, hi = ang, min(ang + sector_deg, end)
+            sectors.append((lo, hi))
+            ang += sector_deg
+    else:
+        # Wrap-around: [start, 360) e [0, end]
+        ang = start
+        while ang < 360:
+            lo, hi = ang, min(ang + sector_deg, 360)
+            sectors.append((lo, hi))
+            ang += sector_deg
+        ang = 0.0
+        while ang < end:
+            lo, hi = ang, min(ang + sector_deg, end)
+            sectors.append((lo, hi))
+            ang += sector_deg
+
+    # Para cada setor, min dist dos pontos nesse setor
+    print("\n📐 BREAKDOWN FRONTAL — distância mínima por setor (objeto na frente deve aparecer em 1 setor)")
+    print("   Ângulo      | min(mm) | pts | → objeto ~52 cm?")
+    print("   " + "-" * 50)
+    closest_angle = None
+    closest_dist = float("inf")
+    for lo, hi in sectors:
+        pts_sector = [p for p in frontal if lo <= _norm_angle(p.get("a_deg", 0)) < hi]
+        d_min = min((p.get("d_mm") or 0) for p in pts_sector) if pts_sector else 0
+        n = len(pts_sector)
+        if d_min > 0 and d_min < closest_dist:
+            closest_dist = d_min
+            closest_angle = (lo + hi) / 2
+        hint = " ← possivel obj" if 400 <= d_min <= 700 else ""
+        print("   {:3.0f}°–{:3.0f}°   | {:6.0f} | {:3} |{}".format(lo, hi, d_min, n, hint))
+    print("   " + "-" * 50)
+    if closest_angle is not None and closest_dist < float("inf"):
+        print("   Obstáculo mais próximo na frontal: ~{:.0f}° com {:.0f} mm".format(closest_angle, closest_dist))
     print()
 
 
@@ -281,6 +346,23 @@ async def run_scan(lidar, args):
                 # Modo --diagnose: mapa angular por setores (descobrir 0° e área livre)
                 if getattr(args, "diagnose", False) and valid:
                     _print_diagnose(valid)
+                # Modo --breakdown: distância por setor na faixa frontal (descobrir de qual ângulo vêm 52 cm vs 1.12 m)
+                if getattr(args, "breakdown", False) and valid and width is not None:
+                    _print_frontal_breakdown(valid, center, width)
+                # Modo --export-frontal: salva pontos brutos da faixa frontal em CSV (análise em planilha)
+                export_path = getattr(args, "export_frontal", None)
+                if export_path and valid and width is not None:
+                    frontal = [p for p in valid if is_in_frontal_cone(p.get("a_deg", 0), center, width)]
+                    mode = "w" if scan_count == 1 else "a"
+                    write_header = scan_count == 1
+                    with open(export_path, mode, newline="", encoding="utf-8") as f:
+                        w = csv.writer(f)
+                        if write_header:
+                            w.writerow(["scan", "angulo_deg", "distancia_mm"])
+                        for p in frontal:
+                            w.writerow([scan_count, p.get("a_deg", 0), p.get("d_mm", 0)])
+                    if scan_count == 1:
+                        print(f"\n   📁 Exportando pontos frontais para {export_path}")
             points = []
             if args.scans > 0 and scan_count >= args.scans:
                 lidar.stop_event.set()
@@ -493,6 +575,16 @@ def main():
         "--diagnose", "-d",
         action="store_true",
         help="Modo diagnóstico: exibe mapa angular por setores para descobrir 0° e área livre vs ocupada",
+    )
+    parser.add_argument(
+        "--breakdown",
+        action="store_true",
+        help="Distância mínima por setor na faixa frontal (descobrir de qual ângulo vêm 52 cm vs 1.12 m)",
+    )
+    parser.add_argument(
+        "--export-frontal",
+        metavar="ARQUIVO",
+        help="Exporta pontos brutos (ângulo, dist) da faixa frontal para CSV (requer --front-deg)",
     )
     fg = parser.add_argument_group("Faixa frontal (para diferentes modelos de robô)")
     fg.add_argument(
