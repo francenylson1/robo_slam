@@ -106,21 +106,93 @@ python main.py
 
 ## 8. Prompt para nova conversa (copiar e colar)
 
+### 8.1 Prompt padrão (para amanhã: mais testes → próxima fase)
+
+Copie e cole o texto abaixo **no início** de um novo chat. Ele já descreve o plano de amanhã:
+
 ```
 Sou desenvolvedor do projeto Robô SLAM 2026. Preciso dar continuidade ao desenvolvimento.
 
-**Contexto completo:** Leia o arquivo `docs/PROMPT_CONTINUACAO_19MAR2026_C1_OBSTACULO.md` — contém fases concluídas, branch ativa, arquivos principais e próximas etapas.
+**Contexto completo:** Leia o arquivo docs/PROMPT_CONTINUACAO_19MAR2026_C1_OBSTACULO.md — ele contém o estado atual do projeto, fases concluídas, branch ativa, arquivos principais e próximas etapas planejadas.
 
-**Branch:** `robo_slam_2026_C1_obstaculo`
+**Branch de trabalho:** robo_slam_2026_C1_obstaculo
 
-**Estado atual:** O C1 está funcionando com pyrplidarsdk (parada de emergência estável). Fases concluídas: 1 (odometria) e 2a (C1 obstáculo). Próximas: 2b (deriva), 2c (desvio de obstáculos), 3 (localização).
+**Estado atual:** O RP Lidar C1 está funcionando com pyrplidarsdk (parada de emergência estável). Testes validados com lixeira e pessoa — parada consistente em múltiplas repetições. Fases concluídas: 1 (odometria/navegação ida-volta) e 2a (C1 obstáculo à frente).
 
-Preciso [descreva aqui a tarefa que deseja realizar].
+**Plano imediato:** Hoje/amanhã farei mais testes de validação do C1 em diferentes cenários. Depois disso vamos para a próxima fase planejada: Fase 2b (deriva do robô) e Fase 2c (desvio de obstáculos — quando se aproximar de mesa, realinhar e ir em direção ao POI, não só parar).
+
+**Observação conhecida:** O robô tem deriva (odometria). Quando deriva perto de mesa, o LIDAR vê a mesa no cone frontal e para — isso é esperado (parada de segurança). A lógica de desvio/realinhamento será desenvolvida na Fase 2c.
+
+Preciso [substitua aqui pela tarefa específica de agora — ex.: "revisar os logs de teste", "ajustar LIDAR_OBSTACLE_MIN_DISTANCE", "começar a Fase 2b", etc.].
 ```
+
+### 8.2 Exemplos de tarefa para substituir no final
+
+- `"Analisar os logs que anexei de um teste de navegação com obstáculo."`
+- `"Preparar um resumo do que precisamos para iniciar a Fase 2b (deriva)."`
+- `"Começar a implementar a Fase 2c — desvio de obstáculos: quando o robô parar por obstáculo lateral (mesa), realinhar e seguir em direção ao POI."`
+- `"Ajustar LIDAR_OBSTACLE_MIN_DISTANCE para 0.70 m e documentar."`
 
 ---
 
-## 9. Estrutura de pastas relevante
+## 9. Como usar @ no Cursor (referenciar arquivos)
+
+O **@** no Cursor permite anexar arquivos ou pastas ao chat para o assistente ter contexto. Use quando a tarefa envolver código específico.
+
+### 9.1 Passo a passo para usar @
+
+1. **Abra um novo chat** (Ctrl+L no Linux/Windows, Cmd+L no Mac).
+2. **Digite @** na caixa de mensagem (o menu de sugestões aparece).
+3. **Escolha o tipo de referência:**
+   - `@Docs` — documentação do Cursor
+   - `@Codebase` — busca em todo o projeto
+   - `@File` — um arquivo específico (digite o nome ou caminho)
+   - `@Folder` — uma pasta inteira
+4. **Digite o nome do arquivo** (ex.: `lidar_c1`) e selecione na lista.
+5. **Envie a mensagem** — o conteúdo do arquivo será incluído no contexto.
+
+### 9.2 Quais arquivos referenciar — lista prática
+
+| Se você for... | Use @ com estes arquivos |
+|----------------|--------------------------|
+| **Trabalhar no LIDAR C1** (parada, distância, backends) | `@src/core/lidar_c1_reader.py` e `@src/core/config.py` |
+| **Integração C1 com motores** (quem para, quando) | `@src/core/robot_motor_controller.py` e `@src/core/lidar_c1_reader.py` |
+| **Configuração geral** (velocidade, C1, POIs) | `@src/core/config.py` |
+| **Navegação** (trajetória, pathfinding, chegada ao POI) | `@src/core/robot_navigator.py` e `@src/core/path_finder.py` |
+| **Fase 2b — Deriva** (odometria, correção de rumo) | `@src/core/robot_navigator.py`, `@src/core/config.py` (BNO, odometria) |
+| **Fase 2c — Desvio de obstáculos** (lógica de desvio) | `@src/core/lidar_c1_reader.py`, `@src/core/robot_navigator.py` |
+| **Ferramenta de calibração C1** | `@tools/calibracao_c1_orientacao.py` |
+| **Teste isolado do C1** | `@tools/teste_c1_isolado.py` |
+| **Dar contexto geral do projeto** (sempre útil no início) | `@docs/PROMPT_CONTINUACAO_19MAR2026_C1_OBSTACULO.md` |
+
+### 9.3 Exemplos práticos de uso do @
+
+**Exemplo 1 — Ajustar distância de parada:**
+```
+@docs/PROMPT_CONTINUACAO_19MAR2026_C1_OBSTACULO.md @src/core/config.py
+
+Quero mudar LIDAR_OBSTACLE_MIN_DISTANCE de 0.85 para 0.70 m. Onde altero e o que mais preciso ajustar?
+```
+
+**Exemplo 2 — Começar Fase 2c (desvio):**
+```
+@docs/PROMPT_CONTINUACAO_19MAR2026_C1_OBSTACULO.md @src/core/lidar_c1_reader.py @src/core/robot_navigator.py
+
+Vamos iniciar a Fase 2c — desvio de obstáculos. Hoje o robô só para. Preciso que, quando parar por obstáculo lateral (mesa), ele tente realinhar e seguir em direção ao POI. O lidar_c1_reader retorna só a distância mínima — precisaremos de distância por setor (esq/centro/dir)?
+```
+
+**Exemplo 3 — Revisar logs:**
+```
+@docs/PROMPT_CONTINUACAO_19MAR2026_C1_OBSTACULO.md
+
+Fiz testes ontem. Colo os logs abaixo. O que você observa? [cole os logs]
+```
+
+**Regra geral:** Use `@docs/PROMPT_CONTINUACAO_19MAR2026_C1_OBSTACULO.md` no início de **qualquer** nova conversa para carregar o contexto. Depois adicione os arquivos específicos da tarefa.
+
+---
+
+## 10. Estrutura de pastas relevante
 
 ```
 robo_slam/
