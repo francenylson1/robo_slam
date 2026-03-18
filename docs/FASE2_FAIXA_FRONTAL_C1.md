@@ -7,8 +7,11 @@
 ## 1. Conceito
 
 O sensor C1 retorna ângulos de **0° a 360°**:
-- **0°** = frente do sensor (direção de movimento)
-- Sentido **horário** = ângulo aumenta (90° = direita, 180° = costas, 270° = esquerda)
+- **0°** = frente do sensor (seta no corpo, direção de movimento)
+- **Sentido depende da montagem** — use `calibracao_c1_orientacao.py --wizard` para descobrir:
+  - Se **anti-horário**: 90° = esquerda, 270° = direita
+  - Se **horário**: 90° = direita, 270° = esquerda
+- Ver `docs/CONVENCAO_ANGULOS_C1_MAR2026.md` para detalhes
 
 A **faixa frontal** é um cone centrado na frente, definido por:
 - **Centro:** ângulo central (padrão 0°)

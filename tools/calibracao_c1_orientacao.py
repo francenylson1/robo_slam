@@ -169,8 +169,12 @@ def encontrar_angulo_obstaculo(
     angulo_hint: Optional[float] = None,
 ) -> Optional[Tuple[float, float]]:
     """
-    Encontra o ângulo dominante onde há obstáculo na faixa [dist_min_mm, dist_max_mm].
-    Retorna (angulo_centro, distancia_media_mm) ou None.
+    Encontra o ângulo do obstáculo mais PRÓXIMO na faixa [dist_min_mm, dist_max_mm].
+
+    IMPORTANTE: Usa distância mínima, NÃO quantidade de pontos.
+    O algoritmo anterior pegava o setor com MAIS pontos — paredes/móveis (muitos
+    pontos a 1–2 m) sempre ganhavam da lixeira de calibração (~500 mm, poucos pontos).
+    Para calibração, o objeto do usuário (50–80 cm) deve ser o mais PRÓXIMO.
     """
     candidatos = [
         p for p in points
@@ -190,15 +194,34 @@ def encontrar_angulo_obstaculo(
         idx = min(int(ang / sector_deg) % n, n - 1)
         sector_dists[idx].append(d)
 
-    # Setor com mais pontos na faixa (obstáculo principal)
+    # Setor com obstáculo mais PRÓXIMO (dist mínima)
+    # MIN_PONTOS_SETOR=2: lixeira/objeto pequeno pode ter só 2–4 pontos em 20°;
+    # 5 era alto demais e fazia setor da lixeira ser ignorado, ganhando parede (muitos pts)
+    MIN_PONTOS_SETOR = 2
     best_idx = -1
-    best_count = 0
+    best_min_dist = float("inf")
     best_avg = 0.0
+
     for i in range(n):
-        if len(sector_dists[i]) > best_count:
-            best_count = len(sector_dists[i])
+        if len(sector_dists[i]) < MIN_PONTOS_SETOR:
+            continue
+        dists = sector_dists[i]
+        avg_d = sum(dists) / len(dists)
+        min_d = min(dists)
+        # Critério: menor distância MÍNIMA no setor (objeto mais próximo)
+        if min_d < best_min_dist:
+            best_min_dist = min_d
             best_idx = i
-            best_avg = sum(sector_dists[i]) / len(sector_dists[i]) if sector_dists[i] else 0
+            best_avg = avg_d
+
+    # Fallback: se nenhum setor qualificou (candidatos esparsos), use o ponto mais próximo
+    if best_idx < 0 and candidatos:
+        closest = min(candidatos, key=lambda p: p.get("d_mm") or float("inf"))
+        ang = closest.get("a_deg", 0)
+        d = closest.get("d_mm", 0)
+        idx = min(int(ang / sector_deg) % n, n - 1)
+        ang_centro = (idx * sector_deg) + sector_deg / 2
+        return (ang_centro, d)
 
     if best_idx < 0:
         return None
@@ -273,6 +296,14 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
     print("CALIBRAÇÃO DE ORIENTAÇÃO — RP Lidar C1")
     print("   Mapeia ângulos do sensor para posições do robô (frente, esq, dir, trás)")
     print("=" * 70)
+    print("")
+    print("   ATENÇÃO — Convenção de ângulos:")
+    print("   O C1 pode usar ÂNGULOS NO SENTIDO ANTI-HORÁRIO (visto de cima):")
+    print("   0°=frente | 90°=esquerda | 180°=trás | 270°=direita")
+    print("   OU sentido horário (90°=direita, 270°=esquerda), conforme montagem.")
+    print("   O wizard mostra o ângulo RAW reportado pelo sensor.")
+    print("   Use FRONT_CENTER = valor da etapa FRENTE para lidar_c1_reader.")
+    print("")
 
     try:
         # --- PASSO 1: Robô sozinho ---
@@ -379,6 +410,16 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
             ang_dir, _ = res
             resultado.direita_graus = round(ang_dir, 1)
             print("\n   ✓ DIREITA 90° ≈ {:.0f}°".format(ang_dir))
+            # Validação: esquerda e direita NÃO podem ser o mesmo ângulo (impossível geometricamente)
+            if resultado.esquerda_graus is not None:
+                diff = abs(resultado.direita_graus - resultado.esquerda_graus)
+                diff_wrap = min(diff, 360 - diff)  # menor arco entre os dois ângulos
+                if diff_wrap < 90:
+                    print("\n   ⚠️ INCONSISTÊNCIA: Esquerda ({:.0f}°) e Direita ({:.0f}°) muito próximas!")
+                    print("      Geometricamente devem estar ~180° aparte (ex: 90° e 270°).")
+                    print("      Possível causa: objeto não foi movido para o outro lado, ou confusão esq/dir.")
+                    print("      Sugestão: repita o PASSO 4 — coloque o objeto no LADO OPOSTO ao do PASSO 3.")
+                    resultado.direita_graus = None  # não confiar neste valor
 
         # --- PASSO 5: Obstáculo ATRÁS ---
         print("\n" + "-" * 70)
@@ -406,13 +447,15 @@ def main_wizard(port: str, baud: int, n_scans: int, output_path: Optional[str]) 
             print("\n" + "=" * 70)
             print("RESUMO DA CALIBRAÇÃO")
             print("=" * 70)
+            print("   (Ângulos RAW do sensor C1 — vide docs/CONVENCAO_ANGULOS_C1_MAR2026.md)")
+            print("")
             print("   Frente (direção de movimento): {:.0f}°".format(resultado.frente_graus))
             if resultado.esquerda_graus is not None:
-                print("   Esquerda 90°: {:.0f}°".format(resultado.esquerda_graus))
+                print("   Esquerda (obst. à esq.):   {:.0f}°".format(resultado.esquerda_graus))
             if resultado.direita_graus is not None:
-                print("   Direita 90°: {:.0f}°".format(resultado.direita_graus))
+                print("   Direita (obst. à dir.):    {:.0f}°".format(resultado.direita_graus))
             if resultado.tras_graus is not None:
-                print("   Trás: {:.0f}°".format(resultado.tras_graus))
+                print("   Trás:                      {:.0f}°".format(resultado.tras_graus))
             print("\n   Sugestão para lidar_c1_reader:")
             print("     FRONT_CENTER_DEG = {:.0f}".format(resultado.frente_graus))
             print("     FRONT_WIDTH_DEG = 60  (ou 80, 100 para mais cobertura)")

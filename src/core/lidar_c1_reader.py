@@ -15,10 +15,10 @@ from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Parâmetros conforme SLAMTEC C1 datasheet e teste físico (Mar 2026)
-# 0° = FRENTE (seta no sensor, "dead ahead" = eixo X no datasheet)
-# 180° = traseira (cabo). Zona corpo do robô: 120°–240° (~105 mm)
-FRONT_CENTER_DEG = 0.0
+# Parâmetros conforme calibração (wizard) e teste físico (Mar 2026)
+# Calibração típica: Frente=350°, Esq=270°, Dir=90°, corpo 120°–240°
+# Use tools/calibracao_c1_orientacao.py --wizard para medir sua montagem
+FRONT_CENTER_DEG = 350.0  # Frente do robô = 350° (seta do C1 aponta ~10° à dir.)
 FRONT_WIDTH_DEG = 200.0  # 200° para captar obstáculos levemente fora do eixo (lixeira etc.)
 PARACHOQUES_ZONE = (120.0, 240.0)  # Ignorar reflexos do corpo do robô
 MIN_IGNORE_M = 0.15
