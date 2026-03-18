@@ -10,6 +10,7 @@ Uso: apenas em Raspberry Pi, quando LIDAR_C1_ENABLED=True.
 
 import asyncio
 import logging
+import math
 import threading
 import time
 from typing import Optional, Tuple
@@ -304,18 +305,17 @@ class LidarC1Reader:
                     continue
 
                 angles, ranges, qualities = scan_data
-                # pyrplidarsdk: angles em graus (0-360), ranges em metros
+                # pyrplidarsdk: angles em RADIANOS (0-2π), ranges em METROS (doc utils.py)
                 points = []
                 for i, (ang, r) in enumerate(zip(angles, ranges)):
                     q = qualities[i] if i < len(qualities) else 0
                     d_m = float(r) if r and r > 0 else 0
                     if d_m <= 0:
                         continue
-                    # Ranges do SDK geralmente em metros (< 20)
                     d_mm = int(d_m * 1000) if d_m < 50 else int(d_m)
-                    ang_deg = float(ang)
-                    if ang_deg < 0 or ang_deg >= 360:
-                        ang_deg = _norm_angle(ang_deg)
+                    # Converter radianos → graus (bug corrigido Mar 2026: antes tratava rad como deg)
+                    ang_deg = math.degrees(float(ang))
+                    ang_deg = _norm_angle(ang_deg)
                     points.append({"a_deg": ang_deg, "d_mm": d_mm, "q": q})
 
                 if not points:
