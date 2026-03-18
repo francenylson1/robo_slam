@@ -30,7 +30,7 @@ DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 460800
 
 # Presets por modelo de robô — largura total da faixa frontal (graus)
-# 180° = frente do robô (validado FASE2_ANALISE); 0° = traseira (cabo/corpo); sentido horário
+# 0° = frente (seta no sensor, datasheet C1 "dead ahead"); 180° = traseira (cabo); sentido horário
 ROBOT_MODEL_PRESETS = {
     "narrow":   60,   # Visão estreita (ex: robôs compactos, corredores)
     "medium":   90,   # Padrão moderado
@@ -51,8 +51,8 @@ def is_in_frontal_cone(angle_deg: float, center_deg: float, width_deg: float) ->
     Verifica se o ângulo está dentro do cone frontal.
 
     Args:
-        angle_deg: Ângulo do ponto (0-360). Neste robô: 0°=traseira, 180°=frente.
-        center_deg: Centro do cone frontal. Neste robô: 180° (frente validada).
+        angle_deg: Ângulo do ponto (0-360). C1: 0°=frente (seta), 180°=traseira (cabo).
+        center_deg: Centro do cone frontal. C1: 0° (frente = seta, validado diagnóstico).
         width_deg: Largura total do cone em graus (ex: 200 = ±100° em relação ao centro).
 
     Returns:
@@ -528,7 +528,7 @@ async def main_async(args):
             print("   ⚠️ Sensor pode ter problemas. Verifique conexão e alimentação.")
 
         print("\n📡 Iniciando leitura de varreduras...")
-        print("   180° = frente do robô (validado); 0° = traseira. Sentido horário.")
+        print("   0° = frente (seta no sensor, validado); 180° = traseira (cabo). Sentido horário.")
         print("-" * 60)
 
         if hasattr(asyncio, "TaskGroup"):
@@ -592,14 +592,14 @@ def main():
         metavar="GRAUS",
         type=float,
         default=None,
-        help="Largura total do cone frontal em graus (ex: 60, 200). Centro = 180° (frente, ver docs/FASE2_ANALISE_TESTES_C1_2026.md)",
+        help="Largura total do cone frontal em graus (ex: 60, 200). Centro = 0° (frente = seta, ver docs)",
     )
     fg.add_argument(
         "--front-center",
         metavar="GRAUS",
         type=float,
-        default=180,
-        help="Ângulo central da faixa frontal (padrão: 180° = frente do robô, validado FASE2_ANALISE)",
+        default=0,
+        help="Ângulo central da faixa frontal (padrão: 0° = frente = seta no sensor C1, validado Mar/2026)",
     )
     fg.add_argument(
         "--robot-model",

@@ -9,23 +9,22 @@
 
 ## 1. Onde está o 0°?
 
-### 1.1 Referência física (RPLidar A1/A2/C1)
+### 1.1 Referência física — RPLidar C1 (SLAMTEC datasheet)
 
-Na família RPLidar (A1, A2, C1, S1), a referência angular é ligada à **posição do cabo**:
+O **RPLidar C1** segue convenção diferente dos modelos A1/A2. O datasheet oficial (SLAMTEC_rplidar_datasheet_C1) define:
 
-- **0°** é a direção para onde o **cabo preto** aponta.
-- **Sentido horário** = ângulo aumenta (visto de cima).
+- **0° = "dead ahead"** = frente do sensor (eixo X, direção da seta marcada no sensor)
+- **180° = traseira** (cabo)
+- **Sentido horário** = ângulo aumenta (visto de cima)
 
-Segundo a documentação (ex.: ArduPilot, datasheets): o sensor deve ser montado com o **cabo preto apontando para a traseira** do veículo. Nesse caso:
-- 0° ≈ traseira do robô (onde o cabo sai)
-- 180° ≈ frente do robô
+**Importante:** A seta marcada no corpo do C1 aponta para a frente = **0°**. O cabo está na traseira = **180°**.
 
 ### 1.2 E se o sensor estiver invertido ou rotacionado?
 
 Se a montagem não seguir esse padrão:
 
-- **0°** continua sendo “cabo preto”.
-- Você precisa **medir** qual ângulo corresponde à direção de movimento do seu robô.
+- **0°** continua sendo a direção da seta (frente do sensor).
+- Se o sensor estiver rotacionado na montagem, **medir** qual ângulo corresponde à frente do robô.
 
 ### 1.3 Como descobrir na prática (teste de diagnóstico)
 
@@ -42,8 +41,8 @@ O script:
 - Setores com distância maior → **área livre**
 
 Com isso, você identifica:
-- **Onde está o 0°** (eixo do cabo)
-- **Qual ângulo corresponde à frente** do seu robô (em geral a direção com mais espaço livre)
+- **0°** = frente (seta no C1); **180°** = traseira (cabo)
+- Setores ocupados vs livres (corpo do robô em ~120°–240°)
 
 ---
 
@@ -107,7 +106,7 @@ O valor exato **depende da montagem** do seu robô. Só é possível medir com o
    - Se a “frente” no `--diagnose` não bater com o preset (ex.: dev = 200°), ajuste com `--front-center`:
 
    ```bash
-   python tools/teste_c1_isolado.py --front-deg 200 --front-center 180 --scans 3
+   python tools/teste_c1_isolado.py --front-deg 200 --front-center 0 --scans 3
    ```
 
 ### Teste 3 — Aproximar obstáculo
@@ -125,7 +124,7 @@ O valor exato **depende da montagem** do seu robô. Só é possível medir com o
 
 | Pergunta                         | Resposta                                                  |
 |----------------------------------|-----------------------------------------------------------|
-| Onde está o 0°?                  | Direção do cabo preto (referência física). Use `--diagnose` para ver a distribuição angular. |
+| Onde está o 0°?                  | C1: 0° = frente (seta no sensor, datasheet "dead ahead"). Use `--diagnose` para verificar. |
 | Quantos graus sem obstáculo fixo?| Medido com `--diagnose`. Área livre = setores em que distância > limite (ex.: 150 mm). |
 | Como testar?                     | 1) `--diagnose` para mapear ângulos; 2) `--robot-model dev` apontando para parede; 3) aproximar obstáculo e validar parada/alerta. |
 

@@ -131,10 +131,10 @@ def plotar_mapa(points, args):
     dists_mm = np.array([p.get("d_mm", 0) or 0 for p in points])
     dists_m = dists_mm / 1000.0
 
-    # Polar: 180° (frente) no topo, 0° (trás) embaixo
-    angles_rad = np.radians(180 - angles)
+    # Polar: 0° (frente = seta) no topo, 180° (trás = cabo) embaixo
+    angles_rad = -np.radians(angles)
 
-    front_center = getattr(args, "front_center", 180)
+    front_center = getattr(args, "front_center", 0)
     front_width = getattr(args, "front_width", None)
     parach_lo, parach_hi = getattr(args, "parachoques_zone", (120, 240))
 
@@ -152,19 +152,19 @@ def plotar_mapa(points, args):
         frontal_angles = angles[in_frontal]
         frontal_dists = dists_m[in_frontal]
         if len(frontal_angles) > 0:
-            fr_rad = np.radians(180 - frontal_angles)
+            fr_rad = -np.radians(frontal_angles)
             ax1.scatter(fr_rad, frontal_dists, c="orange", s=4, alpha=0.8, label="frontal")
     ax1.set_theta_zero_location("N")
     ax1.set_theta_direction(-1)
-    ax1.set_title("Vista polar (0°=trás, 180°=frente)")
+    ax1.set_title("Vista polar (0°=frente/seta, 180°=trás/cabo)")
     ax1.legend(loc="upper left", fontsize=8)
     ax1.grid(True, alpha=0.3)
 
     # --- Plot cartesiano (x=frente, y= lateral) ---
     ax2 = fig.add_subplot(122)
-    # 180° = +x (frente), 90° = +y (esquerda)
-    x = dists_m * np.cos(np.radians(180 - angles))
-    y = dists_m * np.sin(np.radians(180 - angles))
+    # 0° = +x (frente = seta), 90° = +y (direita). SLAMTEC C1: dead ahead = x-axis
+    x = dists_m * np.cos(np.radians(angles))
+    y = -dists_m * np.sin(np.radians(angles))
     ax2.scatter(x, y, c="steelblue", s=2, alpha=0.6)
     if front_width and front_width < 360 and np.any(in_frontal):
         ax2.scatter(x[in_frontal], y[in_frontal], c="orange", s=4, alpha=0.8)
@@ -214,8 +214,8 @@ def main():
     parser.add_argument(
         "--front-center",
         type=float,
-        default=180,
-        help="Centro da faixa frontal (padrão: 180° = frente)",
+        default=0,
+        help="Centro da faixa frontal (padrão: 0° = frente = seta no sensor C1)",
     )
     parser.add_argument(
         "--parachoques-zone",
