@@ -50,8 +50,33 @@ Ou seja: o sistema **parou os motores** corretamente. O problema observado em ou
 - **Desbloqueio:** Só depois de 5 scans consecutivos livres **e** último obstáculo > 0,8 m.
 - **Obstáculo perto:** Se o último obstáculo estava < 0,8 m, não desbloqueia mesmo com vários scans livres; mantém o bloqueio.
 
+## Atualização 18/03 — Novos testes, novos achados
+
+### Logs do dia 18/03 16:43
+
+- **distância frontal = 0.77 m** — LIDAR reportou “livre” com lixeira a ~70 cm.
+- **POI alcançado (só ida, 15 cm)** — Navegador declarou chegada; em um teste o robô parou **depois** de atropelar.
+
+### Causas adicionais
+
+1. **Distância de parada (60 cm)** — Com o robô a 0,3 m/s, em 1 s são percorridos 30 cm. Parar aos 60 cm dá pouca margem se o cone deixar de detectar em alguns scans.
+2. **Cone 180°** — Lixeira pode ficar um pouco fora do cone em curvas ou leves desvios.
+3. **Declaração de chegada sem checagem de LIDAR** — Com “15 cm do alvo” a odometria podia declarar “chegada” mesmo com lixeira bloqueando, levando ao atropelo seguido de parada.
+
+### Correções adicionais (18/03)
+
+| Arquivo | Mudança |
+|---------|---------|
+| `config.py` | `LIDAR_OBSTACLE_MIN_DISTANCE = 0.85` (antes 0,60 m) — parar antes |
+| `lidar_c1_reader.py` | `FRONT_WIDTH_DEG = 200` (antes 180°) — cone mais amplo |
+| `robot_navigator.py` | Na regra “15 cm, só ida”, não declarar chegada se obstáculo < 40 cm à frente (possível lixeira) |
+
+### Falha de segmentação
+
+Ao encerrar o sistema aparece `Falha de segmentação`. Hipótese: desligamento do C1 (rplidarc1) em momento inadequado ou condição de corrida ao fechar conexão serial. Ainda sem causa definida; não afeta navegação durante execução.
+
 ## Próximos passos
 
 1. Testar na Raspberry com `main.py` e lixeira em várias posições.
-2. Confirmar que o robô não desbloqueia com a lixeira próxima.
-3. Opcional: ajustar `UNBLOCK_MIN_PREV_DIST_M` ou `CONSECUTIVE_CLEAR_TO_UNBLOCK` conforme resultados práticos.
+2. Confirmar parada antes da lixeira e ausência de atropelo.
+3. Se continuar sem detectar, revisar calibração física do C1 (0° = frente do robô) com `tools/calibracao_c1_orientacao.py`.

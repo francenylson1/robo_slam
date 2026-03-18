@@ -25,7 +25,7 @@ LIDAR_AVAILABLE = False  # Legado — uso geral de Lidar
 # C1 integrado à navegação: parada automática quando obstáculo < LIDAR_OBSTACLE_MIN_DISTANCE
 # REATIVADO (16/03/2026): calibração definiu frente=350°, cone 60° (evita corpo 120°–240°)
 LIDAR_C1_ENABLED = True  # True = tenta conectar C1 na Pi; False = desativa
-LIDAR_OBSTACLE_MIN_DISTANCE = 0.60  # Parar motores se obstáculo < 60 cm (60cm=parar bem antes; testes: 50cm lixeira ainda atropelada)
+LIDAR_OBSTACLE_MIN_DISTANCE = 0.85  # Parar motores se obstáculo < 85 cm (aumentado de 60cm; testes: lixeira às vezes não detectada)
 
 # Configurações do ambiente
 ENVIRONMENT_WIDTH = 6  # metros

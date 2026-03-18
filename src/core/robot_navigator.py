@@ -931,7 +931,18 @@ class RobotNavigator(QObject):
         elapsed_approach = current_time - self.final_approach_start_time
 
         # Regra "só ida": para no POI sem exigir alinhamento angular preciso.
+        # NÃO declarar chegada se obstáculo muito perto (< 40 cm) — provavelmente lixeira/obstáculo, não o POI.
         if not self.is_returning_to_base and total_distance < 0.15 and elapsed_approach >= 1.0:
+            ob = self.motors.lidar_reader
+            if ob and ob.has_obstacle():
+                d = ob.obstacle_distance()
+                if d != float("inf") and d < 0.40:
+                    # Obstáculo < 40 cm na frente — provavelmente atropelamos algo, não estamos no POI
+                    logger.info(
+                        "Obstáculo a %.0f cm na frente — não declarar chegada (possível lixeira). Aguardando.",
+                        d * 100
+                    )
+                    return False
             self.motors.stop()
             self.final_approach_start_time = None
             self._fa_entry_distance = None

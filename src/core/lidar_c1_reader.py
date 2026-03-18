@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # 0° = FRENTE (seta no sensor, "dead ahead" = eixo X no datasheet)
 # 180° = traseira (cabo). Zona corpo do robô: 120°–240° (~105 mm)
 FRONT_CENTER_DEG = 0.0
-FRONT_WIDTH_DEG = 180.0
+FRONT_WIDTH_DEG = 200.0  # 200° para captar obstáculos levemente fora do eixo (lixeira etc.)
 PARACHOQUES_ZONE = (120.0, 240.0)  # Ignorar reflexos do corpo do robô
 MIN_IGNORE_M = 0.15
 PARACHOQUES_MIN_IGNORE_M = 0.22
