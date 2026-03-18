@@ -11,6 +11,7 @@ Uso: apenas em Raspberry Pi, quando LIDAR_C1_ENABLED=True.
 import asyncio
 import logging
 import threading
+import time
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -113,7 +114,17 @@ class LidarC1Reader:
         return self.min_ignore_m
 
     def _thread_run(self):
-        """Entry point da thread: cria event loop e executa scan."""
+        """Entry point da thread: executa scan conforme backend configurado."""
+        try:
+            from src.core.config import LIDAR_C1_BACKEND
+            backend = LIDAR_C1_BACKEND or "rplidarc1"
+        except ImportError:
+            backend = "rplidarc1"
+
+        if backend == "pyrplidarsdk":
+            self._run_pyrplidarsdk_scan()
+            return
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -241,6 +252,121 @@ class LidarC1Reader:
                 pass
             self._lidar = None
 
+    def _run_pyrplidarsdk_scan(self):
+        """Executa o loop de scan usando pyrplidarsdk (SDK oficial SLAMTEC)."""
+        try:
+            import pyrplidarsdk
+        except ImportError:
+            logger.warning("pyrplidarsdk não instalado. Execute: pip install pyrplidarsdk. Lidar C1 desativado.")
+            with self._lock:
+                if self._obstacle_distance_m == 0.0:
+                    self._obstacle_distance_m = float("inf")
+            return
+
+        try:
+            # C1 usa baudrate 460800 (diferente do padrão 1000000)
+            self._lidar = pyrplidarsdk.RplidarDriver(port=self.port, baudrate=self.baud)
+        except Exception as e:
+            logger.warning("Não foi possível conectar ao C1 em %s: %s. Lidar desativado.", self.port, e)
+            with self._lock:
+                if self._obstacle_distance_m == 0.0:
+                    self._obstacle_distance_m = float("inf")
+            return
+
+        if not self._lidar.connect():
+            logger.warning("Falha ao conectar ao C1 via pyrplidarsdk. Lidar desativado.")
+            with self._lock:
+                if self._obstacle_distance_m == 0.0:
+                    self._obstacle_distance_m = float("inf")
+            try:
+                self._lidar.disconnect()
+            except Exception:
+                pass
+            self._lidar = None
+            return
+
+        logger.info("Lidar C1 conectado (pyrplidarsdk).")
+        first_scan_logged = False
+        deadline_first_scan = time.time() + FIRST_SCAN_TIMEOUT_SEC
+
+        try:
+            if not self._lidar.start_scan():
+                logger.warning("Falha ao iniciar scan do C1.")
+                with self._lock:
+                    if self._obstacle_distance_m == 0.0:
+                        self._obstacle_distance_m = float("inf")
+                return
+
+            while not self._stop_event.is_set():
+                scan_data = self._lidar.get_scan_data()
+                if not scan_data:
+                    time.sleep(0.05)
+                    continue
+
+                angles, ranges, qualities = scan_data
+                # pyrplidarsdk: angles em graus (0-360), ranges em metros
+                points = []
+                for i, (ang, r) in enumerate(zip(angles, ranges)):
+                    q = qualities[i] if i < len(qualities) else 0
+                    d_m = float(r) if r and r > 0 else 0
+                    if d_m <= 0:
+                        continue
+                    # Ranges do SDK geralmente em metros (< 20)
+                    d_mm = int(d_m * 1000) if d_m < 50 else int(d_m)
+                    ang_deg = float(ang)
+                    if ang_deg < 0 or ang_deg >= 360:
+                        ang_deg = _norm_angle(ang_deg)
+                    points.append({"a_deg": ang_deg, "d_mm": d_mm, "q": q})
+
+                if not points:
+                    time.sleep(0.05)
+                    continue
+
+                d_obst = self._process_scan_points(points)
+                with self._lock:
+                    prev = self._obstacle_distance_m
+                    if d_obst != float("inf"):
+                        self._obstacle_distance_m = d_obst
+                        self._consecutive_clear_scans = 0
+                    else:
+                        if prev < self.min_stop_m:
+                            self._consecutive_clear_scans += 1
+                            n = CONSECUTIVE_CLEAR_TO_UNBLOCK
+                            far_enough = prev >= UNBLOCK_MIN_PREV_DIST_M
+                            if self._consecutive_clear_scans >= n and far_enough:
+                                self._obstacle_distance_m = float("inf")
+                                self._consecutive_clear_scans = 0
+                            elif self._consecutive_clear_scans >= n:
+                                self._consecutive_clear_scans = 0
+                        else:
+                            self._obstacle_distance_m = float("inf")
+                            self._consecutive_clear_scans = 0
+                    if prev == 0.0:
+                        d_str = f"{d_obst:.2f} m" if d_obst != float("inf") else "livre (inf)"
+                        logger.info("Lidar C1 (pyrplidarsdk): primeiro scan OK — distância frontal = %s", d_str)
+
+                if not first_scan_logged and time.time() > deadline_first_scan:
+                    first_scan_logged = True
+                    with self._lock:
+                        if self._obstacle_distance_m == 0.0:
+                            self._obstacle_distance_m = float("inf")
+                            logger.warning(
+                                "Lidar C1 (pyrplidarsdk): 1º scan não completou em %.0f s — desbloqueando.",
+                                FIRST_SCAN_TIMEOUT_SEC,
+                            )
+
+                time.sleep(0.02)
+
+        except Exception as e:
+            logger.error("Erro no loop pyrplidarsdk: %s", e, exc_info=True)
+        finally:
+            try:
+                self._lidar.stop_scan()
+                self._lidar.disconnect()
+            except Exception:
+                pass
+            self._lidar = None
+
     def _process_scan_points(self, points: list) -> float:
         """Processa pontos de uma varredura e retorna distância mínima (m) do obstáculo válido."""
         valid = [p for p in points if (p.get("d_mm") or 0) > 0]
@@ -286,9 +412,14 @@ class LidarC1Reader:
         self._thread = None
         if self._lidar:
             try:
-                self._lidar.stop_event.set()
-                self._lidar.reset()
-                self._lidar.shutdown()
+                # rplidarc1 tem stop_event; pyrplidarsdk tem stop_scan/disconnect
+                if hasattr(self._lidar, "stop_event"):
+                    self._lidar.stop_event.set()
+                    self._lidar.reset()
+                    self._lidar.shutdown()
+                else:
+                    self._lidar.stop_scan()
+                    self._lidar.disconnect()
             except Exception:
                 pass
             self._lidar = None
