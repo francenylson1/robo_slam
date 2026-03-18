@@ -23,6 +23,13 @@ FRONT_WIDTH_DEG = 180.0
 PARACHOQUES_ZONE = (120.0, 240.0)  # Ignorar reflexos do corpo do robô
 MIN_IGNORE_M = 0.15
 PARACHOQUES_MIN_IGNORE_M = 0.22
+# Zona frontal estrita (350°–10°): sem corpo do robô; usar 50mm para detectar obstáculo muito perto
+STRICT_FRONT_ANGLE_HALF = 10.0
+STRICT_FRONT_MIN_IGNORE_M = 0.05
+# Quantos scans "livres" consecutivos para desbloquear (era 2 → causava desbloqueio falso e atropelo)
+CONSECUTIVE_CLEAR_TO_UNBLOCK = 5
+# Só desbloquear se último obstáculo estava longe (> 0.8m), senão provavelmente ainda estamos na frente
+UNBLOCK_MIN_PREV_DIST_M = 0.8
 DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 460800
 # Se o 1º scan não completar em 5 s, consideramos livre para não bloquear navegação indefinidamente
@@ -95,11 +102,14 @@ class LidarC1Reader:
             return self._obstacle_distance_m
 
     def _min_ignore_for_point(self, angle_deg: float) -> float:
-        """Retorna o min_ignore em metros conforme zona (parachoques vs lateral)."""
+        """Retorna o min_ignore em metros conforme zona (parachoques vs frontal estrita vs lateral)."""
         a = _norm_angle(angle_deg)
         lo, hi = self.parachoques_zone
         if lo <= a <= hi:
             return self.parachoques_min_ignore_m
+        # Zona frontal estrita (350°–10°): sem corpo; 50mm para detectar obstáculo próximo
+        if a >= (360 - STRICT_FRONT_ANGLE_HALF) or a <= STRICT_FRONT_ANGLE_HALF:
+            return STRICT_FRONT_MIN_IGNORE_M
         return self.min_ignore_m
 
     def _thread_run(self):
@@ -173,13 +183,18 @@ class LidarC1Reader:
                             self._consecutive_clear_scans = 0
                         else:
                             # Scan retornou "livre" — não sobrescrever imediatamente se há obstáculo detectado
-                            # (corrige bug: varredura completa perdia lixeira e limpava via rápida)
+                            # Desbloquear só após N scans livres E se último obstáculo estava longe (>0.8m)
                             if prev < self.min_stop_m:
                                 self._consecutive_clear_scans += 1
-                                if self._consecutive_clear_scans >= 2:
+                                n = CONSECUTIVE_CLEAR_TO_UNBLOCK
+                                far_enough = prev >= UNBLOCK_MIN_PREV_DIST_M
+                                if self._consecutive_clear_scans >= n and far_enough:
                                     self._obstacle_distance_m = float("inf")
                                     self._consecutive_clear_scans = 0
-                                    logger.debug("Lidar C1: 2 scans consecutivos livres — desbloqueando.")
+                                    logger.debug("Lidar C1: %d scans consecutivos livres (últ. obst=%.2fm) — desbloqueando.", n, prev)
+                                elif self._consecutive_clear_scans >= n and not far_enough:
+                                    self._consecutive_clear_scans = 0  # evita overflow e log repetido
+                                    logger.debug("Lidar C1: %d scans livres mas último obstáculo perto (%.2fm < %.2fm) — mantém bloqueio.", n, prev, UNBLOCK_MIN_PREV_DIST_M)
                             else:
                                 self._obstacle_distance_m = float("inf")
                                 self._consecutive_clear_scans = 0

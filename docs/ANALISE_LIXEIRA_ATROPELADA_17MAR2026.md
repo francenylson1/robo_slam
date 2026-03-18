@@ -1,92 +1,57 @@
-# Análise: Robô atropela lixeira — 17/03/2026
+# Análise: Lixeira detectada intermitentemente e atropelada (Mar 2026)
 
-## Testes realizados
+## Resumo dos sintomas relatados
 
-1. **Lixeira a 47 cm:** robô não iniciou navegação (esperado, pois 47 < 50 cm).
-2. **Lixeira a 70 cm:** robô iniciou mas **não parou** e atropelou a lixeira.
+1. **Teste 1:** Lixeira a ~70 cm → robô parou. Lixeira puxada mais ~70 cm → parou de novo. Depois disso **parou de parar**.
+2. **Teste 2:** Recarregou o mapa → **não parou**.
+3. **Teste 3:** Reiniciou o sistema → parou a ~45 cm. Em seguida **parou de parar** e **atropelou a lixeira**.
 
-## Problema
+## Logs analisados
 
-O Lidar C1 **não está detectando a lixeira** durante a navegação. Nos logs não aparecem:
-- `Lidar C1 diagnóstico: distância frontal = X.XX m`
-- `Lidar C1: obstáculo < 0.50 m — parando motores`
+Nos logs fornecidos, o LIDAR C1 **estava detectando** o obstáculo:
+- `distância frontal = 0.34m`, `0.36m`, `0.38m`, `0.15m` (parar se < 0.60 m)
+- `LIDAR C1: OBSTÁCULO < 0.60m → PARANDO MOTORES!` aparece várias vezes
+- A posição do robô permanece fixa em (3.38, 6.30)m durante todo o trecho
 
-Isso indica que `has_obstacle()` nunca retornou `True` durante o movimento — o sensor reportou sempre distância ≥ 0,50 m ou `inf`.
+Ou seja: o sistema **parou os motores** corretamente. O problema observado em outros testes (não parar e atropelar) está ligado a cenários em que a detecção **perde** o obstáculo e o código **desbloqueia** os motores indevidamente.
 
-## Hipóteses identificadas
+## Causas identificadas
 
-### 1. Cone frontal estreito (120°)
-- Cone atual: centro 350°, largura 120° → faixa 290°–50°.
-- Durante curvas, a lixeira pode ficar **fora do cone**.
-- **Correção:** cone ampliado para 180° (260°–80°).
+### 1. Desbloqueio com 2 scans consecutivos livres
 
-### 2. Distância de parada insuficiente (0,50 m)
-- Margem pequena entre detecção e parada com 0,50 m.
-- **Correção:** limiar aumentado para 0,60 m para parar mais cedo.
+**Problema:** O código antigo exigia apenas **2 varreduras completas** sem obstáculo para considerar a frente livre e definir `_obstacle_distance_m = inf`, desbloqueando os motores.
 
-### 3. Altura do plano de varredura vs. altura da lixeira
-- O C1 é 2D: varre um único plano horizontal.
-- Se o Lidar estiver montado alto e a lixeira for baixa, o plano pode passar **acima** da lixeira.
-- **Ação sugerida:** conferir se o plano de varredura do C1 cruza a lixeira; ajustar altura do sensor se preciso.
+**Por que causava atropelo:** O C1 pode ter leituras intermitentes (reflexos ruins, ângulo da lixeira, movimento). Se 2 scans seguidos “não virem” o obstáculo, o sistema concluía que estava livre e liberava o movimento. Como o obstáculo ainda estava na frente, o robô voltava a avançar e podia colidir.
 
-### 4. Reflexão em lixeiras plásticas
-- Plástico pode refletir pouco ou dispersar o feixe.
-- No `teste_c1_isolado` a lixeira foi detectada (~287 mm), mas com robô parado e ângulo frontal.
-- Em movimento, ângulos e vibrações podem reduzir a detecção.
-- **Mitigação:** cone maior (180°) aumenta a chance de acertar algum ângulo que reflita bem.
+### 2. `min_ignore` = 150 mm na frente
 
-### 5. Diagnóstico invisível nos logs
-- Os logs mostram principalmente `print()` do widget do mapa.
-- As mensagens de log do Lidar podem não aparecer no terminal se forem capturadas só de stdout.
-- **Correção:** adicionado `print()` no `set_target_speed` para diagnóstico sempre visível no terminal.
+**Problema:** Leituras < 150 mm eram descartadas (para filtrar reflexos do corpo do robô).
+
+**Efeito:** Com a lixeira a ~14 cm, leituras em torno de 140 mm eram ignoradas. O scan era tratado como “livre” e contribuía para o desbloqueio falso.
+
+### 3. Desbloquear mesmo com obstáculo perto
+
+**Problema:** Se o último obstáculo registrado estava, por exemplo, a 0,3 m e depois apareciam 2 scans livres, o código desbloqueava mesmo assim.
+
+**Consequência:** Era provável que o obstáculo ainda estivesse à frente; o sistema liberava o movimento incorretamente.
 
 ## Correções implementadas
 
-| Alteração | Arquivo | Descrição |
-|-----------|---------|-----------|
-| Cone 180° | `lidar_c1_reader.py` | `FRONT_WIDTH_DEG = 180` (era 120°) |
-| Distância 0,60 m | `config.py` | `LIDAR_OBSTACLE_MIN_DISTANCE = 0.60` |
-| Diagnóstico via print | `robot_motor_controller.py` | `print()` a cada 0,5 s com distância frontal para aparecer no terminal |
-| Log quando obstáculo | `robot_motor_controller.py` | `print()` quando `has_obstacle()` bloqueia |
+| Arquivo | Mudança |
+|---------|---------|
+| `lidar_c1_reader.py` | `CONSECUTIVE_CLEAR_TO_UNBLOCK = 5` (antes 2) |
+| `lidar_c1_reader.py` | `UNBLOCK_MIN_PREV_DIST_M = 0.8` — só desbloquear se o último obstáculo estava > 0,8 m |
+| `lidar_c1_reader.py` | Zona frontal estrita (350°–10°) com `STRICT_FRONT_MIN_IGNORE_M = 0.05` — continua detectando obstáculos a 50 mm |
+| `lidar_c1_reader.py` | `_min_ignore_for_point()` usa 50 mm só na zona 350°–10°; parachoques continuam em 220 mm |
 
-## Verificações no próximo teste
+## Comportamento esperado após correções
 
-1. Aparecer no terminal algo como:
-   ```
-   📡 LIDAR C1: distância frontal = X.XX m (parar se < 0.60 m)
-   ```
-2. Ao se aproximar da lixeira, deve aparecer:
-   ```
-   🛑 LIDAR C1: OBSTÁCULO DETECTADO — parando motores (dist=0.XX m)
-   ```
-3. Se continuar sem detecção, conferir:
-   - Altura do Lidar em relação à lixeira.
-   - Executar novamente: `python tools/teste_c1_isolado.py --port /dev/ttyUSB0 --front-deg 180 --front-center 350 --scans 5` com a lixeira a ~60 cm.
+- **Detecção:** Lixeira a partir de ~50 mm na zona frontal estrita.
+- **Desbloqueio:** Só depois de 5 scans consecutivos livres **e** último obstáculo > 0,8 m.
+- **Obstáculo perto:** Se o último obstáculo estava < 0,8 m, não desbloqueia mesmo com vários scans livres; mantém o bloqueio.
 
----
+## Próximos passos
 
-## Reanálise com feedback do usuário
-
-### Hipóteses descartadas (com suas respostas)
-
-| Hipótese | Sua resposta | Conclusão |
-|----------|--------------|-----------|
-| **Freio / distância 50 cm** | Motor bem calibrado, desliga e para imediatamente | O problema não é o freio — é que o Lidar nunca envia o comando de parada. |
-| **Altura do Lidar** | Lixeira 42 cm largura × 56 cm altura | Plano de varredura cruza o objeto. Hipótese de altura descartada. |
-| **Reflexão** | `teste_c1_isolado` com cone 120° detecta a lixeira | O sensor enxerga a lixeira quando parado e em frente. Reflexão descartada. |
-
-### Hipótese principal que permanece
-
-**Geometria da trajetória durante a navegação**
-
-- **Teste isolado:** robô parado, lixeira colocada à frente → ângulo ≈ 350° → dentro do cone 120° (290°–50°) → detectado.
-- **Navegação:** robô segue waypoints e pode fazer curvas; a “frente” (350°) pode apontar para o próximo waypoint, não para a lixeira.
-- **Se a lixeira estiver, por exemplo, a 270° (esquerda):** está fora do cone 120° (290°–50°), mas entra no cone 180° (260°–80°).
-
-Ou seja: o cone 120° pode ter deixado a lixeira fora durante a maior parte da aproximação em curva.
-
-### Alterações mantidas
-
-1. **Cone 180°** – aumenta a chance de detectar a lixeira durante curvas.
-2. **Distância 0,60 m** – não resolve falta de detecção, mas aumenta margem se a detecção começar a ocorrer.
-3. **Print de diagnóstico** – permite ver no terminal o que o Lidar está reportando durante o movimento.
+1. Testar na Raspberry com `main.py` e lixeira em várias posições.
+2. Confirmar que o robô não desbloqueia com a lixeira próxima.
+3. Opcional: ajustar `UNBLOCK_MIN_PREV_DIST_M` ou `CONSECUTIVE_CLEAR_TO_UNBLOCK` conforme resultados práticos.
