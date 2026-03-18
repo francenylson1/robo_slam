@@ -26,10 +26,10 @@ LIDAR_AVAILABLE = False  # Legado — uso geral de Lidar
 # REATIVADO (16/03/2026): calibração definiu frente=350°, cone 60° (evita corpo 120°–240°)
 LIDAR_C1_ENABLED = True  # True = tenta conectar C1 na Pi; False = desativa
 LIDAR_OBSTACLE_MIN_DISTANCE = 0.85  # Parar motores se obstáculo < 85 cm (aumentado de 60cm; testes: lixeira às vezes não detectada)
-# Backend do C1: "rplidarc1" (padrão) ou "pyrplidarsdk" (SDK oficial SLAMTEC; pode melhorar detecção)
-# pyrplidarsdk: pip install pyrplidarsdk — C1 exige baudrate 460800 (já configurado)
-# Vide docs/ANALISE_BIBLIOTECA_C1_ALTERNATIVAS_MAR2026.md
-LIDAR_C1_BACKEND = "rplidarc1"  # Alternar para "pyrplidarsdk" para testar SDK oficial
+# Backend do C1: "rplidarc1" ou "pyrplidarsdk" (SDK oficial SLAMTEC)
+# pyrplidarsdk testado como alternativa — rplidarc1 apresentou parada inconsistente (Mar 2026)
+# C1 exige baudrate 460800 (já configurado). Vide docs/INTEGRACAO_PYRPLIDARSDK_C1_MAR2026.md
+LIDAR_C1_BACKEND = "pyrplidarsdk"  # SDK oficial; use "rplidarc1" para voltar à lib anterior
 
 # Configurações do ambiente
 ENVIRONMENT_WIDTH = 6  # metros
