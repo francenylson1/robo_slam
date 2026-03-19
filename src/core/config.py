@@ -168,12 +168,11 @@ BNO_STRAIGHT_INVERT_CORRECTION = True
 TURN_TPS_DEFAULT = 12.0
 # Timeout (s) para obter a primeira leitura válida de yaw antes de linha reta (evita "BNO sem leitura")
 BNO_FIRST_READ_TIMEOUT = 2.5
-# Navegação: False = BNO desligado; True = BNO ativo (correção de rumo e/ou fusão na pose)
-# Modo "só correção de rumo": USE_BNO_IN_NAVIGATION=True + USE_BNO_POSE_FUSION=False
-USE_BNO_IN_NAVIGATION = True
+# Navegação: False = BNO desligado (estado estável); True = BNO ativo
+# BNO desativado: testes 19/03 (fusão e só correção) causaram deriva, passou do POI, parada inconsistente
+USE_BNO_IN_NAVIGATION = False
 
-# Fusão BNO na pose: False = pose 100% odometria, BNO só corrige TPS ao avançar; True = BNO mistura no ângulo
-# False = mais seguro (evita conflito odometria vs BNO que causou perda de trajetória em 19/03)
+# Fusão BNO na pose (só quando USE_BNO_IN_NAVIGATION=True)
 USE_BNO_POSE_FUSION = False
 
 # Filtro complementar BNO: peso do BNO na fusão de ângulo (só quando USE_BNO_POSE_FUSION=True)
