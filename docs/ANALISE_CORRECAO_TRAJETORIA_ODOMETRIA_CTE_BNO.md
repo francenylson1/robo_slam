@@ -114,14 +114,11 @@ O plano em `PLANO_FASE2B_DERIVA_CORRECAO_TRAJETORIA.md` coloca o BNO como **Opç
 
 ---
 
-## 6. Estratégia recomendada (ordem)
+## 6. Estratégia recomendada (ordem) — atualizado pós-teste 19/03
 
-1. **Reativar BNO com calibração cuidadosa** — atacar a raiz (ângulo)
-   - Testar `BNO_STRAIGHT_INVERT_CORRECTION` (True vs False)
-   - Reduzir ganhos (BNO_STRAIGHT_KP, BNO_FILTER_ALPHA)
-   - Ativar em fases: primeiro só correção de rumo, depois fusão na pose
+1. ~~Reativar BNO~~ — **Descartado:** testes causaram perda total de trajetória (diagonal, passou do POI)
 
-2. **Refinar CTE** — ampliar uso em navegação direta (já aplica, mas ganho/limite podem ser ajustados)
+2. **Refinar CTE** — ampliar uso em navegação direta; ajustar ganho/limite
 
 3. **Calibrar parâmetros físicos** — TICKS_PER_REVOLUTION, ROBOT_WHEEL_BASE_M, LEFT_MOTOR_CORRECTION_FACTOR
 
@@ -136,3 +133,15 @@ O plano em `PLANO_FASE2B_DERIVA_CORRECAO_TRAJETORIA.md` coloca o BNO como **Opç
 | `config.py` | USE_BNO_IN_NAVIGATION, BNO_STRAIGHT_INVERT_CORRECTION, BNO_STRAIGHT_KP, BNO_FILTER_ALPHA |
 | `robot_navigator.py` | _update_pose_with_odometry, _move_towards_target, _apply_bno_straight_correction |
 | `robot_motor_controller.py` | LEFT_MOTOR_CORRECTION_FACTOR |
+
+---
+
+## 8. Teste BNO 19/03/2026 — resultado
+
+BNO foi reativado com ganhos conservadores (KP 0.4, ALPHA 0.08). Resultado: **perda total de trajetória**.
+
+- Teste 1: desvio em diagonal para a direita
+- Teste 2: desvio em diagonal para a esquerda, passou do POI e seguiu
+- BNO_STRAIGHT_INVERT_CORRECTION = False: não resolveu, continuou desviando para direita
+
+**Decisão:** BNO permanece desativado. Fase 2b seguirá com outras abordagens (CTE em navegação direta, calibração de motores, etc.).
