@@ -18,6 +18,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
 - Resultado: parada **consistente** em testes com lixeira e pessoa (várias repetições)
 - **Timeout de navegação:** 45 s → 300 s (5 min); permite múltiplas paradas para usuários se servirem (ex.: garçom)
 - **BNO (Fase 2b):** Desativado. Testes 19/03 (fusão e só correção) falharam: deriva, passou do POI, parada de emergência inconsistente.
+- **Bug de escala do mapa (19/03/2026):** YAML dos mapas `_90` e `_270` tinha resolução pela metade (0.023904 → corrigido para 0.047808 m/px). Sala real: 6.26m × 12.00m. Posição inicial do robô atualizada para (~3.54, ~7.74) metros reais. POIs e áreas proibidas devem ser recriados pelo operador via GUI.
 
 ---
 
@@ -27,9 +28,9 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
 |------|------|--------|-----------|
 | 1 | Semi-autônoma (Odometria) | ✅ Concluída | Navegação ida/volta, odometria + CTE, áreas proibidas |
 | 2a | C1 integrado (parada emergência) | ✅ Concluída | LIDAR C1 detecta obstáculo frontal, para motores |
-| 2b | Deriva e correção de trajetória | 📋 Próxima | Ver docs/PLANO_FASE2B_DERIVA_CORRECAO_TRAJETORIA.md |
+| 2b | Correção de trajetória | 🔬 Em análise | BNO falhou em todos os modos (19/03). Nova estratégia: Abordagem C (scan matching com mapa PGM). Ver seção 11. |
 | 2c | Desvio de obstáculos | 📋 Planejada | Ao se aproximar de mesa: realinhar e ir em direção ao POI (não só parar) |
-| 3 | Localização (AMCL-like) | 📋 Planejada | Mapa Aurora + C1 para correção de pose |
+| 3 | Localização (AMCL-like / Abordagem C) | 🔧 Pré-requisito: fix escala YAML ✅ | Scan matching C1 vs mapa PGM para correção de pose em tempo real |
 | 4 | SLAM completo | 📋 Planejada | Navegação 15–25 m, máxima autonomia |
 
 ---
@@ -58,6 +59,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
   - `LIDAR_C1_BACKEND = "pyrplidarsdk"`
   - `NAVIGATION_MAX_DURATION_S = 300` (5 min; permite múltiplas paradas para usuários se servirem)
   - `USE_BNO_IN_NAVIGATION = False` (BNO desativado; estado estável)
+  - `ROBOT_INITIAL_POSITION = (3.54, 7.74)` (atualizado após correção do YAML de escala)
 
 ### Parâmetros do C1 (lidar_c1_reader.py)
 - `FRONT_CENTER_DEG = 350` — Frente do robô no sensor (calibração wizard)
@@ -219,3 +221,61 @@ robo_slam/
 │   └── ANALISE_RPLIDARC1_MANTER_OU_REMOVER_19MAR2026.md
 └── requirements.txt            # pyrplidarsdk, rplidarc1
 ```
+
+---
+
+## 11. Próxima fase: Abordagem C — Scan Matching com mapa PGM (Fase 3)
+
+### Por que essa abordagem
+
+BNO + odometria + CTE falharam consistentemente em corrigir deriva. A causa raiz é que todos estimam posição sem "ver" o ambiente real. O C1 Lidar já lê o ambiente real — usá-lo para corrigir a pose é a solução mais robusta disponível no hardware atual.
+
+### Pré-requisitos concluídos ✅
+
+| Item | Status | Detalhe |
+|------|--------|---------|
+| Mapa PGM gerado pelo C1 | ✅ | `mapa-03122025_final_90.pgm` (131×251 px) |
+| YAML com resolução correta | ✅ **CORRIGIDO 19/03** | 0.023904 → **0.047808 m/px** (era metade do real) |
+| Sala real representada | ✅ | 6.26m × 12.00m — confirmado |
+| C1 lendo scans em tempo real | ✅ | Via `pyrplidarsdk`, thread dedicada |
+| Odometria em metros reais | ✅ | `ROBOT_WHEEL_CIRCUMFERENCE_M=0.525`, `TICKS_PER_REVOLUTION=45` |
+| POIs recriados pelo operador | ⏳ Pendente | Recriar via GUI após primeira execução com YAML correto |
+
+### Como funciona o scan matching
+
+1. O mapa PGM é carregado como uma grade de ocupância (pixels pretos = paredes/obstáculos)
+2. A cada ~1-2 s, o scan atual do C1 (360 pontos em metros reais) é comparado com o mapa
+3. O algoritmo busca o deslocamento `(dx, dy, dθ)` que melhor alinha o scan com o mapa
+4. Esse deslocamento corrige a pose estimada pela odometria
+5. A navegação continua usando a pose corrigida para calcular a distância até o POI
+
+### O robô chega ao POI por coordenadas x,y?
+
+**Sim.** A lógica de destino não muda. O que muda é que a pose `(x, y, θ)` durante o trajeto será corrigida pelo scan matching, reduzindo a deriva. O robô para quando a pose corrigida indica que chegou às coordenadas do POI.
+
+### Arquitetura do novo módulo (a implementar)
+
+```
+src/core/lidar_pose_corrector.py   ← NOVO
+  - Carrega PGM + YAML como grade de ocupância
+  - Recebe scan C1 (lista de (ângulo, distância))
+  - Executa ICP simplificado ou correlação de ocupância
+  - Retorna (dx, dy, dθ) — correção de pose
+  - Rodando em thread, corrigindo a cada ~1-2 s
+```
+
+Integração: `robot_navigator._update_pose_with_odometry()` aplica a correção após odometria.
+
+### Resolução do mapa e precisão esperada
+
+- Resolução: **0.047808 m/px ≈ 4.78 cm/px**
+- Precisão teórica do scan matching: **±5-10 cm**
+- Frequência de correção: **a cada 1-2 s** (adequado para Raspberry Pi 4)
+- Impacto no CPU: estimado **5-15%** com numpy vetorizado
+
+### Após correção do YAML — o que muda no comportamento
+
+- Posição inicial calculada automaticamente: `(74×0.047808, 162×0.047808)` = **(3.54, 7.74)** metros reais
+- POIs precisam ser recriados clicando no mapa (GUI já funcionará na escala correta)
+- Áreas proibidas precisam ser recriadas (mesma razão)
+- Odometria e motores: **sem alterações** (já estavam em metros reais)
