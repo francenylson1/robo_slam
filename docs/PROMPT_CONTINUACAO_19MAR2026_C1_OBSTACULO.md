@@ -17,6 +17,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
 - Correção: `math.degrees(ang)` no fluxo pyrplidarsdk
 - Resultado: parada **consistente** em testes com lixeira e pessoa (várias repetições)
 - **Timeout de navegação:** 45 s → 300 s (5 min); permite múltiplas paradas para usuários se servirem (ex.: garçom)
+- **BNO reativado (Fase 2b):** USE_BNO_IN_NAVIGATION = True; ganhos reduzidos (KP 0.4, ALPHA 0.08) para correção de trajetória
 
 ---
 
@@ -26,7 +27,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
 |------|------|--------|-----------|
 | 1 | Semi-autônoma (Odometria) | ✅ Concluída | Navegação ida/volta, odometria + CTE, áreas proibidas |
 | 2a | C1 integrado (parada emergência) | ✅ Concluída | LIDAR C1 detecta obstáculo frontal, para motores |
-| 2b | Deriva e correção de trajetória | 📋 Próxima | Robô desvia do caminho (odometria); tratar em fase futura |
+| 2b | Deriva e correção de trajetória | 📋 Próxima | Ver docs/PLANO_FASE2B_DERIVA_CORRECAO_TRAJETORIA.md |
 | 2c | Desvio de obstáculos | 📋 Planejada | Ao se aproximar de mesa: realinhar e ir em direção ao POI (não só parar) |
 | 3 | Localização (AMCL-like) | 📋 Planejada | Mapa Aurora + C1 para correção de pose |
 | 4 | SLAM completo | 📋 Planejada | Navegação 15–25 m, máxima autonomia |
@@ -56,6 +57,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
   - `LIDAR_OBSTACLE_MIN_DISTANCE = 0.85` (parar se < 85 cm)
   - `LIDAR_C1_BACKEND = "pyrplidarsdk"`
   - `NAVIGATION_MAX_DURATION_S = 300` (5 min; permite múltiplas paradas para usuários se servirem)
+  - `USE_BNO_IN_NAVIGATION = True` (Fase 2b; correção de rumo e fusão na pose)
 
 ### Parâmetros do C1 (lidar_c1_reader.py)
 - `FRONT_CENTER_DEG = 350` — Frente do robô no sensor (calibração wizard)

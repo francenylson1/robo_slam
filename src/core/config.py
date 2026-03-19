@@ -159,20 +159,21 @@ BNO08X_GPIO_RST = 26            # GPIO para RST: 26 = driver HIGH no início (se
 BNO08X_GPIO_INT = 27            # Pino GPIO para interrupção (data ready - opcional, uso futuro)
 
 # Correção de rumo (linha reta) com BNO08x - usada por teleop e testes
-BNO_STRAIGHT_KP = 0.7           # Ganho reduzido: correções mais suaves para evitar desvio brusco (era 1.2)
-BNO_STRAIGHT_MAX_CORRECTION_TPS = 12.0  # Limite máximo de TPS de correção por ciclo
-# True = quando o robô curva para a esquerda, corrigir acelerando roda direita (convenção deste robô)
+# Fase 2b (19/03/2026): reativado com ganhos conservadores para evitar desvio sistemático
+BNO_STRAIGHT_KP = 0.4           # Reduzido de 0.7 para correções mais suaves (evitar sobrecorreção)
+BNO_STRAIGHT_MAX_CORRECTION_TPS = 10.0  # Limite de TPS (era 12)
+# True = quando o robô curva para a esquerda, corrigir acelerando roda direita. Se desviar para direita, tentar False.
 BNO_STRAIGHT_INVERT_CORRECTION = True
 # TPS para giros no lugar (menu, teleop e testes BNO) - alinhado com navegação
 TURN_TPS_DEFAULT = 12.0
 # Timeout (s) para obter a primeira leitura válida de yaw antes de linha reta (evita "BNO sem leitura")
 BNO_FIRST_READ_TIMEOUT = 2.5
-# Navegação: False = pose e controle só odometria; True = filtro complementar BNO+odometria
-USE_BNO_IN_NAVIGATION = False  # BNO desativado: pose e controle apenas por odometria + CTE
+# Navegação: False = só odometria; True = BNO corrige rumo e fusão na pose (Fase 2b reativado)
+USE_BNO_IN_NAVIGATION = True
 
 # Filtro complementar BNO: peso do BNO na fusão de ângulo (0.0=só odometria, 1.0=só BNO)
-# 0.15 = 15% BNO por ciclo → corrige erro de 10° em ~2s. Seguro mesmo com BNO estável.
-BNO_FILTER_ALPHA = 0.15
+# 0.08 = 8% BNO por ciclo (era 0.15) — correção gradual para evitar conflito com odometria
+BNO_FILTER_ALPHA = 0.08
 
 # Rejeição de spike: ignora leitura BNO se variar mais que este valor entre ciclos (graus)
 # Logs mostraram variação máxima de 0.2° → threshold de 5° nunca dispara em condições normais
