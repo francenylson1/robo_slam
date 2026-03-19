@@ -191,6 +191,41 @@ USE_BNO_ON_STRAIGHTS_ONLY = True
 # (< 3°/ciclo), impedindo que a odometria rastreasse giros físicos de 90-180°.
 STRAIGHT_ANGLE_THRESHOLD_DEG = 0.0
 
+# ──────────────────────────────────────────────────────────────────────────────
+# SCAN MATCHING — Abordagem C (correção de pose via correlação com mapa PGM)
+# Implementado em src/core/lidar_pose_corrector.py
+# Pré-requisito: YAML do mapa com resolução correta (corrigido 19/03/2026)
+# Para ativar: mude USE_SCAN_MATCHING para True e recrie os POIs via GUI.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Liga/desliga o scan matching na navegação
+USE_SCAN_MATCHING = False  # Ativar após recriar POIs com escala correta
+
+# Caminhos do mapa (relativos à raiz do projeto — rodar de: python src/main.py)
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SCAN_MATCH_PGM_PATH  = os.path.join(
+    _BASE_DIR,
+    "src", "c1_scanner", "C1_mapas_processados", "c1_sala_maker",
+    "mapa-03122025_final_90.pgm",
+)
+SCAN_MATCH_YAML_PATH = os.path.join(
+    _BASE_DIR,
+    "src", "c1_scanner", "C1_mapas_processados", "c1_sala_maker",
+    "mapa-03122025_final_90.yaml",
+)
+
+# Parâmetros da busca em grade
+SCAN_MATCH_XY_RANGE_M      = 0.30   # Busca ±30 cm em X e Y
+SCAN_MATCH_XY_STEP_M       = 0.05   # Passo de 5 cm (13 valores por eixo)
+SCAN_MATCH_THETA_RANGE_DEG = 5.0    # Busca ±5° em ângulo
+SCAN_MATCH_THETA_STEP_DEG  = 1.0    # Passo de 1° (11 valores)
+SCAN_MATCH_INTERVAL_S      = 2.0    # Intervalo entre correções (s)
+
+# Filtros de qualidade — proteção contra correções erradas
+SCAN_MATCH_MIN_SCORE       = 0.12   # Score mínimo para aceitar (0–1); abaixo = descarta
+SCAN_MATCH_MAX_CORR_M      = 0.25   # Descarta correção > 25 cm (outlier)
+SCAN_MATCH_MAX_CORR_DEG    = 4.0    # Descarta correção > 4° (outlier)
+
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz
 SIMULATION_OBSTACLE_COUNT = 3

@@ -108,6 +108,32 @@ class RobotNavigator(QObject):
                 logger.warning("BNO08x não disponível no navegador: %s", e)
                 self._get_bno_yaw = None
 
+        # ── Scan matching — Abordagem C (LidarPoseCorrector) ─────────────────
+        self._pose_corrector = None
+        if USE_SCAN_MATCHING:
+            try:
+                from .lidar_pose_corrector import LidarPoseCorrector
+                self._pose_corrector = LidarPoseCorrector(
+                    pgm_path              = SCAN_MATCH_PGM_PATH,
+                    yaml_path             = SCAN_MATCH_YAML_PATH,
+                    xy_range_m            = SCAN_MATCH_XY_RANGE_M,
+                    xy_step_m             = SCAN_MATCH_XY_STEP_M,
+                    theta_range_deg       = SCAN_MATCH_THETA_RANGE_DEG,
+                    theta_step_deg        = SCAN_MATCH_THETA_STEP_DEG,
+                    correction_interval_s = SCAN_MATCH_INTERVAL_S,
+                    min_score             = SCAN_MATCH_MIN_SCORE,
+                    max_correction_m      = SCAN_MATCH_MAX_CORR_M,
+                    max_correction_deg    = SCAN_MATCH_MAX_CORR_DEG,
+                )
+                if self._pose_corrector.map_loaded:
+                    logger.info("PoseCorrector (scan matching) carregado — será iniciado na navegação.")
+                else:
+                    logger.warning("PoseCorrector: mapa não carregado — scan matching desativado.")
+                    self._pose_corrector = None
+            except Exception as exc:
+                logger.warning("PoseCorrector não disponível: %s", exc)
+                self._pose_corrector = None
+
         logger.info(
             "Navegador inicializado – posição=%s, ângulo=%s°, base=%s",
             self.current_position, self.current_angle, self.base_position
@@ -245,6 +271,9 @@ class RobotNavigator(QObject):
         self.path_index = 0
         if hasattr(self, '_orient_stability_counter'):
             self._orient_stability_counter = 0
+        # Para scan matching ao terminar a navegação
+        if self._pose_corrector is not None and self._pose_corrector.is_running:
+            self._pose_corrector.stop()
         logger.info("Navegação finalizada.")
 
     def _cancel_navigation_blocked_by_obstacle(self):
@@ -396,6 +425,10 @@ class RobotNavigator(QObject):
 
         self.reset_to_initial_state(preserve_position=True)
         self._cancelled_by_obstacle = False  # Reset ao iniciar nova navegação
+
+        # Inicia scan matching se disponível
+        if self._pose_corrector is not None and not self._pose_corrector.is_running:
+            self._pose_corrector.start()
 
         self.navigation_active = True
         self.start_time = time.time()
@@ -1169,6 +1202,39 @@ class RobotNavigator(QObject):
             delta_x = delta_distance * math.cos(angle_rad)
             delta_y = delta_distance * math.sin(angle_rad)
             self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
+
+        # ── Scan matching — alimenta pose atual e aplica correção se disponível ──
+        if self._pose_corrector is not None and self._pose_corrector.is_running:
+            # Atualiza pose estimada no corrector
+            self._pose_corrector.update_pose(
+                self.current_position[0],
+                self.current_position[1],
+                self.current_angle,
+            )
+            # Alimenta scan atual (se C1 disponível)
+            lidar = getattr(self.motors, "lidar_reader", None)
+            if lidar is not None and hasattr(lidar, "get_last_scan_points"):
+                scan_pts = lidar.get_last_scan_points()
+                if scan_pts:
+                    self._pose_corrector.update_scan(scan_pts)
+
+            # Aplica correção calculada (se disponível e dentro dos limites)
+            if not self.precise_rotation_active:
+                correction = self._pose_corrector.get_latest_correction()
+                if correction is not None:
+                    dx, dy, dtheta = correction
+                    self.current_position = (
+                        self.current_position[0] + dx,
+                        self.current_position[1] + dy,
+                    )
+                    self.current_angle = self._normalize_angle_deg(self.current_angle + dtheta)
+                    logger.info(
+                        "ScanMatching: pose corrigida dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
+                        "→ pos=(%.3f, %.3f)  θ=%.1f°",
+                        dx, dy, dtheta,
+                        self.current_position[0], self.current_position[1],
+                        self.current_angle,
+                    )
 
         self.last_position_update = time.time()
         self.position_updated.emit(self.current_position[0], self.current_position[1], self.current_angle)

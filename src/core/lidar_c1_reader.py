@@ -92,6 +92,9 @@ class LidarC1Reader:
         self._stop_event = threading.Event()
         self._running = False
         self._lidar = None
+        # Scan completo (para scan matching / LidarPoseCorrector)
+        # Lista de (angle_deg, dist_m) de todos os pontos válidos do último scan
+        self._last_scan_points: list = []
 
     def has_obstacle(self) -> bool:
         """Retorna True se obstáculo < min_stop_m na faixa frontal (considerando zona parachoques)."""
@@ -102,6 +105,15 @@ class LidarC1Reader:
         """Retorna a distância mínima (m) do obstáculo mais próximo na faixa válida, ou inf."""
         with self._lock:
             return self._obstacle_distance_m
+
+    def get_last_scan_points(self) -> list:
+        """
+        Retorna uma cópia do último scan completo como lista de (angle_deg, dist_m).
+        Usado pelo LidarPoseCorrector para scan matching com o mapa PGM.
+        Retorna lista vazia se nenhum scan disponível ainda.
+        """
+        with self._lock:
+            return list(self._last_scan_points)
 
     def _min_ignore_for_point(self, angle_deg: float) -> float:
         """Retorna o min_ignore em metros conforme zona (parachoques vs frontal estrita vs lateral)."""
@@ -186,8 +198,15 @@ class LidarC1Reader:
                                     self._obstacle_distance_m = d_m
 
                 if last_angle is not None and last_angle > 350 and ang < 10:
+                    # Armazena scan completo para scan matching (LidarPoseCorrector)
+                    scan_for_matching = [
+                        (p["a_deg"], p["d_mm"] / 1000.0)
+                        for p in points
+                        if p.get("d_mm", 0) > 0
+                    ]
                     d_obst = self._process_scan_points(points)
                     with self._lock:
+                        self._last_scan_points = scan_for_matching
                         prev = self._obstacle_distance_m
                         if d_obst != float("inf"):
                             # Nova distância válida: atualiza e reseta contador
@@ -322,8 +341,16 @@ class LidarC1Reader:
                     time.sleep(0.05)
                     continue
 
+                # Armazena scan completo para scan matching (LidarPoseCorrector)
+                scan_for_matching = [
+                    (p["a_deg"], p["d_mm"] / 1000.0)
+                    for p in points
+                    if p.get("d_mm", 0) > 0
+                ]
+
                 d_obst = self._process_scan_points(points)
                 with self._lock:
+                    self._last_scan_points = scan_for_matching
                     prev = self._obstacle_distance_m
                     if d_obst != float("inf"):
                         self._obstacle_distance_m = d_obst
