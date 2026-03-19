@@ -680,7 +680,7 @@ class MainWindow(QMainWindow):
                     msg = (
                         "⚠️ Navegação cancelada\n\n"
                         "O robô parou por obstáculo detectado pelo Lidar C1\n"
-                        "e não conseguiu chegar ao POI em até 45 segundos.\n\n"
+                        "e não conseguiu chegar ao POI no tempo previsto.\n\n"
                         "Remova o obstáculo e inicie nova navegação."
                     )
                     QMessageBox.warning(self, "⚠️ Navegação cancelada", msg)

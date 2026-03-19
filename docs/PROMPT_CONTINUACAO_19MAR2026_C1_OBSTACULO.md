@@ -8,7 +8,7 @@
 
 ## 1. Situação atual do projeto
 
-O **RP Lidar C1 está funcionando corretamente** como parada de emergência: detecta obstáculos à frente (lixeira, pessoa, mesa) e para os motores de forma estável. A navegação ida/volta continua operacional, com parada automática quando obstáculo < 85 cm no cone frontal.
+O **RP Lidar C1 está funcionando corretamente** como parada de emergência: detecta obstáculos à frente (lixeira, pessoa, mesa) e para os motores de forma estável. A navegação ida continua operacional, com parada automática quando obstáculo < 85 cm no cone frontal.
 
 ### O que foi resolvido (Mar 2026)
 - **rplidarc1** tinha parada inconsistente (às vezes parava, às vezes atropelava)
@@ -16,6 +16,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
 - **Bug crítico:** pyrplidarsdk retorna ângulos em **radianos** — o código tratava como graus, causando falsa detecção de obstáculo a 9 cm (corpo do robô na zona frontal)
 - Correção: `math.degrees(ang)` no fluxo pyrplidarsdk
 - Resultado: parada **consistente** em testes com lixeira e pessoa (várias repetições)
+- **Timeout de navegação:** 45 s → 300 s (5 min); permite múltiplas paradas para usuários se servirem (ex.: garçom)
 
 ---
 
@@ -54,6 +55,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
   - `LIDAR_C1_ENABLED = True`
   - `LIDAR_OBSTACLE_MIN_DISTANCE = 0.85` (parar se < 85 cm)
   - `LIDAR_C1_BACKEND = "pyrplidarsdk"`
+  - `NAVIGATION_MAX_DURATION_S = 300` (5 min; permite múltiplas paradas para usuários se servirem)
 
 ### Parâmetros do C1 (lidar_c1_reader.py)
 - `FRONT_CENTER_DEG = 350` — Frente do robô no sensor (calibração wizard)
@@ -86,6 +88,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
 ---
 
 ## 7. Fluxo Git (Desktop → Raspberry Pi)
+Sempre fazer o commi  atualizar o git para que seja possível atualizar a Raspberry que é o hardware de teste físico.
 
 ### Na Raspberry Pi — atualizar
 ```bash

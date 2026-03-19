@@ -80,13 +80,13 @@ NAVIGATION_OBSTACLE_DISTANCE = 0.35  # 35cm - Reduzido para robô menor (era 0.5
 ARRIVAL_PAUSE_TIME = 5.0           # segundos parado no POI antes de retornar
 
 # Timeout máximo para a navegação de IDA (evita loop infinito se robô travar).
-# Para percursos de 4-5m a 0.30 m/s: ~15s de movimento + 10s de margem = 45s.
-# Aumentar proporcionalmente para rotas longas (25m → ~100s).
-NAVIGATION_MAX_DURATION_S = 45.0   # segundos máximos para chegar ao POI
+# 300s (5 min): permite múltiplas paradas para usuários se servirem (ex.: garçom).
+# Watchdog só cancela se obstáculo C1 bloquear durante todo o tempo.
+NAVIGATION_MAX_DURATION_S = 300.0  # segundos máximos para chegar ao POI
 
 # Timeout máximo para a navegação de VOLTA (watchdog de retorno).
 # Mesmo critério da ida: garante que o robô não fique preso retornando.
-RETURN_MAX_DURATION_S = 45.0       # segundos máximos para retornar à base
+RETURN_MAX_DURATION_S = 300.0      # segundos máximos para retornar à base
 
 # Configurações de precisão avançada
 NAVIGATION_ULTRA_PRECISION_TOLERANCE = 0.02  # 2cm - Máxima precisão para chegada ao destino
