@@ -159,19 +159,24 @@ BNO08X_GPIO_RST = 26            # GPIO para RST: 26 = driver HIGH no início (se
 BNO08X_GPIO_INT = 27            # Pino GPIO para interrupção (data ready - opcional, uso futuro)
 
 # Correção de rumo (linha reta) com BNO08x - usada por teleop e testes
-BNO_STRAIGHT_KP = 0.7           # Ganho para correção de rumo
-BNO_STRAIGHT_MAX_CORRECTION_TPS = 12.0  # Limite máximo de TPS de correção por ciclo
+# Modo só correção: ganhos conservadores para evitar sobrecorreção (19/03/2026)
+BNO_STRAIGHT_KP = 0.35          # Reduzido de 0.7 para correções mais suaves
+BNO_STRAIGHT_MAX_CORRECTION_TPS = 8.0    # Limite de TPS (era 12)
 # True = quando o robô curva para a esquerda, corrigir acelerando roda direita (convenção deste robô)
 BNO_STRAIGHT_INVERT_CORRECTION = True
 # TPS para giros no lugar (menu, teleop e testes BNO) - alinhado com navegação
 TURN_TPS_DEFAULT = 12.0
 # Timeout (s) para obter a primeira leitura válida de yaw antes de linha reta (evita "BNO sem leitura")
 BNO_FIRST_READ_TIMEOUT = 2.5
-# Navegação: False = pose e controle só odometria + CTE; True = BNO na pose (DESATIVADO: causou perda total de trajetória em testes 19/03/2026)
-USE_BNO_IN_NAVIGATION = False
+# Navegação: False = BNO desligado; True = BNO ativo (correção de rumo e/ou fusão na pose)
+# Modo "só correção de rumo": USE_BNO_IN_NAVIGATION=True + USE_BNO_POSE_FUSION=False
+USE_BNO_IN_NAVIGATION = True
 
-# Filtro complementar BNO: peso do BNO na fusão de ângulo (0.0=só odometria, 1.0=só BNO)
-# 0.15 = 15% BNO por ciclo — usado apenas quando USE_BNO_IN_NAVIGATION = True
+# Fusão BNO na pose: False = pose 100% odometria, BNO só corrige TPS ao avançar; True = BNO mistura no ângulo
+# False = mais seguro (evita conflito odometria vs BNO que causou perda de trajetória em 19/03)
+USE_BNO_POSE_FUSION = False
+
+# Filtro complementar BNO: peso do BNO na fusão de ângulo (só quando USE_BNO_POSE_FUSION=True)
 BNO_FILTER_ALPHA = 0.15
 
 # Rejeição de spike: ignora leitura BNO se variar mais que este valor entre ciclos (graus)

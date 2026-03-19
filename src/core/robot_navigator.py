@@ -100,7 +100,8 @@ class RobotNavigator(QObject):
                 from tools.bno08x_init import init_bno
                 _bno, self._get_bno_yaw = init_bno(do_reset_cycle=False, verbose=False)
                 if self._get_bno_yaw is not None:
-                    logger.info("BNO08x integrado ao navegador (correção de rumo e ângulo).")
+                    mode = "correção de rumo + fusão na pose" if USE_BNO_POSE_FUSION else "só correção de rumo (pose=odometria)"
+                    logger.info("BNO08x integrado ao navegador (%s).", mode)
                 else:
                     self._get_bno_yaw = None
             except Exception as e:
@@ -1134,9 +1135,11 @@ class RobotNavigator(QObject):
         # Passo 1: odometria pura (base de sempre)
         new_angle = self._normalize_angle_deg(self.current_angle + delta_angle_deg)
 
-        # Passo 2: filtro complementar BNO — corrige deriva angular suavemente
+        # Passo 2: filtro complementar BNO — corrige deriva angular na pose (opcional)
+        # USE_BNO_POSE_FUSION=False: pose 100% odometria; BNO só atua em _apply_bno_straight_correction
         # Desativado durante: giro preciso e orientação intencional para waypoint
         if (USE_BNO_IN_NAVIGATION
+                and USE_BNO_POSE_FUSION
                 and self._get_bno_yaw is not None
                 and not self.precise_rotation_active
                 and self.navigation_state != "ORIENTING_TO_TARGET"):

@@ -17,7 +17,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
 - Correção: `math.degrees(ang)` no fluxo pyrplidarsdk
 - Resultado: parada **consistente** em testes com lixeira e pessoa (várias repetições)
 - **Timeout de navegação:** 45 s → 300 s (5 min); permite múltiplas paradas para usuários se servirem (ex.: garçom)
-- **BNO (Fase 2b):** Testado 19/03/2026 — causou perda total (diagonal dir/esq, passou do POI). Permanece desativado (USE_BNO_IN_NAVIGATION = False)
+- **BNO (Fase 2b):** Modo "só correção de rumo" — USE_BNO_IN_NAVIGATION=True, USE_BNO_POSE_FUSION=False. Pose 100% odometria; BNO só ajusta TPS ao avançar. Ganhos conservadores (KP 0.35).
 
 ---
 
@@ -57,7 +57,7 @@ O **RP Lidar C1 está funcionando corretamente** como parada de emergência: det
   - `LIDAR_OBSTACLE_MIN_DISTANCE = 0.85` (parar se < 85 cm)
   - `LIDAR_C1_BACKEND = "pyrplidarsdk"`
   - `NAVIGATION_MAX_DURATION_S = 300` (5 min; permite múltiplas paradas para usuários se servirem)
-  - `USE_BNO_IN_NAVIGATION = False` (BNO desativado; testes 19/03 causaram perda de trajetória)
+  - `USE_BNO_IN_NAVIGATION = True`, `USE_BNO_POSE_FUSION = False` (BNO só correção de rumo; pose=odometria)
 
 ### Parâmetros do C1 (lidar_c1_reader.py)
 - `FRONT_CENTER_DEG = 350` — Frente do robô no sensor (calibração wizard)

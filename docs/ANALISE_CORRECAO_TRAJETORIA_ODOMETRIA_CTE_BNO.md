@@ -138,10 +138,6 @@ O plano em `PLANO_FASE2B_DERIVA_CORRECAO_TRAJETORIA.md` coloca o BNO como **Opç
 
 ## 8. Teste BNO 19/03/2026 — resultado
 
-BNO foi reativado com ganhos conservadores (KP 0.4, ALPHA 0.08). Resultado: **perda total de trajetória**.
+**Teste 1 (fusão na pose):** BNO com ganhos conservadores (KP 0.4, ALPHA 0.08). Resultado: **perda total de trajetória** (diagonal dir/esq, passou do POI).
 
-- Teste 1: desvio em diagonal para a direita
-- Teste 2: desvio em diagonal para a esquerda, passou do POI e seguiu
-- BNO_STRAIGHT_INVERT_CORRECTION = False: não resolveu, continuou desviando para direita
-
-**Decisão:** BNO permanece desativado. Fase 2b seguirá com outras abordagens (CTE em navegação direta, calibração de motores, etc.).
+**Teste 2 (só correção de rumo):** USE_BNO_POSE_FUSION=False. Pose 100% odometria; BNO só em _apply_bno_straight_correction (ajusta TPS ao avançar). Ganhos KP 0.35, MAX 8 TPS. Em teste.
