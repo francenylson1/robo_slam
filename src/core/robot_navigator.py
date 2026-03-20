@@ -124,6 +124,7 @@ class RobotNavigator(QObject):
                     min_score             = SCAN_MATCH_MIN_SCORE,
                     max_correction_m      = SCAN_MATCH_MAX_CORR_M,
                     max_correction_deg    = SCAN_MATCH_MAX_CORR_DEG,
+                    max_scan_pts          = SCAN_MATCH_MAX_SCAN_PTS,
                 )
                 if self._pose_corrector.map_loaded:
                     logger.info("PoseCorrector (scan matching) carregado — será iniciado na navegação.")

@@ -199,7 +199,7 @@ STRAIGHT_ANGLE_THRESHOLD_DEG = 0.0
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Liga/desliga o scan matching na navegação
-USE_SCAN_MATCHING = False  # Ativar após recriar POIs com escala correta
+USE_SCAN_MATCHING = True   # Ativado — mapa com escala correta (corrigido 19/03/2026)
 
 # Caminhos do mapa (relativos à raiz do projeto — rodar de: python src/main.py)
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -215,16 +215,19 @@ SCAN_MATCH_YAML_PATH = os.path.join(
 )
 
 # Parâmetros da busca em grade
-SCAN_MATCH_XY_RANGE_M      = 0.30   # Busca ±30 cm em X e Y
-SCAN_MATCH_XY_STEP_M       = 0.05   # Passo de 5 cm (13 valores por eixo)
-SCAN_MATCH_THETA_RANGE_DEG = 5.0    # Busca ±5° em ângulo
-SCAN_MATCH_THETA_STEP_DEG  = 1.0    # Passo de 1° (11 valores)
-SCAN_MATCH_INTERVAL_S      = 2.0    # Intervalo entre correções (s)
+# Reduzido após medição: Pi 4 levava 4370 ms com ±30cm/±5° (1859 candidatos × 360 pts).
+# Com ±20cm/±3° (567 candidatos) + 60 pts subamostrados → ~300 ms esperados.
+SCAN_MATCH_XY_RANGE_M      = 0.20   # Busca ±20 cm em X e Y
+SCAN_MATCH_XY_STEP_M       = 0.05   # Passo de 5 cm (9 valores por eixo)
+SCAN_MATCH_THETA_RANGE_DEG = 3.0    # Busca ±3° em ângulo
+SCAN_MATCH_THETA_STEP_DEG  = 1.0    # Passo de 1° (7 valores)
+SCAN_MATCH_INTERVAL_S      = 1.0    # Intervalo entre correções (s)
+SCAN_MATCH_MAX_SCAN_PTS    = 60     # Subamostrar scan para ≤60 pts (velocidade no Pi 4)
 
 # Filtros de qualidade — proteção contra correções erradas
 SCAN_MATCH_MIN_SCORE       = 0.12   # Score mínimo para aceitar (0–1); abaixo = descarta
-SCAN_MATCH_MAX_CORR_M      = 0.25   # Descarta correção > 25 cm (outlier)
-SCAN_MATCH_MAX_CORR_DEG    = 4.0    # Descarta correção > 4° (outlier)
+SCAN_MATCH_MAX_CORR_M      = 0.20   # Descarta correção > 20 cm (outlier)
+SCAN_MATCH_MAX_CORR_DEG    = 3.0    # Descarta correção > 3° (outlier)
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz

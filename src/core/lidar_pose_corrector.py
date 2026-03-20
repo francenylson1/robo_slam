@@ -46,17 +46,18 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # ─── Parâmetros padrão da busca ───────────────────────────────────────────────
-DEFAULT_XY_RANGE_M       = 0.30   # busca ±30 cm em x e y
-DEFAULT_XY_STEP_M        = 0.05   # passo de 5 cm (7 valores: -30,-25,...,0,...,25,30 → 13 valores)
-DEFAULT_THETA_RANGE_DEG  = 5.0    # busca ±5° em ângulo
-DEFAULT_THETA_STEP_DEG   = 1.0    # passo de 1° (11 valores)
-DEFAULT_INTERVAL_S       = 2.0    # intervalo entre correções (s)
-DEFAULT_MIN_POINTS       = 20     # mínimo de pontos válidos para corrigir
+DEFAULT_XY_RANGE_M       = 0.20   # busca ±20 cm em x e y
+DEFAULT_XY_STEP_M        = 0.05   # passo de 5 cm (9 valores por eixo)
+DEFAULT_THETA_RANGE_DEG  = 3.0    # busca ±3° em ângulo
+DEFAULT_THETA_STEP_DEG   = 1.0    # passo de 1° (7 valores)
+DEFAULT_INTERVAL_S       = 1.0    # intervalo entre correções (s) — reduzido após otimização
+DEFAULT_MIN_POINTS       = 15     # mínimo de pontos válidos para corrigir
 DEFAULT_MAX_RANGE_M      = 8.0    # ignora pontos > 8 m (artefatos de scan)
 DEFAULT_MIN_RANGE_M      = 0.18   # ignora pontos < 18 cm (reflexo do corpo)
 DEFAULT_MIN_SCORE        = 0.12   # score mínimo para aceitar correção (0–1)
-DEFAULT_MAX_CORR_M       = 0.25   # descarta correção > 25 cm (outlier)
-DEFAULT_MAX_CORR_DEG     = 4.0    # descarta correção > 4° (outlier)
+DEFAULT_MAX_CORR_M       = 0.20   # descarta correção > 20 cm (outlier)
+DEFAULT_MAX_CORR_DEG     = 3.0    # descarta correção > 3° (outlier)
+DEFAULT_MAX_SCAN_PTS     = 60     # subamostrar scan para no máximo 60 pontos (velocidade)
 
 # Ângulo frontal do sensor C1 (FRONT_CENTER_DEG do lidar_c1_reader)
 DEFAULT_SENSOR_FRONT_DEG = 350.0
@@ -86,6 +87,7 @@ class LidarPoseCorrector:
         min_score: float           = DEFAULT_MIN_SCORE,
         max_correction_m: float    = DEFAULT_MAX_CORR_M,
         max_correction_deg: float  = DEFAULT_MAX_CORR_DEG,
+        max_scan_pts: int          = DEFAULT_MAX_SCAN_PTS,
     ):
         self.pgm_path              = pgm_path
         self.yaml_path             = yaml_path
@@ -101,6 +103,7 @@ class LidarPoseCorrector:
         self.min_score             = min_score
         self.max_correction_m      = max_correction_m
         self.max_correction_deg    = max_correction_deg
+        self.max_scan_pts          = max_scan_pts
 
         # ── Mapa (carregado em _load_map) ────────────────────────────────────
         self._grid: Optional[np.ndarray] = None   # bool, True = ocupado
@@ -317,13 +320,20 @@ class LidarPoseCorrector:
         if mask.sum() < self.min_scan_points:
             return None
 
-        angles_rad    = np.radians(angles_deg[mask])
-        dists_valid   = dists_m[mask]
+        angles_rad  = np.radians(angles_deg[mask])
+        dists_valid = dists_m[mask]
+
+        # Subamostrar para acelerar no Pi 4 (ex: 360 pts → 60 pts)
+        n_pts = len(dists_valid)
+        if n_pts > self.max_scan_pts:
+            step = n_pts // self.max_scan_pts
+            angles_rad  = angles_rad[::step]
+            dists_valid = dists_valid[::step]
 
         # ── Grade de candidatos ──────────────────────────────────────────────
         xy_offsets        = np.arange(-self.xy_range_m,
                                        self.xy_range_m + 1e-6,
-                                       self.xy_step_m)
+                                       self.xy_step_m, dtype=np.float32)
         theta_offsets_deg = np.arange(-self.theta_range_deg,
                                        self.theta_range_deg + 1e-6,
                                        self.theta_step_deg)
@@ -331,50 +341,60 @@ class LidarPoseCorrector:
         x0, y0, theta0_deg = pose
         sensor_front_rad   = math.radians(self.sensor_front_deg)
 
+        # Meshgrid de offsets dx/dy: shape (n_dx, n_dy)
+        dx_grid, dy_grid = np.meshgrid(xy_offsets, xy_offsets, indexing='ij')
+
         best_score  = -1.0
         best_dx     = 0.0
         best_dy     = 0.0
         best_dtheta = 0.0
 
         for dtheta_deg in theta_offsets_deg:
-            theta_rad   = math.radians(theta0_deg + dtheta_deg)
-            # Ângulos world de cada ponto do scan para esta hipótese de θ
-            # Fórmula: θ_robot + (α_sensor - α_frente_sensor)
+            theta_rad    = math.radians(theta0_deg + dtheta_deg)
             world_angles = theta_rad + (angles_rad - sensor_front_rad)
 
-            # Componentes cartesianas a partir do robô (sem offset dx/dy ainda)
-            base_dx = dists_valid * np.cos(world_angles)   # shape (n_pts,)
-            base_dy = dists_valid * np.sin(world_angles)   # shape (n_pts,)
+            # Componentes cartesianas dos pontos (relativas ao robô): shape (n_pts,)
+            base_dx = dists_valid * np.cos(world_angles)
+            base_dy = dists_valid * np.sin(world_angles)
 
-            for dx in xy_offsets:
-                robot_x = x0 + float(dx)
-                wx = robot_x + base_dx   # world X de cada ponto
+            # Posições world para todos os candidatos (dx, dy) de uma vez
+            # robot_x/y: (n_dx, n_dy); base_dx/dy: (n_pts,) → (n_pts,1,1)
+            robot_x = x0 + dx_grid            # (n_dx, n_dy)
+            robot_y = y0 + dy_grid            # (n_dx, n_dy)
+            wx = robot_x[np.newaxis, :, :] + base_dx[:, np.newaxis, np.newaxis]  # (n_pts, n_dx, n_dy)
+            wy = robot_y[np.newaxis, :, :] + base_dy[:, np.newaxis, np.newaxis]  # (n_pts, n_dx, n_dy)
 
-                for dy in xy_offsets:
-                    robot_y = y0 + float(dy)
-                    wy = robot_y + base_dy   # world Y de cada ponto
+            # Pixels no mapa
+            px_arr = ((wx - self._origin[0]) / self._resolution).astype(np.int32)
+            py_arr = ((wy - self._origin[1]) / self._resolution).astype(np.int32)
 
-                    # Converte para pixels do mapa
-                    px = ((wx - self._origin[0]) / self._resolution).astype(np.int32)
-                    py = ((wy - self._origin[1]) / self._resolution).astype(np.int32)
+            # Máscara de pixels dentro dos limites do mapa
+            valid = (
+                (px_arr >= 0) & (px_arr < self._map_w) &
+                (py_arr >= 0) & (py_arr < self._map_h)
+            )  # (n_pts, n_dx, n_dy)
 
-                    # Máscara de pixels dentro dos limites
-                    valid = (
-                        (px >= 0) & (px < self._map_w) &
-                        (py >= 0) & (py < self._map_h)
-                    )
-                    n_valid = valid.sum()
-                    if n_valid == 0:
-                        continue
+            # Lookup na grade; pixels inválidos mapeados para (0,0) com máscara
+            px_safe = np.where(valid, px_arr, 0)
+            py_safe = np.where(valid, py_arr, 0)
+            grid_hits = self._grid[py_safe, px_safe]          # (n_pts, n_dx, n_dy)
+            grid_hits = np.where(valid, grid_hits, False)
 
-                    hits  = self._grid[py[valid], px[valid]].sum()
-                    score = float(hits) / float(n_valid)
+            hits_per_cand   = grid_hits.sum(axis=0).astype(np.float32)  # (n_dx, n_dy)
+            valid_per_cand  = valid.sum(axis=0).astype(np.float32)       # (n_dx, n_dy)
 
-                    if score > best_score:
-                        best_score  = score
-                        best_dx     = float(dx)
-                        best_dy     = float(dy)
-                        best_dtheta = float(dtheta_deg)
+            with np.errstate(invalid='ignore', divide='ignore'):
+                scores = np.where(valid_per_cand > 0,
+                                  hits_per_cand / valid_per_cand, 0.0)
+
+            best_idx = np.unravel_index(scores.argmax(), scores.shape)
+            score_for_theta = float(scores[best_idx])
+
+            if score_for_theta > best_score:
+                best_score  = score_for_theta
+                best_dx     = float(dx_grid[best_idx])
+                best_dy     = float(dy_grid[best_idx])
+                best_dtheta = float(dtheta_deg)
 
         return best_dx, best_dy, best_dtheta, best_score
 
