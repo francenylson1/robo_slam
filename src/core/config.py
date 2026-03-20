@@ -228,7 +228,8 @@ SCAN_MATCH_MAX_SCAN_PTS    = 60     # Subamostrar scan para ≤60 pts (velocidad
 # Filtros de qualidade — proteção contra correções erradas
 SCAN_MATCH_MIN_SCORE       = 0.12   # Score mínimo — mantido baixo: com 4.7% ocupado,
                                     # rejeitar bordas (0.12-0.15) causa divergência angular
-SCAN_MATCH_MAX_CORR_M      = 0.22   # Descarta correção > 22 cm (folga para float64 no limite exato)
+SCAN_MATCH_MAX_CORR_M      = 0.30   # Deve ser igual ao XY_RANGE_M para não rejeitar correções
+                                    # válidas no limite da busca (bug: score=0.30 rejeitado com 0.22)
 SCAN_MATCH_MAX_CORR_DEG    = 3.0    # Descarta dθ > 3°
 
 # Fator de amortecimento: aplica 70% de cada correção (reduz impacto de correções ruidosas)

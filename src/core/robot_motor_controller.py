@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 # Ajuste: reduzir roda direita em ~6% para cancelar o drift.
 # Testar e ajustar: aumentar RIGHT se ainda for esquerda; reduzir se ainda for direita.
 # Ajuste fino: ver docs/AFINACAO_DESVIO_NAVEGACAO.md
-LEFT_MOTOR_CORRECTION_FACTOR  = 0.9600000   # reduz motor esquerdo (mecânica)
-RIGHT_MOTOR_CORRECTION_FACTOR = 0.9700000   # Calibração 20/03/2026:
-                                            #   R=1.00 → +0.45°/s direita (original)
-                                            #   R=0.91 → -0.75°/s esquerda (excessivo)
-                                            #   R=0.94 → -3.5°/s esquerda (excessivo)
-                                            #   Interpolação: zero drift ≈ R=0.97
-                                            # Ajuste: ainda direita→0.96; ainda esquerda→0.98
+LEFT_MOTOR_CORRECTION_FACTOR  = 0.9100000   # Calibração 20/03/2026 — valor empírico estável
+RIGHT_MOTOR_CORRECTION_FACTOR = 0.9600000   # Calibração 20/03/2026 — resultados físicos:
+                                            #   L=0.91 R=0.97 → esquerda (além do ponto zero)
+                                            #   L=0.91 R=0.96 → direita leve (melhor: 12 correções)
+                                            #   L=0.91 R=0.98 → esquerda leve (mais alcance norte)
+                                            #   Zero drift estimado: R≈0.965 (entre 0.96 e 0.97)
+                                            # Próximo ajuste: se ainda direita → R=0.965; se esquerda → R=0.955
 
 if GPIO_AVAILABLE:
     try:
