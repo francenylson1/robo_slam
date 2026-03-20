@@ -217,8 +217,8 @@ SCAN_MATCH_YAML_PATH = os.path.join(
 # Parâmetros da busca em grade
 # Reduzido após medição: Pi 4 levava 4370 ms com ±30cm/±5° (1859 candidatos × 360 pts).
 # Com ±20cm (9×9 candidatos) + 60 pts subamostrados + theta=0 → ~50 ms esperados.
-SCAN_MATCH_XY_RANGE_M      = 0.20   # Busca ±20 cm em X e Y
-SCAN_MATCH_XY_STEP_M       = 0.05   # Passo de 5 cm (9 valores por eixo)
+SCAN_MATCH_XY_RANGE_M      = 0.30   # Busca ±30 cm em X e Y (aumentado para robô mais veloz)
+SCAN_MATCH_XY_STEP_M       = 0.05   # Passo de 5 cm (13 valores por eixo)
 SCAN_MATCH_THETA_RANGE_DEG = 3.0    # Busca ±3° em ângulo — necessário para rastrear rotação física
                                     # do robô (teste sem correção angular → score caiu a 0.00)
 SCAN_MATCH_THETA_STEP_DEG  = 1.0    # Passo de 1° (7 valores)

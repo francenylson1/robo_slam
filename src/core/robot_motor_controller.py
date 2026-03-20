@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 # Testar e ajustar: aumentar RIGHT se ainda for esquerda; reduzir se ainda for direita.
 # Ajuste fino: ver docs/AFINACAO_DESVIO_NAVEGACAO.md
 LEFT_MOTOR_CORRECTION_FACTOR  = 0.9600000   # reduz motor esquerdo (mecânica)
-RIGHT_MOTOR_CORRECTION_FACTOR = 0.9400000   # reduz motor direito (novo — cancela drift dir.)
+RIGHT_MOTOR_CORRECTION_FACTOR = 0.9200000   # reduz motor direito; R=0.91 era quase ótimo,
+                                            # R=0.92 para margem fina; ajustar ±0.01 por teste
 
 if GPIO_AVAILABLE:
     try:
