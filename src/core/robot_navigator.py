@@ -1224,20 +1224,24 @@ class RobotNavigator(QObject):
                 correction = self._pose_corrector.get_latest_correction()
                 if correction is not None:
                     dx, dy, dtheta = correction
-                    # Aplica correção completa (sem ganho de amortecimento).
-                    # Testes mostraram que ganho < 1.0 no ângulo causa divergência
-                    # da janela de busca → score→0.00. Melhor resultado: teste 2 (sem gain).
+                    # Posição: ganho < 1.0 reduz oscilação do CTE.
+                    # Sem ganho (1.0): dx/dy oscilavam ±0.30m/s → CTE alternava
+                    # direita/esquerda a cada ciclo, impedindo correção consistente.
+                    # Ângulo: ganho=1.0 obrigatório — ganho parcial causa divergência
+                    # da janela de busca e score→0.00 rapidamente.
+                    dx_applied = dx * SCAN_MATCH_CORRECTION_GAIN
+                    dy_applied = dy * SCAN_MATCH_CORRECTION_GAIN
                     self.current_position = (
-                        self.current_position[0] + dx,
-                        self.current_position[1] + dy,
+                        self.current_position[0] + dx_applied,
+                        self.current_position[1] + dy_applied,
                     )
                     self.current_angle = self._normalize_angle_deg(
                         self.current_angle + dtheta
                     )
                     logger.info(
                         "ScanMatching: pose corrigida dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
-                        "→ pos=(%.3f, %.3f)  θ=%.1f°",
-                        dx, dy, dtheta,
+                        "(gain=%.1f) → pos=(%.3f, %.3f)  θ=%.1f°",
+                        dx_applied, dy_applied, dtheta, SCAN_MATCH_CORRECTION_GAIN,
                         self.current_position[0], self.current_position[1],
                         self.current_angle,
                     )
