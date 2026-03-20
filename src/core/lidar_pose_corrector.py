@@ -407,6 +407,13 @@ class LidarPoseCorrector:
         """Loop principal da thread — calcula correção periodicamente."""
         logger.info("PoseCorrector: thread iniciada.")
 
+        # Aquecimento: as primeiras 2 correções são descartadas sem serem publicadas.
+        # Motivo: o robô acabou de iniciar o movimento e o scan ainda pode estar
+        # capturando a posição de repouso ou o scan matching encontra falso ótimo
+        # na posição inicial (ex: dx=-0.300 com score baixo corrompe o CTE inteiro).
+        WARMUP_SKIP = 2
+        warmup_done = 0
+
         while not self._stop_event.is_set():
             t_start = time.time()
 
@@ -430,17 +437,26 @@ class LidarPoseCorrector:
                             and abs(dy)     <= self.max_correction_m
                             and abs(dtheta) <= self.max_correction_deg
                         ):
-                            with self._lock:
-                                self._latest_correction = (dx, dy, dtheta)
-                                self._latest_score      = score
-                                self._correction_count += 1
+                            if warmup_done < WARMUP_SKIP:
+                                warmup_done += 1
+                                logger.info(
+                                    "PoseCorrector: warmup %d/%d — descartando "
+                                    "dx=%+.3f dy=%+.3f dθ=%+.1f° score=%.2f (%.0f ms)",
+                                    warmup_done, WARMUP_SKIP,
+                                    dx, dy, dtheta, score, elapsed_ms,
+                                )
+                            else:
+                                with self._lock:
+                                    self._latest_correction = (dx, dy, dtheta)
+                                    self._latest_score      = score
+                                    self._correction_count += 1
 
-                            logger.info(
-                                "PoseCorrector #%d: dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
-                                "score=%.2f  (%.0f ms)",
-                                self._correction_count,
-                                dx, dy, dtheta, score, elapsed_ms,
-                            )
+                                logger.info(
+                                    "PoseCorrector #%d: dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
+                                    "score=%.2f  (%.0f ms)",
+                                    self._correction_count,
+                                    dx, dy, dtheta, score, elapsed_ms,
+                                )
                         else:
                             logger.info(
                                 "PoseCorrector: rejeitado dx=%+.3f dy=%+.3f dθ=%+.1f° "

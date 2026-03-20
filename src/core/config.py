@@ -237,11 +237,11 @@ SCAN_MATCH_MAX_CORR_M      = 0.30   # Deve ser igual ao XY_RANGE_M para não rej
 SCAN_MATCH_MAX_CORR_DEG    = 3.0    # Descarta dθ > 3°
 
 # Fator de amortecimento: aplica 70% de cada correção (reduz impacto de correções ruidosas)
-SCAN_MATCH_CORRECTION_GAIN = 0.5  # Ganho de amortecimento para posição (dx, dy) APENAS.
-                                   # dθ sempre com ganho=1.0 para evitar divergência da janela de busca.
-                                   # 1.0: oscilação ±0.30m corrompeu o CTE (alternava direita/esquerda)
-                                   # 0.7: reduz para ±0.21m (testado, melhor que 1.0)
-                                   # 0.5: reduz para ±0.15m — sinal CTE mais estável
+SCAN_MATCH_CORRECTION_GAIN = 1.0  # Ganho de posição — manter em 1.0.
+                                   # Gain < 1.0 cria defasagem virtual/física: após 8-10 correções
+                                   # o robô físico fica >30cm fora da janela de busca (±30cm)
+                                   # e o rastreamento é perdido. Gain=1.0 → rastreamento 27-31 ciclos.
+                                   # Correções iniciais instáveis resolvidas via warmup no corrector.
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz
