@@ -409,46 +409,53 @@ class LidarPoseCorrector:
         while not self._stop_event.is_set():
             t_start = time.time()
 
-            # Copia estado atual de forma thread-safe
-            with self._lock:
-                scan = list(self._current_scan)
-                pose = self._current_pose
+            try:
+                # Copia estado atual de forma thread-safe
+                with self._lock:
+                    scan = list(self._current_scan)
+                    pose = self._current_pose
 
-            if len(scan) >= self.min_scan_points:
-                result = self._compute_correction(scan, pose)
+                if len(scan) >= self.min_scan_points:
+                    result = self._compute_correction(scan, pose)
 
-                if result is not None:
-                    dx, dy, dtheta, score = result
-
-                    # Filtra outliers antes de publicar
-                    if (
-                        score >= self.min_score
-                        and abs(dx)     <= self.max_correction_m
-                        and abs(dy)     <= self.max_correction_m
-                        and abs(dtheta) <= self.max_correction_deg
-                    ):
-                        with self._lock:
-                            self._latest_correction = (dx, dy, dtheta)
-                            self._latest_score      = score
-                            self._correction_count += 1
-
+                    if result is not None:
+                        dx, dy, dtheta, score = result
                         elapsed_ms = (time.time() - t_start) * 1000
-                        logger.info(
-                            "PoseCorrector #%d: dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
-                            "score=%.2f  (%.0f ms)",
-                            self._correction_count,
-                            dx, dy, dtheta, score, elapsed_ms,
-                        )
-                    else:
-                        logger.debug(
-                            "PoseCorrector: correção rejeitada "
-                            "(dx=%.3f dy=%.3f dθ=%.1f score=%.2f).",
-                            dx, dy, dtheta, score,
-                        )
-            else:
-                logger.debug(
-                    "PoseCorrector: scan insuficiente (%d pts < %d).",
-                    len(scan), self.min_scan_points,
+
+                        # Filtra outliers antes de publicar
+                        if (
+                            score >= self.min_score
+                            and abs(dx)     <= self.max_correction_m
+                            and abs(dy)     <= self.max_correction_m
+                            and abs(dtheta) <= self.max_correction_deg
+                        ):
+                            with self._lock:
+                                self._latest_correction = (dx, dy, dtheta)
+                                self._latest_score      = score
+                                self._correction_count += 1
+
+                            logger.info(
+                                "PoseCorrector #%d: dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
+                                "score=%.2f  (%.0f ms)",
+                                self._correction_count,
+                                dx, dy, dtheta, score, elapsed_ms,
+                            )
+                        else:
+                            logger.info(
+                                "PoseCorrector: rejeitado dx=%+.3f dy=%+.3f dθ=%+.1f° "
+                                "score=%.2f (%.0f ms) — fora dos limites ou score baixo.",
+                                dx, dy, dtheta, score, elapsed_ms,
+                            )
+                else:
+                    logger.info(
+                        "PoseCorrector: aguardando scan (%d pts, min=%d).",
+                        len(scan), self.min_scan_points,
+                    )
+
+            except Exception as exc:
+                logger.error(
+                    "PoseCorrector: EXCEÇÃO na thread de correção: %s",
+                    exc, exc_info=True,
                 )
 
             # Aguarda próximo ciclo
