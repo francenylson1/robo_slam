@@ -248,7 +248,11 @@ SCAN_MATCH_CORRECTION_GAIN = 1.0  # Reservado. Não reduzir: ganho < 1.0 causa
 # posição virtual derivar (+1.6m em 31 ciclos → giro de 270° no desvio de obstáculo).
 # Aceitar posição apenas quando o scan matching "tem certeza" evita drift sem
 # abrir mão da correção de posição em trechos com paredes visíveis.
-SCAN_MATCH_POSITION_MIN_SCORE = 0.20   # Acima deste score a posição é atualizada
+SCAN_MATCH_POSITION_MIN_SCORE = 0.35   # Acima deste score a posição é atualizada.
+                                       # Histórico: 0.20 → oscilação dy ±25cm mesmo com scores
+                                       # 0.22-0.34 (mapa 4.7% ocupado = aliasing = múltiplos
+                                       # ótimos locais). Score ≥ 0.35 só aparece quando
+                                       # há paredes muito bem definidas → posição confiável.
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz

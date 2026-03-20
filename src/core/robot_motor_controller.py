@@ -25,11 +25,12 @@ logger = logging.getLogger(__name__)
 # Testar e ajustar: aumentar RIGHT se ainda for esquerda; reduzir se ainda for direita.
 # Ajuste fino: ver docs/AFINACAO_DESVIO_NAVEGACAO.md
 LEFT_MOTOR_CORRECTION_FACTOR  = 0.9100000   # Calibração 20/03/2026 — valor empírico estável
-RIGHT_MOTOR_CORRECTION_FACTOR = 0.9650000   # Calibração 20/03/2026 — interpolação linear:
-                                            #   R=0.96 → direita leve (mais estável, 12-31 correções)
-                                            #   R=0.97 → esquerda leve (3 correções)
-                                            #   Zero drift estimado: R=0.965 (ponto médio)
-                                            # Se ainda direita → R=0.968; se esquerda → R=0.962
+RIGHT_MOTOR_CORRECTION_FACTOR = 0.9680000   # Calibração 20/03/2026 — histórico:
+                                            #   R=0.96  → desvio direita (12-31 correções scan matching)
+                                            #   R=0.97  → desvio esquerda (3 correções)
+                                            #   R=0.965 → ainda direita (teste 20/03/2026)
+                                            #   R=0.968 → próximo teste (20/03/2026)
+                                            # Se ainda direita → R=0.970; se esquerda → R=0.966
 
 if GPIO_AVAILABLE:
     try:
