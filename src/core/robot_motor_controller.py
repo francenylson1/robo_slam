@@ -19,10 +19,13 @@ from src.core.config import (TICKS_PER_REVOLUTION, MANUAL_CONTROL_MAX_TPS,
 logger = logging.getLogger(__name__)
 
 # === CORREÇÃO DE DERIVA LATERAL ===
-# Motor esquerdo reduzido para compensar deriva à direita.
+# Medição (20/03/2026): com L=0.96, R=1.00, o robô deslocou +0.62m leste em 23s
+# tentando ir norte (drift ~2°/s para direita = roda direita efetivamente mais rápida).
+# Ajuste: reduzir roda direita em ~6% para cancelar o drift.
+# Testar e ajustar: aumentar RIGHT se ainda for esquerda; reduzir se ainda for direita.
 # Ajuste fino: ver docs/AFINACAO_DESVIO_NAVEGACAO.md
-LEFT_MOTOR_CORRECTION_FACTOR = 0.9600000
-RIGHT_MOTOR_CORRECTION_FACTOR = 1.000000
+LEFT_MOTOR_CORRECTION_FACTOR  = 0.9600000   # reduz motor esquerdo (mecânica)
+RIGHT_MOTOR_CORRECTION_FACTOR = 0.9400000   # reduz motor direito (novo — cancela drift dir.)
 
 if GPIO_AVAILABLE:
     try:
