@@ -54,8 +54,9 @@ DEFAULT_INTERVAL_S       = 1.0    # intervalo entre correções (s) — reduzido
 DEFAULT_MIN_POINTS       = 15     # mínimo de pontos válidos para corrigir
 DEFAULT_MAX_RANGE_M      = 8.0    # ignora pontos > 8 m (artefatos de scan)
 DEFAULT_MIN_RANGE_M      = 0.18   # ignora pontos < 18 cm (reflexo do corpo)
-DEFAULT_MIN_SCORE        = 0.12   # score mínimo para aceitar correção (0–1)
-DEFAULT_MAX_CORR_M       = 0.20   # descarta correção > 20 cm (outlier)
+DEFAULT_MIN_SCORE           = 0.12   # score mínimo para aceitar correção (0–1)
+DEFAULT_POSITION_MIN_SCORE  = 0.20   # score mínimo para incluir dx/dy na correção (abordagem híbrida)
+DEFAULT_MAX_CORR_M          = 0.20   # descarta correção > 20 cm (outlier)
 DEFAULT_MAX_CORR_DEG     = 3.0    # descarta correção > 3° (outlier)
 DEFAULT_MAX_SCAN_PTS     = 60     # subamostrar scan para no máximo 60 pontos (velocidade)
 
@@ -75,19 +76,20 @@ class LidarPoseCorrector:
         self,
         pgm_path: str,
         yaml_path: str,
-        sensor_front_deg: float    = DEFAULT_SENSOR_FRONT_DEG,
-        xy_range_m: float          = DEFAULT_XY_RANGE_M,
-        xy_step_m: float           = DEFAULT_XY_STEP_M,
-        theta_range_deg: float     = DEFAULT_THETA_RANGE_DEG,
-        theta_step_deg: float      = DEFAULT_THETA_STEP_DEG,
+        sensor_front_deg: float      = DEFAULT_SENSOR_FRONT_DEG,
+        xy_range_m: float            = DEFAULT_XY_RANGE_M,
+        xy_step_m: float             = DEFAULT_XY_STEP_M,
+        theta_range_deg: float       = DEFAULT_THETA_RANGE_DEG,
+        theta_step_deg: float        = DEFAULT_THETA_STEP_DEG,
         correction_interval_s: float = DEFAULT_INTERVAL_S,
-        min_scan_points: int       = DEFAULT_MIN_POINTS,
-        max_range_m: float         = DEFAULT_MAX_RANGE_M,
-        min_range_m: float         = DEFAULT_MIN_RANGE_M,
-        min_score: float           = DEFAULT_MIN_SCORE,
-        max_correction_m: float    = DEFAULT_MAX_CORR_M,
-        max_correction_deg: float  = DEFAULT_MAX_CORR_DEG,
-        max_scan_pts: int          = DEFAULT_MAX_SCAN_PTS,
+        min_scan_points: int         = DEFAULT_MIN_POINTS,
+        max_range_m: float           = DEFAULT_MAX_RANGE_M,
+        min_range_m: float           = DEFAULT_MIN_RANGE_M,
+        min_score: float             = DEFAULT_MIN_SCORE,
+        position_min_score: float    = DEFAULT_POSITION_MIN_SCORE,
+        max_correction_m: float      = DEFAULT_MAX_CORR_M,
+        max_correction_deg: float    = DEFAULT_MAX_CORR_DEG,
+        max_scan_pts: int            = DEFAULT_MAX_SCAN_PTS,
     ):
         self.pgm_path              = pgm_path
         self.yaml_path             = yaml_path
@@ -101,6 +103,7 @@ class LidarPoseCorrector:
         self.max_range_m           = max_range_m
         self.min_range_m           = min_range_m
         self.min_score             = min_score
+        self.position_min_score    = position_min_score
         self.max_correction_m      = max_correction_m
         self.max_correction_deg    = max_correction_deg
         self.max_scan_pts          = max_scan_pts
@@ -446,17 +449,32 @@ class LidarPoseCorrector:
                                     dx, dy, dtheta, score, elapsed_ms,
                                 )
                             else:
+                                # Abordagem híbrida: posição só quando score alto o suficiente.
+                                # score >= position_min_score → correção completa (dx+dy+dθ)
+                                # score <  position_min_score → só ângulo (dx=dy=0, posição=odometria)
+                                use_position = (score >= self.position_min_score)
+                                pub_dx = dx  if use_position else 0.0
+                                pub_dy = dy  if use_position else 0.0
+
                                 with self._lock:
-                                    self._latest_correction = (dx, dy, dtheta)
+                                    self._latest_correction = (pub_dx, pub_dy, dtheta)
                                     self._latest_score      = score
                                     self._correction_count += 1
 
-                                logger.info(
-                                    "PoseCorrector #%d: dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
-                                    "score=%.2f  (%.0f ms)",
-                                    self._correction_count,
-                                    dx, dy, dtheta, score, elapsed_ms,
-                                )
+                                if use_position:
+                                    logger.info(
+                                        "PoseCorrector #%d [FULL]: dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
+                                        "score=%.2f  (%.0f ms)",
+                                        self._correction_count,
+                                        dx, dy, dtheta, score, elapsed_ms,
+                                    )
+                                else:
+                                    logger.info(
+                                        "PoseCorrector #%d [θ-only]: dθ=%+.1f°  score=%.2f  "
+                                        "(%.0f ms) — dx/dy ignorados (score<%.2f)",
+                                        self._correction_count,
+                                        dtheta, score, elapsed_ms, self.position_min_score,
+                                    )
                         else:
                             logger.info(
                                 "PoseCorrector: rejeitado dx=%+.3f dy=%+.3f dθ=%+.1f° "

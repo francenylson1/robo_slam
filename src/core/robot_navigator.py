@@ -122,6 +122,7 @@ class RobotNavigator(QObject):
                     theta_step_deg        = SCAN_MATCH_THETA_STEP_DEG,
                     correction_interval_s = SCAN_MATCH_INTERVAL_S,
                     min_score             = SCAN_MATCH_MIN_SCORE,
+                    position_min_score    = SCAN_MATCH_POSITION_MIN_SCORE,
                     max_correction_m      = SCAN_MATCH_MAX_CORR_M,
                     max_correction_deg    = SCAN_MATCH_MAX_CORR_DEG,
                     max_scan_pts          = SCAN_MATCH_MAX_SCAN_PTS,
@@ -1224,15 +1225,11 @@ class RobotNavigator(QObject):
                 correction = self._pose_corrector.get_latest_correction()
                 if correction is not None:
                     dx, dy, dtheta = correction
-                    # Posição: DESABILITADA (SCAN_MATCH_USE_POSITION=False).
-                    # dx/dy acumulavam +1.6m leste em 31 ciclos num mapa 4.7%
-                    # ocupado → posição virtual divergia 1.2m da posição física
-                    # → ao desviar de obstáculo a navegação calculava ângulo
-                    # errado (270° em vez de 90°). Odometria é suficiente para
-                    # posição em percursos de ~2-3m.
-                    #
-                    # Ângulo: ganho=1.0 obrigatório (diverge com <1.0).
-                    if SCAN_MATCH_USE_POSITION:
+                    # O PoseCorrector já decidiu se dx/dy são confiáveis (abordagem híbrida):
+                    #   score >= SCAN_MATCH_POSITION_MIN_SCORE → dx/dy reais  (FULL)
+                    #   score <  SCAN_MATCH_POSITION_MIN_SCORE → dx=dy=0      (θ-only)
+                    # Navigator aplica tudo que recebe; a filtragem é responsabilidade do corrector.
+                    if dx != 0.0 or dy != 0.0:
                         self.current_position = (
                             self.current_position[0] + dx,
                             self.current_position[1] + dy,
@@ -1240,9 +1237,9 @@ class RobotNavigator(QObject):
                     self.current_angle = self._normalize_angle_deg(
                         self.current_angle + dtheta
                     )
-                    if SCAN_MATCH_USE_POSITION:
+                    if dx != 0.0 or dy != 0.0:
                         logger.info(
-                            "ScanMatching: pose corrigida dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
+                            "ScanMatching [FULL]: pose corrigida dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
                             "→ pos=(%.3f, %.3f)  θ=%.1f°",
                             dx, dy, dtheta,
                             self.current_position[0], self.current_position[1],
@@ -1250,8 +1247,8 @@ class RobotNavigator(QObject):
                         )
                     else:
                         logger.info(
-                            "ScanMatching: ângulo corrigido dθ=%+.1f°  "
-                            "→ pos=(%.3f, %.3f)  θ=%.1f°  [pos=odometria]",
+                            "ScanMatching [θ-only]: dθ=%+.1f°  "
+                            "→ pos=(%.3f, %.3f)  θ=%.1f°",
                             dtheta,
                             self.current_position[0], self.current_position[1],
                             self.current_angle,

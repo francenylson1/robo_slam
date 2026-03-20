@@ -237,15 +237,18 @@ SCAN_MATCH_MAX_CORR_M      = 0.30   # Deve ser igual ao XY_RANGE_M para não rej
 SCAN_MATCH_MAX_CORR_DEG    = 3.0    # Descarta dθ > 3°
 
 # Fator de amortecimento: aplica 70% de cada correção (reduz impacto de correções ruidosas)
-SCAN_MATCH_CORRECTION_GAIN = 1.0  # Ganho de posição (se USE_POSITION=True). Não usar < 1.0
-                                   # (defasagem virtual/física → tracking perdido em 8 ciclos).
+SCAN_MATCH_CORRECTION_GAIN = 1.0  # Reservado. Não reduzir: ganho < 1.0 causa
+                                   # defasagem virtual/física → tracking perdido em 8 ciclos.
 
-# Correção de POSIÇÃO via scan matching — desabilitada (20/03/2026).
-# Motivo: dx acumulam +1.6m leste sobre 31 ciclos (ruído em mapa 4.7% ocupado).
-# Posição virtual diverge 1.2m da física → navegação calcula ângulo errado ao
-# desviar de obstáculo → giro de 270° em vez de 90°.
-# Correção de ÂNGULO mantida: dθ é confiável e necessária para evitar divergência.
-SCAN_MATCH_USE_POSITION = False   # False = usa somente dθ (posição = odometria pura)
+# Score mínimo para aceitar correção de POSIÇÃO (dx, dy).
+# Estratégia híbrida (19/03/2026):
+#   score >= POSITION_MIN_SCORE → aplica dx + dy + dθ  (match confiável)
+#   score <  POSITION_MIN_SCORE → aplica só dθ          (match incerto, position = odometria)
+# Racional: mapa com 4.7% ocupado gera muitos matches mediocres que fazem a
+# posição virtual derivar (+1.6m em 31 ciclos → giro de 270° no desvio de obstáculo).
+# Aceitar posição apenas quando o scan matching "tem certeza" evita drift sem
+# abrir mão da correção de posição em trechos com paredes visíveis.
+SCAN_MATCH_POSITION_MIN_SCORE = 0.20   # Acima deste score a posição é atualizada
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz
