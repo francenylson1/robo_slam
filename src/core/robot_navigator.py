@@ -1224,15 +1224,18 @@ class RobotNavigator(QObject):
                 correction = self._pose_corrector.get_latest_correction()
                 if correction is not None:
                     dx, dy, dtheta = correction
+                    # Aplica fator de amortecimento para reduzir impacto de correções ruidosas
+                    dx_applied = dx * SCAN_MATCH_CORRECTION_GAIN
+                    dy_applied = dy * SCAN_MATCH_CORRECTION_GAIN
                     self.current_position = (
-                        self.current_position[0] + dx,
-                        self.current_position[1] + dy,
+                        self.current_position[0] + dx_applied,
+                        self.current_position[1] + dy_applied,
                     )
-                    self.current_angle = self._normalize_angle_deg(self.current_angle + dtheta)
+                    # dtheta desabilitado (SCAN_MATCH_THETA_RANGE_DEG=0) — não altera ângulo
                     logger.info(
-                        "ScanMatching: pose corrigida dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
-                        "→ pos=(%.3f, %.3f)  θ=%.1f°",
-                        dx, dy, dtheta,
+                        "ScanMatching: pose corrigida dx=%+.3f m  dy=%+.3f m  "
+                        "(gain=%.1f) → pos=(%.3f, %.3f)  θ=%.1f°",
+                        dx_applied, dy_applied, SCAN_MATCH_CORRECTION_GAIN,
                         self.current_position[0], self.current_position[1],
                         self.current_angle,
                     )

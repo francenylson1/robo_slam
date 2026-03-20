@@ -331,9 +331,10 @@ class LidarPoseCorrector:
             dists_valid = dists_valid[::step]
 
         # ── Grade de candidatos ──────────────────────────────────────────────
+        # float64 evita erros de precisão nos limites (ex: -0.20 armazenado como -0.2000003 em float32)
         xy_offsets        = np.arange(-self.xy_range_m,
                                        self.xy_range_m + 1e-6,
-                                       self.xy_step_m, dtype=np.float32)
+                                       self.xy_step_m)
         theta_offsets_deg = np.arange(-self.theta_range_deg,
                                        self.theta_range_deg + 1e-6,
                                        self.theta_step_deg)
