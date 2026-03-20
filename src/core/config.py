@@ -25,7 +25,9 @@ LIDAR_AVAILABLE = False  # Legado — uso geral de Lidar
 # C1 integrado à navegação: parada automática quando obstáculo < LIDAR_OBSTACLE_MIN_DISTANCE
 # REATIVADO (16/03/2026): calibração definiu frente=350°, cone 60° (evita corpo 120°–240°)
 LIDAR_C1_ENABLED = True  # True = tenta conectar C1 na Pi; False = desativa
-LIDAR_OBSTACLE_MIN_DISTANCE = 0.85  # Parar motores se obstáculo < 85 cm (aumentado de 60cm; testes: lixeira às vezes não detectada)
+LIDAR_OBSTACLE_MIN_DISTANCE = 0.40  # Parar motores se obstáculo < 40 cm
+                                    # Histórico: 60cm → 85cm (lixeira não detectada) → 40cm (20/03/2026:
+                                    # corredor de 1.78m com robô 52cm — 40cm de margem frontal é seguro)
 # Backend do C1: "rplidarc1" ou "pyrplidarsdk" (SDK oficial SLAMTEC)
 # pyrplidarsdk testado como alternativa — rplidarc1 apresentou parada inconsistente (Mar 2026)
 # C1 exige baudrate 460800 (já configurado). Vide docs/INTEGRACAO_PYRPLIDARSDK_C1_MAR2026.md
@@ -222,7 +224,9 @@ SCAN_MATCH_XY_STEP_M       = 0.05   # Passo de 5 cm (13 valores por eixo)
 SCAN_MATCH_THETA_RANGE_DEG = 3.0    # Busca ±3° em ângulo — necessário para rastrear rotação física
                                     # do robô (teste sem correção angular → score caiu a 0.00)
 SCAN_MATCH_THETA_STEP_DEG  = 1.0    # Passo de 1° (7 valores)
-SCAN_MATCH_INTERVAL_S      = 1.0    # Intervalo entre correções (s)
+SCAN_MATCH_INTERVAL_S      = 0.5    # Intervalo entre correções (s) — reduzido de 1.0s:
+                                    # compute demora 400-700ms; ciclo efetivo = max(compute, 0.5s)
+                                    # Resultado: ~2 correções/s quando Pi está rápido
 SCAN_MATCH_MAX_SCAN_PTS    = 60     # Subamostrar scan para ≤60 pts (velocidade no Pi 4)
 
 # Filtros de qualidade — proteção contra correções erradas
