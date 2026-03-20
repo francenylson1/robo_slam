@@ -1224,27 +1224,38 @@ class RobotNavigator(QObject):
                 correction = self._pose_corrector.get_latest_correction()
                 if correction is not None:
                     dx, dy, dtheta = correction
-                    # Posição: ganho=1.0 (correção completa).
-                    # Ganho < 1.0 cria defasagem entre posição virtual e física —
-                    # após 8-10 correções o robô físico está >30cm fora da janela
-                    # de busca (±30cm) e o rastreamento é perdido (score→0.00).
-                    # Ângulo: ganho=1.0 obrigatório por definição (diverge com <1.0).
-                    # As 2 primeiras correções são descartadas no corrector (warmup)
-                    # para evitar que correções iniciais instáveis corrompam o CTE.
-                    self.current_position = (
-                        self.current_position[0] + dx,
-                        self.current_position[1] + dy,
-                    )
+                    # Posição: DESABILITADA (SCAN_MATCH_USE_POSITION=False).
+                    # dx/dy acumulavam +1.6m leste em 31 ciclos num mapa 4.7%
+                    # ocupado → posição virtual divergia 1.2m da posição física
+                    # → ao desviar de obstáculo a navegação calculava ângulo
+                    # errado (270° em vez de 90°). Odometria é suficiente para
+                    # posição em percursos de ~2-3m.
+                    #
+                    # Ângulo: ganho=1.0 obrigatório (diverge com <1.0).
+                    if SCAN_MATCH_USE_POSITION:
+                        self.current_position = (
+                            self.current_position[0] + dx,
+                            self.current_position[1] + dy,
+                        )
                     self.current_angle = self._normalize_angle_deg(
                         self.current_angle + dtheta
                     )
-                    logger.info(
-                        "ScanMatching: pose corrigida dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
-                        "→ pos=(%.3f, %.3f)  θ=%.1f°",
-                        dx, dy, dtheta,
-                        self.current_position[0], self.current_position[1],
-                        self.current_angle,
-                    )
+                    if SCAN_MATCH_USE_POSITION:
+                        logger.info(
+                            "ScanMatching: pose corrigida dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
+                            "→ pos=(%.3f, %.3f)  θ=%.1f°",
+                            dx, dy, dtheta,
+                            self.current_position[0], self.current_position[1],
+                            self.current_angle,
+                        )
+                    else:
+                        logger.info(
+                            "ScanMatching: ângulo corrigido dθ=%+.1f°  "
+                            "→ pos=(%.3f, %.3f)  θ=%.1f°  [pos=odometria]",
+                            dtheta,
+                            self.current_position[0], self.current_position[1],
+                            self.current_angle,
+                        )
 
         self.last_position_update = time.time()
         self.position_updated.emit(self.current_position[0], self.current_position[1], self.current_angle)

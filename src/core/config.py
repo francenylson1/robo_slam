@@ -237,11 +237,15 @@ SCAN_MATCH_MAX_CORR_M      = 0.30   # Deve ser igual ao XY_RANGE_M para não rej
 SCAN_MATCH_MAX_CORR_DEG    = 3.0    # Descarta dθ > 3°
 
 # Fator de amortecimento: aplica 70% de cada correção (reduz impacto de correções ruidosas)
-SCAN_MATCH_CORRECTION_GAIN = 1.0  # Ganho de posição — manter em 1.0.
-                                   # Gain < 1.0 cria defasagem virtual/física: após 8-10 correções
-                                   # o robô físico fica >30cm fora da janela de busca (±30cm)
-                                   # e o rastreamento é perdido. Gain=1.0 → rastreamento 27-31 ciclos.
-                                   # Correções iniciais instáveis resolvidas via warmup no corrector.
+SCAN_MATCH_CORRECTION_GAIN = 1.0  # Ganho de posição (se USE_POSITION=True). Não usar < 1.0
+                                   # (defasagem virtual/física → tracking perdido em 8 ciclos).
+
+# Correção de POSIÇÃO via scan matching — desabilitada (20/03/2026).
+# Motivo: dx acumulam +1.6m leste sobre 31 ciclos (ruído em mapa 4.7% ocupado).
+# Posição virtual diverge 1.2m da física → navegação calcula ângulo errado ao
+# desviar de obstáculo → giro de 270° em vez de 90°.
+# Correção de ÂNGULO mantida: dθ é confiável e necessária para evitar divergência.
+SCAN_MATCH_USE_POSITION = False   # False = usa somente dθ (posição = odometria pura)
 
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz
