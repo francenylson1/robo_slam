@@ -226,7 +226,8 @@ SCAN_MATCH_INTERVAL_S      = 1.0    # Intervalo entre correções (s)
 SCAN_MATCH_MAX_SCAN_PTS    = 60     # Subamostrar scan para ≤60 pts (velocidade no Pi 4)
 
 # Filtros de qualidade — proteção contra correções erradas
-SCAN_MATCH_MIN_SCORE       = 0.15   # Score mínimo (aumentado 0.12→0.15 para reduzir correções ruidosas)
+SCAN_MATCH_MIN_SCORE       = 0.12   # Score mínimo — mantido baixo: com 4.7% ocupado,
+                                    # rejeitar bordas (0.12-0.15) causa divergência angular
 SCAN_MATCH_MAX_CORR_M      = 0.22   # Descarta correção > 22 cm (folga para float64 no limite exato)
 SCAN_MATCH_MAX_CORR_DEG    = 3.0    # Descarta dθ > 3°
 
