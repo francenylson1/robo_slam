@@ -68,6 +68,13 @@ TPS_MAX                = 45.0   # Velocidade máxima permitida
 TPS_STEP               = 5.0    # Passo de ajuste L1/R1
 LOOP_HZ                = 50     # Frequência do loop de controle (50 Hz = 20 ms)
 
+# D-pad — giro preciso com BNO (22.5° por clique = 16 cliques por volta completa)
+HAT_ID                  = 0     # D-pad é o hat 0 na maioria dos controles
+DPAD_TURN_DEG           = 22.5  # Graus por clique (360°/16)
+DPAD_TURN_TPS           = 12.0  # Velocidade do giro (não muito rápido para BNO acompanhar)
+DPAD_TURN_THRESHOLD_DEG = 1.0   # Para dentro desta margem do alvo (inércia faz o resto)
+DPAD_TURN_TIMEOUT_S     = 4.0   # Timeout de segurança por clique
+
 
 def is_raspberry_pi() -> bool:
     try:
@@ -155,6 +162,76 @@ def run_identify_mode(joystick) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Giro preciso via D-pad (BNO mede o ângulo girado)
+# ─────────────────────────────────────────────────────────────────────────────
+def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
+                 turn_tps: float, threshold_deg: float,
+                 timeout_s: float, qt_app=None) -> float | None:
+    """
+    Gira delta_deg graus usando o BNO08x como sensor de ângulo.
+
+    - delta_deg positivo = direita (sentido horário)
+    - delta_deg negativo = esquerda (sentido anti-horário)
+    - Para quando o BNO reportar que o ângulo girado atingiu
+      (|delta_deg| - threshold_deg), deixando a inércia completar o resto.
+    - Retorna o ângulo efetivamente girado, ou None se BNO indisponível.
+    """
+    if get_bno_yaw is None:
+        print(f"  D-pad: BNO não disponível — giro de {delta_deg:+.1f}° cancelado.")
+        return None
+
+    yaw_start = get_bno_yaw()
+    if yaw_start is None:
+        print("  D-pad: sem leitura BNO — giro cancelado.")
+        return None
+
+    lado  = "DIR →" if delta_deg > 0 else "← ESQ"
+    print(f"  D-pad {lado}  {abs(delta_deg):.1f}°  (BNO ref={yaw_start:.1f}°)")
+
+    # Inicia giro
+    if delta_deg > 0:
+        motors.set_precise_rotation_direction(1, -1)
+        motors.set_target_speed(turn_tps, -turn_tps)
+    else:
+        motors.set_precise_rotation_direction(-1, 1)
+        motors.set_target_speed(-turn_tps, turn_tps)
+
+    target_abs  = abs(delta_deg)
+    stop_at     = target_abs - threshold_deg   # para um pouco antes (inércia completa)
+    t0          = time.time()
+
+    while time.time() - t0 < timeout_s:
+        if qt_app:
+            qt_app.processEvents()
+
+        yaw_now = get_bno_yaw()
+        if yaw_now is not None:
+            delta_done = normalize_angle_deg(yaw_now - yaw_start)
+            if delta_deg > 0 and delta_done >= stop_at:
+                break
+            if delta_deg < 0 and delta_done <= -stop_at:
+                break
+
+        time.sleep(0.015)
+
+    motors.stop_motors()
+    motors.clear_precise_rotation_direction()
+    time.sleep(0.12)   # aguarda inércia mecânica parar
+
+    yaw_final  = get_bno_yaw()
+    actual_deg = normalize_angle_deg(yaw_final - yaw_start) if yaw_final is not None else None
+
+    if actual_deg is not None:
+        erro = actual_deg - delta_deg
+        print(f"  D-pad concluído: girou {actual_deg:+.1f}°  "
+              f"(alvo {delta_deg:+.1f}°, erro {erro:+.1f}°)")
+    else:
+        print("  D-pad concluído (sem leitura final do BNO).")
+
+    return actual_deg
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Loop principal de controle
 # ─────────────────────────────────────────────────────────────────────────────
 def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
@@ -176,12 +253,14 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
     }
 
     prev_mode = "stop"
+    prev_hat  = (0, 0)   # estado anterior do D-pad (edge detection)
     loop_dt   = 1.0 / LOOP_HZ
 
     print()
     print("=" * 60)
     print(f"  CONTROLE ATIVO — velocidade base: {speed_tps:.0f} TPS")
     print(f"  BNO correção: {'SIM' if use_bno and get_bno_yaw else 'NÃO'}")
+    print(f"  D-pad ←/→: giro preciso {DPAD_TURN_DEG:.1f}° por clique (BNO)")
     print(f"  L1/R1=velocidade  B=parar  Start=sair")
     print("=" * 60)
 
@@ -205,6 +284,34 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         btn_l1    = joystick.get_button(BTN_L1)
         btn_r1    = joystick.get_button(BTN_R1)
         btn_start = joystick.get_button(BTN_START)
+
+        # ── D-pad: giro preciso 22.5° por clique (edge detection) ─────────
+        try:
+            hat = joystick.get_hat(HAT_ID)
+        except Exception:
+            hat = (0, 0)
+
+        if hat != prev_hat:
+            dpad_x = hat[0]
+            if dpad_x == -1 and prev_hat[0] != -1:      # clique ← esquerda
+                motors.stop_motors()
+                yaw_ref = None
+                cmd_turn_bno(
+                    motors, -DPAD_TURN_DEG,
+                    get_bno_yaw if use_bno else None,
+                    DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
+                    DPAD_TURN_TIMEOUT_S, qt_app,
+                )
+            elif dpad_x == 1 and prev_hat[0] != 1:      # clique → direita
+                motors.stop_motors()
+                yaw_ref = None
+                cmd_turn_bno(
+                    motors, +DPAD_TURN_DEG,
+                    get_bno_yaw if use_bno else None,
+                    DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
+                    DPAD_TURN_TIMEOUT_S, qt_app,
+                )
+            prev_hat = hat
 
         # ── Ajuste de velocidade (L1/R1) ──────────────────────────────────
         if btn_l1:
