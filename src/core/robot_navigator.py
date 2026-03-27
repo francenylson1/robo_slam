@@ -182,7 +182,10 @@ class RobotNavigator(QObject):
 
     def set_pose(self, x: float, y: float, angle_deg: float):
         """Define posição e ângulo do robô (ex.: ao carregar mapa PGM)."""
-        self.current_position = (float(x), float(y))
+        fx, fy = float(x), float(y)
+        if self._pose_corrector is not None and self._pose_corrector.map_loaded:
+            fx, fy = self._pose_corrector.clamp_world_position(fx, fy)
+        self.current_position = (fx, fy)
         self.current_angle = self._normalize_angle_deg(float(angle_deg))
         self._bno_yaw_offset = None
         self._bno_yaw_ref = None
@@ -1204,6 +1207,11 @@ class RobotNavigator(QObject):
             delta_x = delta_distance * math.cos(angle_rad)
             delta_y = delta_distance * math.sin(angle_rad)
             self.current_position = (self.current_position[0] + delta_x, self.current_position[1] + delta_y)
+            if self._pose_corrector is not None and self._pose_corrector.map_loaded:
+                cx, cy = self._pose_corrector.clamp_world_position(
+                    self.current_position[0], self.current_position[1]
+                )
+                self.current_position = (cx, cy)
 
         # ── Scan matching — alimenta pose atual e aplica correção se disponível ──
         if self._pose_corrector is not None and self._pose_corrector.is_running:
@@ -1230,10 +1238,11 @@ class RobotNavigator(QObject):
                     #   score <  SCAN_MATCH_POSITION_MIN_SCORE → dx=dy=0      (θ-only)
                     # Navigator aplica tudo que recebe; a filtragem é responsabilidade do corrector.
                     if dx != 0.0 or dy != 0.0:
-                        self.current_position = (
-                            self.current_position[0] + dx,
-                            self.current_position[1] + dy,
-                        )
+                        nx = self.current_position[0] + dx
+                        ny = self.current_position[1] + dy
+                        if self._pose_corrector is not None and self._pose_corrector.map_loaded:
+                            nx, ny = self._pose_corrector.clamp_world_position(nx, ny)
+                        self.current_position = (nx, ny)
                     self.current_angle = self._normalize_angle_deg(
                         self.current_angle + dtheta
                     )

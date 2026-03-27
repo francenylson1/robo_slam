@@ -60,6 +60,11 @@ DEFAULT_MAX_CORR_M          = 0.20   # descarta correção > 20 cm (outlier)
 DEFAULT_MAX_CORR_DEG     = 3.0    # descarta correção > 3° (outlier)
 DEFAULT_MAX_SCAN_PTS     = 60     # subamostrar scan para no máximo 60 pontos (velocidade)
 
+# Margem interna ao retângulo do PGM (m): pose fora disso não recebe correção de posição;
+# correções que levariam o centro do robô para fora são descartadas (evita score 1.0 na borda
+# empurrando X além de map_w*res quando a odometria já deriva).
+DEFAULT_MAP_CLAMP_MARGIN_M = 0.22
+
 # Ângulo frontal do sensor C1 (FRONT_CENTER_DEG do lidar_c1_reader)
 DEFAULT_SENSOR_FRONT_DEG = 350.0
 
@@ -90,6 +95,7 @@ class LidarPoseCorrector:
         max_correction_m: float      = DEFAULT_MAX_CORR_M,
         max_correction_deg: float    = DEFAULT_MAX_CORR_DEG,
         max_scan_pts: int            = DEFAULT_MAX_SCAN_PTS,
+        map_clamp_margin_m: float    = DEFAULT_MAP_CLAMP_MARGIN_M,
     ):
         self.pgm_path              = pgm_path
         self.yaml_path             = yaml_path
@@ -107,6 +113,7 @@ class LidarPoseCorrector:
         self.max_correction_m      = max_correction_m
         self.max_correction_deg    = max_correction_deg
         self.max_scan_pts          = max_scan_pts
+        self.map_clamp_margin_m    = map_clamp_margin_m
 
         # ── Mapa (carregado em _load_map) ────────────────────────────────────
         self._grid: Optional[np.ndarray] = None   # bool, True = ocupado
@@ -207,6 +214,29 @@ class LidarPoseCorrector:
     @property
     def map_loaded(self) -> bool:
         return self._map_loaded
+
+    def pose_inside_map(self, x: float, y: float) -> bool:
+        """True se (x,y) está dentro do retângulo do PGM com margem de segurança."""
+        if not self._map_loaded or self._grid is None:
+            return True
+        m = self.map_clamp_margin_m
+        ox, oy = self._origin
+        x_max = ox + self._map_w * self._resolution
+        y_max = oy + self._map_h * self._resolution
+        return (ox + m <= x <= x_max - m) and (oy + m <= y <= y_max - m)
+
+    def clamp_world_position(self, x: float, y: float) -> Tuple[float, float]:
+        """Projeta (x,y) para o interior do mapa (mesma margem que pose_inside_map)."""
+        if not self._map_loaded or self._grid is None:
+            return x, y
+        m = self.map_clamp_margin_m
+        ox, oy = self._origin
+        x_max = ox + self._map_w * self._resolution
+        y_max = oy + self._map_h * self._resolution
+        return (
+            max(ox + m, min(x_max - m, x)),
+            max(oy + m, min(y_max - m, y)),
+        )
 
     @property
     def correction_count(self) -> int:
@@ -426,62 +456,78 @@ class LidarPoseCorrector:
                     scan = list(self._current_scan)
                     pose = self._current_pose
 
+                result = None
                 if len(scan) >= self.min_scan_points:
-                    result = self._compute_correction(scan, pose)
-
-                    if result is not None:
-                        dx, dy, dtheta, score = result
-                        elapsed_ms = (time.time() - t_start) * 1000
-
-                        # Filtra outliers antes de publicar
-                        if (
-                            score >= self.min_score
-                            and abs(dx)     <= self.max_correction_m
-                            and abs(dy)     <= self.max_correction_m
-                            and abs(dtheta) <= self.max_correction_deg
-                        ):
-                            if warmup_done < WARMUP_SKIP:
-                                warmup_done += 1
+                    x0, y0, _ = pose
+                    if not self.pose_inside_map(x0, y0):
+                        logger.debug(
+                            "PoseCorrector: pose (%.2f, %.2f) fora do mapa — "
+                            "ciclo sem correção (use clamp no navegador).",
+                            x0, y0,
+                        )
+                    else:
+                        result = self._compute_correction(scan, pose)
+                        if result is not None:
+                            dx, dy, dtheta, score = result
+                            if not self.pose_inside_map(x0 + dx, y0 + dy):
                                 logger.info(
-                                    "PoseCorrector: warmup %d/%d — descartando "
-                                    "dx=%+.3f dy=%+.3f dθ=%+.1f° score=%.2f (%.0f ms)",
-                                    warmup_done, WARMUP_SKIP,
+                                    "PoseCorrector: rejeitado — pós-correção (%.2f, %.2f) fora do mapa "
+                                    "(dx=%+.3f dy=%+.3f score=%.2f).",
+                                    x0 + dx, y0 + dy, dx, dy, score,
+                                )
+                                result = None
+
+                if result is not None:
+                    dx, dy, dtheta, score = result
+                    elapsed_ms = (time.time() - t_start) * 1000
+
+                    # Filtra outliers antes de publicar
+                    if (
+                        score >= self.min_score
+                        and abs(dx)     <= self.max_correction_m
+                        and abs(dy)     <= self.max_correction_m
+                        and abs(dtheta) <= self.max_correction_deg
+                    ):
+                        if warmup_done < WARMUP_SKIP:
+                            warmup_done += 1
+                            logger.info(
+                                "PoseCorrector: warmup %d/%d — descartando "
+                                "dx=%+.3f dy=%+.3f dθ=%+.1f° score=%.2f (%.0f ms)",
+                                warmup_done, WARMUP_SKIP,
+                                dx, dy, dtheta, score, elapsed_ms,
+                            )
+                        else:
+                            # Abordagem híbrida: posição só quando score alto o suficiente.
+                            use_position = (score >= self.position_min_score)
+                            pub_dx = dx if use_position else 0.0
+                            pub_dy = dy if use_position else 0.0
+
+                            with self._lock:
+                                self._latest_correction = (pub_dx, pub_dy, dtheta)
+                                self._latest_score      = score
+                                self._correction_count += 1
+
+                            if use_position:
+                                logger.info(
+                                    "PoseCorrector #%d [FULL]: dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
+                                    "score=%.2f  (%.0f ms)",
+                                    self._correction_count,
                                     dx, dy, dtheta, score, elapsed_ms,
                                 )
                             else:
-                                # Abordagem híbrida: posição só quando score alto o suficiente.
-                                # score >= position_min_score → correção completa (dx+dy+dθ)
-                                # score <  position_min_score → só ângulo (dx=dy=0, posição=odometria)
-                                use_position = (score >= self.position_min_score)
-                                pub_dx = dx  if use_position else 0.0
-                                pub_dy = dy  if use_position else 0.0
-
-                                with self._lock:
-                                    self._latest_correction = (pub_dx, pub_dy, dtheta)
-                                    self._latest_score      = score
-                                    self._correction_count += 1
-
-                                if use_position:
-                                    logger.info(
-                                        "PoseCorrector #%d [FULL]: dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
-                                        "score=%.2f  (%.0f ms)",
-                                        self._correction_count,
-                                        dx, dy, dtheta, score, elapsed_ms,
-                                    )
-                                else:
-                                    logger.info(
-                                        "PoseCorrector #%d [θ-only]: dθ=%+.1f°  score=%.2f  "
-                                        "(%.0f ms) — dx/dy ignorados (score<%.2f)",
-                                        self._correction_count,
-                                        dtheta, score, elapsed_ms, self.position_min_score,
-                                    )
-                        else:
-                            logger.info(
-                                "PoseCorrector: rejeitado dx=%+.3f dy=%+.3f dθ=%+.1f° "
-                                "score=%.2f (%.0f ms) — fora dos limites ou score baixo.",
-                                dx, dy, dtheta, score, elapsed_ms,
-                            )
-                else:
+                                logger.info(
+                                    "PoseCorrector #%d [θ-only]: dθ=%+.1f°  score=%.2f  "
+                                    "(%.0f ms) — dx/dy ignorados (score<%.2f)",
+                                    self._correction_count,
+                                    dtheta, score, elapsed_ms, self.position_min_score,
+                                )
+                    else:
+                        logger.info(
+                            "PoseCorrector: rejeitado dx=%+.3f dy=%+.3f dθ=%+.1f° "
+                            "score=%.2f (%.0f ms) — fora dos limites ou score baixo.",
+                            dx, dy, dtheta, score, elapsed_ms,
+                        )
+                elif len(scan) < self.min_scan_points:
                     logger.info(
                         "PoseCorrector: aguardando scan (%d pts, min=%d).",
                         len(scan), self.min_scan_points,
