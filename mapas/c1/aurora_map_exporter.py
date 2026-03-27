@@ -385,7 +385,9 @@ class AuroraMapExporter:
                start_rx: float = 0.0, start_ry: float = 0.0,
                rotate_deg: int = 0,
                flip_x: bool = False, flip_y: bool = False,
-               min_blob_px: int = 5) -> bool:
+               min_blob_px: int = 5,
+               min_keyframes: int = 15,
+               interactive: bool = False) -> bool:
         """
         Fluxo completo: conecta → aguarda mapa → gera → converte → salva.
 
@@ -400,7 +402,15 @@ class AuroraMapExporter:
         """
         self.connect()
         try:
-            self.wait_for_map()
+            if interactive:
+                print("\n" + "="*60)
+                print("  Aurora conectado e mapeando.")
+                print("  EMPURRE O ROBÔ por toda a sala agora.")
+                print("  Quando terminar o percurso, pressione ENTER.")
+                print("="*60 + "\n")
+                input("  >>> Pressione ENTER para exportar o mapa: ")
+                print()
+            self.wait_for_map(min_keyframes=min_keyframes)
             data = self.generate_raw_grid()
         except Exception as exc:
             print(f"ERRO durante geração do mapa: {exc}")
@@ -706,6 +716,10 @@ def main() -> int:
                    help="Canvas de geração Aurora em metros (padrão: 50)")
     p.add_argument("--min-keyframes", type=int, default=15,
                    help="Keyframes mínimos antes de gerar (padrão: 15)")
+    p.add_argument("--interactive", action="store_true",
+                   help="Aguarda ENTER do operador antes de exportar. "
+                        "Use para mapear manualmente: conecta, empurra o robô, "
+                        "pressiona Enter quando terminar.")
     p.add_argument("--min-blob-size", type=int, default=5,
                    metavar="PX",
                    help="Remove blobs ocupados menores que PX pixels (padrão: 5). "
@@ -760,6 +774,8 @@ def main() -> int:
         flip_x=args.flip_x,
         flip_y=args.flip_y,
         min_blob_px=args.min_blob_size,
+        min_keyframes=args.min_keyframes,
+        interactive=args.interactive,
     )
     return 0 if ok else 1
 
