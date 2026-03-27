@@ -66,7 +66,7 @@ ROBOT_FORWARD_SPEED = 0.30         # (LEGADO) Alinhado com ROBOT_SPEED (aumentad
 # ATENÇÃO: Este valor é sobrescrito por _set_robot_initial_position_from_pgm() ao carregar PGM.
 # CORREÇÃO 19/03/2026: YAML _90 e _270 corrigidos de 0.023904 → 0.047808 m/px (estava na metade).
 # Sala real: 6.26m × 12.00m. Com YAML correto a posição calculada será (~3.54, ~7.74).
-ROBOT_INITIAL_POSITION = (3.54, 7.74)  # metros reais (atualizado após correção do YAML)
+ROBOT_INITIAL_POSITION = (5.70, 11.50)  # metros reais — posição inicial Aurora v3 (canto SE)
 ROBOT_INITIAL_ANGLE = 270            # graus - apontando para cima
 
 # Configurações de simulação
@@ -207,13 +207,13 @@ USE_SCAN_MATCHING = True   # Ativado — mapa com escala correta (corrigido 19/0
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCAN_MATCH_PGM_PATH  = os.path.join(
     _BASE_DIR,
-    "src", "c1_scanner", "C1_mapas_processados", "c1_sala_maker",
-    "mapa-03122025_final_90.pgm",
+    "mapas", "c1",
+    "sala_maker_aurora_v3.pgm",
 )
 SCAN_MATCH_YAML_PATH = os.path.join(
     _BASE_DIR,
-    "src", "c1_scanner", "C1_mapas_processados", "c1_sala_maker",
-    "mapa-03122025_final_90.yaml",
+    "mapas", "c1",
+    "sala_maker_aurora_v3.yaml",
 )
 
 # Parâmetros da busca em grade
@@ -230,8 +230,8 @@ SCAN_MATCH_INTERVAL_S      = 0.5    # Intervalo entre correções (s) — reduzi
 SCAN_MATCH_MAX_SCAN_PTS    = 60     # Subamostrar scan para ≤60 pts (velocidade no Pi 4)
 
 # Filtros de qualidade — proteção contra correções erradas
-SCAN_MATCH_MIN_SCORE       = 0.12   # Score mínimo — mantido baixo: com 4.7% ocupado,
-                                    # rejeitar bordas (0.12-0.15) causa divergência angular
+SCAN_MATCH_MIN_SCORE       = 0.15   # Score mínimo — Aurora v3: 11% ocupado (era 4.7%),
+                                    # mapa mais denso permite threshold ligeiramente maior
 SCAN_MATCH_MAX_CORR_M      = 0.30   # Deve ser igual ao XY_RANGE_M para não rejeitar correções
                                     # válidas no limite da busca (bug: score=0.30 rejeitado com 0.22)
 SCAN_MATCH_MAX_CORR_DEG    = 3.0    # Descarta dθ > 3°

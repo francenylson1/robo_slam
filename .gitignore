@@ -52,6 +52,7 @@ data/*
 logs/
 *.map
 *.yaml
+!mapas/**/*.yaml
 *.json
 
 # Arquivos de configuração local
