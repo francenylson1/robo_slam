@@ -73,20 +73,32 @@ ROOM_W = 6.26   # leste–oeste (eixo X do robô)
 ROOM_H = 12.00  # norte–sul   (eixo Y do robô)
 
 # Conversão de valores Aurora l2p → PGM do robô
-# Aurora l2p: 255 = ocupado, 127 = livre, 0 = desconhecido
-# PGM robô:     0 = ocupado,  254 = livre, 205 = desconhecido
-_L2P_TO_PGM = np.zeros(256, dtype=np.uint8)
-_L2P_TO_PGM[255] = 0    # ocupado → preto
-_L2P_TO_PGM[127] = 254  # livre   → branco
-# resto permanece 205 (desconhecido → cinza) — preenchimento abaixo
+#
+# A escala l2p do Aurora é CONTÍNUA (0-254), não discreta:
+#   ~127 = livre confirmado   (células por onde o robô passou)
+#   ~254 = ocupado confirmado (paredes, móveis)
+#   ~0   = desconhecido       (área não mapeada)
+#   valores intermediários   = graus de certeza
+#
+# Limiar baseado nos thresholds do YAML:
+#   occupied_thresh = 0.65  → l2p >= round(0.65 * 254) = 166 → ocupado
+#   free range      = 64-165 (centrado em 127)
+#   unknown         = 0-63
+#
+# PGM robô: 0 = ocupado (preto), 254 = livre (branco), 205 = desconhecido (cinza)
 _UNKNOWN_MASK_VALUE = 205
+_OCC_THRESH_L2P  = 166   # l2p >= 166 → ocupado  (prob > 0.65)
+_FREE_RANGE      = (64, 165)  # l2p 64-165 → livre
 
 
 def _build_l2p_lut() -> np.ndarray:
-    """LUT para conversão Aurora l2p → PGM."""
+    """LUT para conversão Aurora l2p contínuo → PGM."""
     lut = np.full(256, _UNKNOWN_MASK_VALUE, dtype=np.uint8)
-    lut[255] = 0    # ocupado → preto
-    lut[127] = 254  # livre   → branco
+    # livre: valores entre 64 e 165 (centrado em 127)
+    lut[_FREE_RANGE[0]:_FREE_RANGE[1] + 1] = 254
+    # ocupado: valores >= 166
+    lut[_OCC_THRESH_L2P:] = 0
+    # abaixo de 64: desconhecido (mantém 205)
     return lut
 
 
