@@ -66,7 +66,7 @@ ROBOT_FORWARD_SPEED = 0.30         # (LEGADO) Alinhado com ROBOT_SPEED (aumentad
 # ATENÇÃO: Este valor é sobrescrito por _set_robot_initial_position_from_pgm() ao carregar PGM.
 # CORREÇÃO 19/03/2026: YAML _90 e _270 corrigidos de 0.023904 → 0.047808 m/px (estava na metade).
 # Sala real: 6.26m × 12.00m. Com YAML correto a posição calculada será (~3.54, ~7.74).
-ROBOT_INITIAL_POSITION = (5.70, 11.50)  # metros reais — posição inicial Aurora v3 (canto SE)
+ROBOT_INITIAL_POSITION = (3.00, 11.00)  # metros reais — centro da sala (mais espaço para manobrar)
 ROBOT_INITIAL_ANGLE = 270            # graus - apontando para cima
 
 # Configurações de simulação
