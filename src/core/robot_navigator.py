@@ -1233,35 +1233,56 @@ class RobotNavigator(QObject):
                 correction = self._pose_corrector.get_latest_correction()
                 if correction is not None:
                     dx, dy, dtheta = correction
-                    # O PoseCorrector já decidiu se dx/dy são confiáveis (abordagem híbrida):
-                    #   score >= SCAN_MATCH_POSITION_MIN_SCORE → dx/dy reais  (FULL)
-                    #   score <  SCAN_MATCH_POSITION_MIN_SCORE → dx=dy=0      (θ-only)
-                    # Navigator aplica tudo que recebe; a filtragem é responsabilidade do corrector.
-                    if dx != 0.0 or dy != 0.0:
-                        nx = self.current_position[0] + dx
-                        ny = self.current_position[1] + dy
-                        if self._pose_corrector is not None and self._pose_corrector.map_loaded:
-                            nx, ny = self._pose_corrector.clamp_world_position(nx, ny)
-                        self.current_position = (nx, ny)
-                    self.current_angle = self._normalize_angle_deg(
-                        self.current_angle + dtheta
+                    lidar_suppress = (
+                        hasattr(self.motors, "is_lidar_blocking_or_recent")
+                        and self.motors.is_lidar_blocking_or_recent(
+                            SCAN_MATCH_SUPPRESS_WHEN_LIDAR_BLOCKS_S
+                        )
                     )
-                    if dx != 0.0 or dy != 0.0:
-                        logger.info(
-                            "ScanMatching [FULL]: pose corrigida dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
-                            "→ pos=(%.3f, %.3f)  θ=%.1f°",
-                            dx, dy, dtheta,
-                            self.current_position[0], self.current_position[1],
-                            self.current_angle,
+                    odom_inert = (
+                        abs(delta_distance) < SCAN_MATCH_MIN_ODOM_M_FOR_POSITION
+                        and abs(delta_angle_deg) < SCAN_MATCH_MIN_ODOM_DEG_FOR_POSITION
+                    )
+                    if lidar_suppress:
+                        logger.debug(
+                            "ScanMatching: correção descartada (C1 bloqueando ou parada recente)."
                         )
-                    else:
-                        logger.info(
-                            "ScanMatching [θ-only]: dθ=%+.1f°  "
-                            "→ pos=(%.3f, %.3f)  θ=%.1f°",
+                    elif odom_inert and (dx != 0.0 or dy != 0.0):
+                        logger.debug(
+                            "ScanMatching: dx/dy ignorados (odometria nula no ciclo); mantém dθ=%+.1f°.",
                             dtheta,
-                            self.current_position[0], self.current_position[1],
-                            self.current_angle,
                         )
+                        dx, dy = 0.0, 0.0
+
+                    if not lidar_suppress:
+                        # O PoseCorrector já decidiu se dx/dy são confiáveis (abordagem híbrida):
+                        #   score >= SCAN_MATCH_POSITION_MIN_SCORE → dx/dy reais  (FULL)
+                        #   score <  SCAN_MATCH_POSITION_MIN_SCORE → dx=dy=0      (θ-only)
+                        if dx != 0.0 or dy != 0.0:
+                            nx = self.current_position[0] + dx
+                            ny = self.current_position[1] + dy
+                            if self._pose_corrector is not None and self._pose_corrector.map_loaded:
+                                nx, ny = self._pose_corrector.clamp_world_position(nx, ny)
+                            self.current_position = (nx, ny)
+                        self.current_angle = self._normalize_angle_deg(
+                            self.current_angle + dtheta
+                        )
+                        if dx != 0.0 or dy != 0.0:
+                            logger.info(
+                                "ScanMatching [FULL]: pose corrigida dx=%+.3f m  dy=%+.3f m  dθ=%+.1f°  "
+                                "→ pos=(%.3f, %.3f)  θ=%.1f°",
+                                dx, dy, dtheta,
+                                self.current_position[0], self.current_position[1],
+                                self.current_angle,
+                            )
+                        else:
+                            logger.info(
+                                "ScanMatching [θ-only]: dθ=%+.1f°  "
+                                "→ pos=(%.3f, %.3f)  θ=%.1f°",
+                                dtheta,
+                                self.current_position[0], self.current_position[1],
+                                self.current_angle,
+                            )
 
         self.last_position_update = time.time()
         self.position_updated.emit(self.current_position[0], self.current_position[1], self.current_angle)

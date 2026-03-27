@@ -254,6 +254,14 @@ SCAN_MATCH_POSITION_MIN_SCORE = 0.35   # Acima deste score a posição é atuali
                                        # ótimos locais). Score ≥ 0.35 só aparece quando
                                        # há paredes muito bem definidas → posição confiável.
 
+# Scan matching na pose: não aplicar dx/dy se os encoders não registraram movimento no ciclo
+# (robô parado). Caso contrário o matcher oscila (±30 cm) só com ruído do C1 em frente à parede.
+SCAN_MATCH_MIN_ODOM_M_FOR_POSITION = 0.00025
+SCAN_MATCH_MIN_ODOM_DEG_FOR_POSITION = 0.08
+# Com obstáculo frontal C1 (parada) ou logo após, não aplicar scan matching na pose — geometria
+# degenerada e scores ~0.76 ainda produzem dx/dy contraditórios.
+SCAN_MATCH_SUPPRESS_WHEN_LIDAR_BLOCKS_S = 0.7
+
 # Configurações de simulação
 SIMULATION_FREQUENCY = 10.0  # Hz
 SIMULATION_OBSTACLE_COUNT = 3
