@@ -2,12 +2,12 @@
 """
 Inicialização do BNO08x alinhada ao tools/bno08x_test.py (que funciona na Raspberry).
 
-- Reset completo no início de cada uso: RST LOW 0.15 s, depois HIGH 0.35 s.
+- Opcional `do_reset_cycle=True`: RST LOW 0.15 s, depois HIGH 0.35 s (segunda tentativa no joystick).
 - Mesma ordem de I2C (D3/D2, SCL/SDA, board.I2C(), ExtendedI2C(1)).
 - Mesmos relatórios habilitados: ACCELEROMETER, GYROSCOPE, ROTATION_VECTOR.
 - debug=False e reset=None na biblioteca (evita dump de pacotes e conflitos).
-- Patch _report_length para report 0x7B (evita KeyError e instabilidade).
-- Retry: até 2 tentativas de conexão + enable (0,5 s entre tentativas) para maior confiabilidade.
+- Patches 0x7B: debug.reports, _AVAIL_SENSOR_REPORTS, skip em BNO08X._process_report (evita falha no enable_feature).
+- Retry: até 4 tentativas (conexão + enable + yaw válido); I2C unlock antes de abrir o sensor.
 
 Uso (a partir da raiz do projeto):
   from tools.bno08x_init import init_bno
@@ -24,21 +24,57 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-# Patch do report 0x7B ao carregar o módulo (igual bno08x_test evita KeyError em todos os scripts)
-def _apply_bno07b_patch():
+def _apply_bno08x_library_patches():
+    """
+    Compatibilidade com firmwares que enviam relatório 0x7B (padding/reservado):
+    a lib Adafruit faz reports[report_id] e _AVAIL_SENSOR_REPORTS[report_id] — sem isto,
+    enable_feature() pode falhar com KeyError e o init devolve (None, None).
+    Também ignora 0x7B em BNO08X._process_report (mais seguro entre versões).
+    """
     try:
         import adafruit_bno08x as _bno_mod
-        _orig = getattr(_bno_mod, "_report_length", None)
-        if callable(_orig):
-            def _safe(rid):
+        _orig_rl = getattr(_bno_mod, "_report_length", None)
+        if callable(_orig_rl):
+            def _safe_rl(rid):
                 try:
-                    return _orig(rid)
+                    return _orig_rl(rid)
                 except KeyError:
                     return 16
-            _bno_mod._report_length = _safe
+            _bno_mod._report_length = _safe_rl
     except Exception:
         pass
-_apply_bno07b_patch()
+    try:
+        from adafruit_bno08x import debug as _bno_debug
+        _bno_debug.reports.setdefault(0x7B, "PAD_OR_UNKNOWN_0x7B")
+    except Exception:
+        pass
+    try:
+        import adafruit_bno08x as _m
+        _q14 = getattr(_m, "_Q_POINT_14_SCALAR", 2 ** (14 * -1))
+        _ar = getattr(_m, "_AVAIL_SENSOR_REPORTS", None)
+        if isinstance(_ar, dict) and 0x7B not in _ar:
+            # Mesmo formato que ROTATION_VECTOR (quat); descartado pelo skip abaixo se incorreto
+            _ar[0x7B] = (_q14, 4, 14)
+    except Exception:
+        pass
+    try:
+        from adafruit_bno08x import BNO08X
+        if getattr(BNO08X, "_robo_skip_0x7b_patched", False):
+            return
+        _orig_pr = BNO08X._process_report
+
+        def _process_skip_0x7b(self, report_id, report_bytes):
+            if report_id == 0x7B:
+                return
+            return _orig_pr(self, report_id, report_bytes)
+
+        BNO08X._process_report = _process_skip_0x7b
+        BNO08X._robo_skip_0x7b_patched = True
+    except Exception:
+        pass
+
+
+_apply_bno08x_library_patches()
 
 
 def init_bno(do_reset_cycle=False, verbose=True):
@@ -132,14 +168,24 @@ def init_bno(do_reset_cycle=False, verbose=True):
     if i2c is None:
         return None, None
 
+    try:
+        i2c.unlock()
+    except (ValueError, AttributeError, TypeError):
+        pass
+
     addrs_to_try = [BNO08X_I2C_ADDRESS]
     if 0x4B not in addrs_to_try:
         addrs_to_try.append(0x4B)
     if 0x4A not in addrs_to_try:
         addrs_to_try.append(0x4A)
 
-    # Retry até 2 vezes (conexão + enable) para maior confiabilidade na navegação
-    max_init_attempts = 2
+    try:
+        from adafruit_bno08x import BNO_REPORT_GAME_ROTATION_VECTOR
+    except ImportError:
+        BNO_REPORT_GAME_ROTATION_VECTOR = None
+
+    # Várias tentativas: conexão, enable, yaw válido (pacote 0x7B costumava quebrar só o enable)
+    max_init_attempts = 4
     for init_attempt in range(max_init_attempts):
         bno = None
         for addr in addrs_to_try:
@@ -149,32 +195,49 @@ def init_bno(do_reset_cycle=False, verbose=True):
                     print("BNO08x conectado no endereço {}.".format(hex(addr)))
                 break
             except Exception as e:
-                err_str = str(e).lower()
-                if "address" in err_str or "0x4" in err_str:
-                    continue
-                break
+                if verbose:
+                    print("BNO08x: falha em {}: {}".format(hex(addr), e))
+                continue
         if bno is None:
-            if init_attempt < max_init_attempts - 1 and verbose:
-                print("BNO08x: conexão falhou; retry em 0,5 s...")
+            if verbose and init_attempt < max_init_attempts - 1:
+                print("BNO08x: nenhum endereço respondeu; retry em 0,5 s...")
             time.sleep(0.5)
             continue
 
         time.sleep(0.2)
         features_ok = False
-        for attempt in range(3):
+        for attempt in range(4):
             try:
                 bno.enable_feature(BNO_REPORT_ACCELEROMETER)
                 bno.enable_feature(BNO_REPORT_GYROSCOPE)
                 bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
+                if BNO_REPORT_GAME_ROTATION_VECTOR is not None:
+                    try:
+                        bno.enable_feature(BNO_REPORT_GAME_ROTATION_VECTOR)
+                    except Exception:
+                        pass
                 features_ok = True
                 break
-            except RuntimeError as e:
-                if attempt < 2 and "enable" in str(e).lower():
-                    time.sleep(0.3)
+            except (RuntimeError, KeyError, ValueError) as e:
+                if attempt < 3 and (
+                    "enable" in str(e).lower()
+                    or "key" in str(e).lower()
+                    or "report" in str(e).lower()
+                ):
+                    time.sleep(0.35)
+                    continue
+                if verbose:
+                    print("BNO08x: enable_feature: {}".format(e))
+                break
+            except Exception as e:
+                if verbose:
+                    print("BNO08x: enable_feature (exc): {}".format(e))
+                if attempt < 3:
+                    time.sleep(0.35)
                     continue
                 break
         if not features_ok:
-            if init_attempt < max_init_attempts - 1 and verbose:
+            if verbose and init_attempt < max_init_attempts - 1:
                 print("BNO08x: enable features falhou; retry em 0,5 s...")
             time.sleep(0.5)
             continue
@@ -193,13 +256,25 @@ def init_bno(do_reset_cycle=False, verbose=True):
             except Exception:
                 return None
 
-        # Warm-up: algumas leituras para o ROTATION_VECTOR começar a chegar antes do uso
-        for _ in range(8):
+        # Warm-up + confirmação de yaw (senão teleop pensa que há BNO e não há leitura útil)
+        for _ in range(20):
             try:
                 _ = bno.quaternion
             except Exception:
                 pass
+            time.sleep(0.04)
+
+        yaw_ready = False
+        for _ in range(35):
+            if get_yaw() is not None:
+                yaw_ready = True
+                break
             time.sleep(0.05)
+        if not yaw_ready:
+            if verbose and init_attempt < max_init_attempts - 1:
+                print("BNO08x: yaw ainda indisponível após warm-up; retry...")
+            time.sleep(0.45)
+            continue
 
         return bno, get_yaw
 

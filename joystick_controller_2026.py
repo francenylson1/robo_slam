@@ -576,11 +576,16 @@ def init_bno():
     """Inicializa BNO08x. Retorna (bno, get_yaw_fn) ou (None, None)."""
     try:
         from tools.bno08x_init import init_bno as _init
+        # 1) RST só em HIGH (menos 0x7B instável); 2) se falhar, ciclo RST completo
         bno, get_yaw = _init(do_reset_cycle=False, verbose=False)
+        if bno is None:
+            print("  BNO08x: primeira tentativa falhou — retry com ciclo RST...")
+            bno, get_yaw = _init(do_reset_cycle=True, verbose=False)
         if bno is not None:
             print("  BNO08x: OK")
         else:
             print("  BNO08x: não disponível — frente sem correção de deriva")
+            print("  Dica: verifique I2C (i2cdetect), cabo, 3V3 e tools/bno08x_test.py")
         return bno, get_yaw
     except Exception as e:
         print(f"  BNO08x: falha ao inicializar ({e})")
