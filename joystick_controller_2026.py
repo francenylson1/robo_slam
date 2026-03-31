@@ -58,9 +58,11 @@ BTN_START    = 9   # Start                  → SAIR
 # ─────────────────────────────────────────────────────────────────────────────
 DEADZONE               = 0.14   # Zona morta dos eixos
 # Após deadzone: |Y| <= NEUTRAL → pode usar X para girar no lugar
-Y_NEUTRAL_MAX          = 0.18
-# |Y| >= MOVE_MIN → frente/ré. Entre NEUTRAL e MOVE = zona morta (parado) — evita drift
-Y_MOVE_MIN             = 0.32
+Y_NEUTRAL_MAX          = 0.14
+# |Y| >= MOVE_MIN → frente/ré. Faixa entre NEUTRAL e MOVE = parado (histerese anti-drift)
+# NOTA: 0.18–0.32 era largo demais — stick “médio” ficava sempre parado após armar.
+Y_MOVE_MIN             = 0.22
+SELECT_TOGGLE_DEBOUNCE_S = 0.35  # evita duplo toggle (armar+desarmar num clique)
 # |X| acima (com Y neutro): giro no lugar proporcional
 SPIN_MIN_ABS_X         = 0.12
 TPS_DEFAULT            = 25.0
@@ -241,7 +243,9 @@ def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
 def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
                      tps_base: float, kp: float, max_corr: float,
                      invert_bno: bool, qt_app,
-                     dpad_step_deg: float, arm_start: bool) -> None:
+                     dpad_step_deg: float, arm_start: bool,
+                     y_neutral_max: float, y_move_min: float,
+                     debug_axes: bool) -> None:
     import pygame
 
     yaw_ref:   float | None = None   # Referência BNO para linha reta
@@ -262,8 +266,10 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
     prev_r1     = False
     prev_y      = False
     prev_select = False
+    last_select_toggle_t = 0.0
     last_l1r1_t = 0.0
     last_y_t    = 0.0
+    last_debug_axes_t = 0.0
     loop_dt     = 1.0 / LOOP_HZ
     motors_armed = bool(arm_start)
 
@@ -274,7 +280,7 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
     print(f"  CONTROLE ATIVO — velocidade base: {speed_tps:.0f} TPS")
     print(f"  BNO na reta (só eixo Y): {'SIM' if use_bno and get_bno_yaw else 'NÃO'}")
     print(f"  D-pad: {dpad_step_deg:.1f}°/clique | Botão Y: 180°")
-    print(f"  Stick: Y=frente/ré (|Y|>={Y_MOVE_MIN:.2f}) | X=gira só com |Y|<={Y_NEUTRAL_MAX:.2f}")
+    print(f"  Stick: Y=frente/ré (|Y|>={y_move_min:.2f}) | X=gira só com |Y|<={y_neutral_max:.2f}")
     print(f"  SELECT = armar/desarmar motores | L1/R1=TPS  B=parar  Start=sair")
     if motors_armed:
         print("  Estado: MOTORES ARMADOS (--arm-start)")
@@ -306,14 +312,24 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         btn_start = joystick.get_button(BTN_START)
         now_mono  = time.monotonic()
 
-        # ── SELECT: armar / desarmar motores (evita movimento por drift / outro js) ──
+        # ── SELECT: armar / desarmar (debounce — evita 2 toggles num único toque)
         if btn_select and not prev_select:
-            motors_armed = not motors_armed
-            print(f"  [SELECT] Motores {'ARMADOS' if motors_armed else 'DESARMADOS'}")
-            if not motors_armed:
-                motors.stop_motors()
-                yaw_ref = None
+            if (now_mono - last_select_toggle_t) >= SELECT_TOGGLE_DEBOUNCE_S:
+                motors_armed = not motors_armed
+                last_select_toggle_t = now_mono
+                print(f"  [SELECT] Motores {'ARMADOS' if motors_armed else 'DESARMADOS'}")
+                if not motors_armed:
+                    motors.stop_motors()
+                    yaw_ref = None
         prev_select = btn_select
+
+        if debug_axes and (now_mono - last_debug_axes_t) >= 1.0:
+            last_debug_axes_t = now_mono
+            print(
+                f"  [debug] raw=({raw_x:+.2f},{raw_y:+.2f}) "
+                f"dz=({axis_x:+.2f},{axis_y:+.2f}) |y|={abs(axis_y):.2f} "
+                f"zona={'mov' if abs(axis_y) >= y_move_min else ('neut' if abs(axis_y) <= y_neutral_max else 'morta')}"
+            )
 
         # ── Sair (sempre) ─────────────────────────────────────────────────
         if btn_start:
@@ -398,9 +414,9 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         # ── Analógico: histerese em Y (evita “frente” só com drift do stick)
         abs_y = abs(axis_y)
         abs_x = abs(axis_x)
-        if abs_y <= Y_NEUTRAL_MAX:
+        if abs_y <= y_neutral_max:
             y_zone = "neutral"
-        elif abs_y >= Y_MOVE_MIN:
+        elif abs_y >= y_move_min:
             y_zone = "move"
         else:
             y_zone = "dead"
@@ -575,6 +591,18 @@ def main() -> None:
         "--arm-start", action="store_true",
         help="Inicia com motores já armados (padrão: desarmado até SELECT)",
     )
+    parser.add_argument(
+        "--y-move-min", type=float, default=Y_MOVE_MIN,
+        help=f"|Y| após deadzone para frente/ré (padrão {Y_MOVE_MIN})",
+    )
+    parser.add_argument(
+        "--y-neutral-max", type=float, default=Y_NEUTRAL_MAX,
+        help=f"|Y| máximo para considerar eixo Y neutro e usar X para girar (padrão {Y_NEUTRAL_MAX})",
+    )
+    parser.add_argument(
+        "--debug-axes", action="store_true",
+        help="Imprime a cada 1s raw/dz dos eixos (diagnóstico)",
+    )
     args = parser.parse_args()
     if args.invert_bno:
         invert_bno = True
@@ -588,6 +616,10 @@ def main() -> None:
         print("       Modo --identify pode funcionar em desenvolvimento.")
         if not args.identify:
             sys.exit(1)
+
+    if args.y_neutral_max >= args.y_move_min:
+        print("ERRO: --y-neutral-max deve ser menor que --y-move-min (faixa de histerese).")
+        sys.exit(2)
 
     os.environ.setdefault("ROBOT_MOTOR_QUIET", "1")
 
@@ -630,6 +662,9 @@ def main() -> None:
             qt_app         = qt_app,
             dpad_step_deg  = args.step_deg,
             arm_start      = args.arm_start,
+            y_neutral_max  = args.y_neutral_max,
+            y_move_min     = args.y_move_min,
+            debug_axes     = args.debug_axes,
         )
     except KeyboardInterrupt:
         print("\n  Ctrl+C — encerrando.")
