@@ -245,7 +245,10 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
                      invert_bno: bool, qt_app,
                      dpad_step_deg: float, arm_start: bool,
                      y_neutral_max: float, y_move_min: float,
-                     debug_axes: bool) -> None:
+                     debug_axes: bool,
+                     stick_x_idx: int, stick_y_idx: int,
+                     invert_stick_y: bool,
+                     arm_with_a: bool) -> None:
     import pygame
 
     yaw_ref:   float | None = None   # Referência BNO para linha reta
@@ -266,6 +269,7 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
     prev_r1     = False
     prev_y      = False
     prev_select = False
+    prev_a      = False
     last_select_toggle_t = 0.0
     last_l1r1_t = 0.0
     last_y_t    = 0.0
@@ -281,7 +285,10 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
     print(f"  BNO na reta (só eixo Y): {'SIM' if use_bno and get_bno_yaw else 'NÃO'}")
     print(f"  D-pad: {dpad_step_deg:.1f}°/clique | Botão Y: 180°")
     print(f"  Stick: Y=frente/ré (|Y|>={y_move_min:.2f}) | X=gira só com |Y|<={y_neutral_max:.2f}")
-    print(f"  SELECT = armar/desarmar motores | L1/R1=TPS  B=parar  Start=sair")
+    print(f"  Eixos stick: pygame índices X={stick_x_idx} Y={stick_y_idx}"
+          f"{' (Y invertido)' if invert_stick_y else ''}")
+    arm_help = "SELECT ou botão A" if arm_with_a else "SELECT"
+    print(f"  {arm_help} = armar/desarmar | L1/R1=TPS  B=parar  Start=sair")
     if motors_armed:
         print("  Estado: MOTORES ARMADOS (--arm-start)")
     else:
@@ -296,15 +303,18 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
 
         pygame.event.pump()
 
-        # ── Lê eixos analógicos ───────────────────────────────────────────
-        raw_x = joystick.get_axis(AXIS_LEFT_X)
-        raw_y = joystick.get_axis(AXIS_LEFT_Y)
+        # ── Eixos do analógico (índices dependem do driver — iPega 0,1; muitos Android 2,3 ou 3,4)
+        raw_x = joystick.get_axis(stick_x_idx)
+        raw_y = joystick.get_axis(stick_y_idx)
+        if invert_stick_y:
+            raw_y = -raw_y
 
         axis_x = apply_deadzone(raw_x, DEADZONE)
         axis_y = apply_deadzone(raw_y, DEADZONE)
 
         # ── Lê botões ─────────────────────────────────────────────────────
         btn_b     = joystick.get_button(BTN_B)
+        btn_a     = joystick.get_button(BTN_A)
         btn_l1    = joystick.get_button(BTN_L1)
         btn_r1    = joystick.get_button(BTN_R1)
         btn_y     = joystick.get_button(BTN_Y)
@@ -312,23 +322,35 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         btn_start = joystick.get_button(BTN_START)
         now_mono  = time.monotonic()
 
-        # ── SELECT: armar / desarmar (debounce — evita 2 toggles num único toque)
+        def _toggle_arm(source: str) -> None:
+            nonlocal motors_armed, last_select_toggle_t, yaw_ref
+            if (now_mono - last_select_toggle_t) < SELECT_TOGGLE_DEBOUNCE_S:
+                return
+            motors_armed = not motors_armed
+            last_select_toggle_t = now_mono
+            print(f"  [{source}] Motores {'ARMADOS' if motors_armed else 'DESARMADOS'}")
+            if not motors_armed:
+                motors.stop_motors()
+                yaw_ref = None
+
         if btn_select and not prev_select:
-            if (now_mono - last_select_toggle_t) >= SELECT_TOGGLE_DEBOUNCE_S:
-                motors_armed = not motors_armed
-                last_select_toggle_t = now_mono
-                print(f"  [SELECT] Motores {'ARMADOS' if motors_armed else 'DESARMADOS'}")
-                if not motors_armed:
-                    motors.stop_motors()
-                    yaw_ref = None
+            _toggle_arm("SELECT")
         prev_select = btn_select
+        if arm_with_a and (btn_a and not prev_a):
+            _toggle_arm("A")
+        prev_a = btn_a
 
         if debug_axes and (now_mono - last_debug_axes_t) >= 1.0:
             last_debug_axes_t = now_mono
+            nax = joystick.get_numaxes()
+            parts = [f"a{i}={joystick.get_axis(i):+.2f}" for i in range(nax)]
+            print("  [debug] " + " ".join(parts))
             print(
-                f"  [debug] raw=({raw_x:+.2f},{raw_y:+.2f}) "
-                f"dz=({axis_x:+.2f},{axis_y:+.2f}) |y|={abs(axis_y):.2f} "
-                f"zona={'mov' if abs(axis_y) >= y_move_min else ('neut' if abs(axis_y) <= y_neutral_max else 'morta')}"
+                f"  [debug] stick usa índices ({stick_x_idx},{stick_y_idx}) "
+                f"raw=({raw_x:+.2f},{raw_y:+.2f}) dz=({axis_x:+.2f},{axis_y:+.2f}) "
+                f"|y|={abs(axis_y):.2f} "
+                f"zona={'mov' if abs(axis_y) >= y_move_min else ('neut' if abs(axis_y) <= y_neutral_max else 'morta')} "
+                f"armed={motors_armed}"
             )
 
         # ── Sair (sempre) ─────────────────────────────────────────────────
@@ -504,8 +526,13 @@ def init_pygame_joystick():
 
     joy = pygame.joystick.Joystick(0)
     joy.init()
-    print(f"  Joystick detectado: {joy.get_name()}")
+    name = joy.get_name()
+    print(f"  Joystick detectado: {name}")
     print(f"  Eixos: {joy.get_numaxes()}  |  Botões: {joy.get_numbuttons()}  |  Hats: {joy.get_numhats()}")
+    low = name.lower()
+    if "shanwan" in low or "android" in low:
+        print("  Dica: muitos destes modelos usam o stick nos eixos 2 e 3, não 0 e 1.")
+        print("        Se não andar: python joystick_controller_2026.py --android-gamepad --debug-axes")
     return joy
 
 
@@ -601,7 +628,27 @@ def main() -> None:
     )
     parser.add_argument(
         "--debug-axes", action="store_true",
-        help="Imprime a cada 1s raw/dz dos eixos (diagnóstico)",
+        help="Imprime a cada 1s todos os eixos pygame + stick usado (diagnóstico)",
+    )
+    parser.add_argument(
+        "--stick-x", type=int, default=0,
+        help="Índice pygame do eixo horizontal do analógico esquerdo (padrão 0, iPega)",
+    )
+    parser.add_argument(
+        "--stick-y", type=int, default=1,
+        help="Índice pygame do eixo vertical (frente/ré) do analógico esquerdo (padrão 1)",
+    )
+    parser.add_argument(
+        "--android-gamepad", action="store_true",
+        help="Atalho: usa eixos 2 e 3 para o stick (comum em gamepads Android/shanwan)",
+    )
+    parser.add_argument(
+        "--invert-stick-y", action="store_true",
+        help="Inverte o eixo Y do stick (se frente/ré estiverem trocados)",
+    )
+    parser.add_argument(
+        "--arm-with-a", action="store_true",
+        help="Também armar/desarmar com o botão A (útil se SELECT tiver índice errado)",
     )
     args = parser.parse_args()
     if args.invert_bno:
@@ -621,6 +668,9 @@ def main() -> None:
         print("ERRO: --y-neutral-max deve ser menor que --y-move-min (faixa de histerese).")
         sys.exit(2)
 
+    stick_x_idx = 2 if args.android_gamepad else args.stick_x
+    stick_y_idx = 3 if args.android_gamepad else args.stick_y
+
     os.environ.setdefault("ROBOT_MOTOR_QUIET", "1")
 
     print()
@@ -630,6 +680,14 @@ def main() -> None:
 
     # ── Joystick ──────────────────────────────────────────────────────────────
     joystick = init_pygame_joystick()
+
+    n_axes = joystick.get_numaxes()
+    if not (0 <= stick_x_idx < n_axes and 0 <= stick_y_idx < n_axes):
+        print(
+            f"ERRO: eixos inválidos — stick-x={stick_x_idx} stick-y={stick_y_idx} "
+            f"mas o joystick só tem {n_axes} eixos (0..{n_axes - 1})."
+        )
+        sys.exit(2)
 
     if args.identify:
         run_identify_mode(joystick)
@@ -665,6 +723,10 @@ def main() -> None:
             y_neutral_max  = args.y_neutral_max,
             y_move_min     = args.y_move_min,
             debug_axes     = args.debug_axes,
+            stick_x_idx    = stick_x_idx,
+            stick_y_idx    = stick_y_idx,
+            invert_stick_y = args.invert_stick_y,
+            arm_with_a     = args.arm_with_a,
         )
     except KeyboardInterrupt:
         print("\n  Ctrl+C — encerrando.")
