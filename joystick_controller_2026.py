@@ -5,6 +5,7 @@ joystick_controller_2026.py — Controle manual do robô via joystick iPega PG-9
 Modo de uso:
   python joystick_controller_2026.py             # controle normal com BNO
   python joystick_controller_2026.py --identify  # identifica eixos/botões (calibração)
+  python joystick_map_tool.py                   # mapeamento completo (recomendado)
   python joystick_controller_2026.py --no-bno    # frente sem correção BNO
   python joystick_controller_2026.py --tps 25 --step-deg 15
 
