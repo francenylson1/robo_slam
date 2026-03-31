@@ -57,8 +57,10 @@ BTN_START    = 9   # Start                  → SAIR
 # Parâmetros de controle
 # ─────────────────────────────────────────────────────────────────────────────
 DEADZONE               = 0.14   # Zona morta dos eixos
-# |Y| abaixo: stick neutro em frente/ré -> permite giro no lugar pelo X
-SPIN_MAX_ABS_Y         = 0.16
+# Após deadzone: |Y| <= NEUTRAL → pode usar X para girar no lugar
+Y_NEUTRAL_MAX          = 0.18
+# |Y| >= MOVE_MIN → frente/ré. Entre NEUTRAL e MOVE = zona morta (parado) — evita drift
+Y_MOVE_MIN             = 0.32
 # |X| acima (com Y neutro): giro no lugar proporcional
 SPIN_MIN_ABS_X         = 0.12
 TPS_DEFAULT            = 25.0
@@ -239,7 +241,7 @@ def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
 def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
                      tps_base: float, kp: float, max_corr: float,
                      invert_bno: bool, qt_app,
-                     dpad_step_deg: float) -> None:
+                     dpad_step_deg: float, arm_start: bool) -> None:
     import pygame
 
     yaw_ref:   float | None = None   # Referência BNO para linha reta
@@ -256,20 +258,28 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
 
     prev_mode = "stop"
     prev_hat  = (0, 0)
-    prev_l1   = False
-    prev_r1   = False
-    prev_y    = False
+    prev_l1     = False
+    prev_r1     = False
+    prev_y      = False
+    prev_select = False
     last_l1r1_t = 0.0
     last_y_t    = 0.0
-    loop_dt   = 1.0 / LOOP_HZ
+    loop_dt     = 1.0 / LOOP_HZ
+    motors_armed = bool(arm_start)
+
+    motors.stop_motors()
 
     print()
     print("=" * 60)
     print(f"  CONTROLE ATIVO — velocidade base: {speed_tps:.0f} TPS")
     print(f"  BNO na reta (só eixo Y): {'SIM' if use_bno and get_bno_yaw else 'NÃO'}")
     print(f"  D-pad: {dpad_step_deg:.1f}°/clique | Botão Y: 180°")
-    print(f"  Stick: Y=frente/ré | X=girar só com Y no centro")
-    print(f"  L1/R1=TPS  B=parar  Start=sair")
+    print(f"  Stick: Y=frente/ré (|Y|>={Y_MOVE_MIN:.2f}) | X=gira só com |Y|<={Y_NEUTRAL_MAX:.2f}")
+    print(f"  SELECT = armar/desarmar motores | L1/R1=TPS  B=parar  Start=sair")
+    if motors_armed:
+        print("  Estado: MOTORES ARMADOS (--arm-start)")
+    else:
+        print("  Estado: MOTORES DESARMADOS — pressione SELECT para armar (segurança)")
     print("=" * 60)
 
     while running:
@@ -292,8 +302,56 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         btn_l1    = joystick.get_button(BTN_L1)
         btn_r1    = joystick.get_button(BTN_R1)
         btn_y     = joystick.get_button(BTN_Y)
+        btn_select = joystick.get_button(BTN_SELECT)
         btn_start = joystick.get_button(BTN_START)
         now_mono  = time.monotonic()
+
+        # ── SELECT: armar / desarmar motores (evita movimento por drift / outro js) ──
+        if btn_select and not prev_select:
+            motors_armed = not motors_armed
+            print(f"  [SELECT] Motores {'ARMADOS' if motors_armed else 'DESARMADOS'}")
+            if not motors_armed:
+                motors.stop_motors()
+                yaw_ref = None
+        prev_select = btn_select
+
+        # ── Sair (sempre) ─────────────────────────────────────────────────
+        if btn_start:
+            print("  Start pressionado → saindo.")
+            running = False
+            break
+
+        # ── Parar emergência (sempre) ─────────────────────────────────────
+        if btn_b:
+            motors.stop_motors()
+            yaw_ref = None
+            if prev_mode != "stop":
+                print("  [B] PARADO")
+                prev_mode = "stop"
+            time.sleep(loop_dt)
+            continue
+
+        # ── L1/R1: TPS mesmo desarmado (ajuste antes de armar) ────────────
+        if (btn_l1 and not prev_l1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
+            speed_tps = max(TPS_MIN, speed_tps - TPS_STEP)
+            last_l1r1_t = now_mono
+            print(f"  Velocidade base: {speed_tps:.0f} TPS (L1 -)")
+        if (btn_r1 and not prev_r1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
+            speed_tps = min(TPS_MAX, speed_tps + TPS_STEP)
+            last_l1r1_t = now_mono
+            print(f"  Velocidade base: {speed_tps:.0f} TPS (R1 +)")
+        prev_l1 = btn_l1
+        prev_r1 = btn_r1
+
+        # Sem armar: não aceita D-pad, Y nem analógico (só drift/ruído)
+        if not motors_armed:
+            motors.stop_motors()
+            yaw_ref = None
+            if prev_mode != "stop":
+                prev_mode = "stop"
+            elapsed = time.time() - t0
+            time.sleep(max(0.0, loop_dt - elapsed))
+            continue
 
         # ── D-pad: giro fixo por clique (BNO) ─────────────────────────────
         try:
@@ -337,40 +395,17 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
             )
         prev_y = btn_y
 
-        # ── L1/R1: uma mudança por pressão (não trava o loop) ─────────────
-        if (btn_l1 and not prev_l1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
-            speed_tps = max(TPS_MIN, speed_tps - TPS_STEP)
-            last_l1r1_t = now_mono
-            print(f"  Velocidade base: {speed_tps:.0f} TPS (L1 -)")
-        if (btn_r1 and not prev_r1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
-            speed_tps = min(TPS_MAX, speed_tps + TPS_STEP)
-            last_l1r1_t = now_mono
-            print(f"  Velocidade base: {speed_tps:.0f} TPS (R1 +)")
-        prev_l1 = btn_l1
-        prev_r1 = btn_r1
-
-        # ── Sair ──────────────────────────────────────────────────────────
-        if btn_start:
-            print("  Start pressionado → saindo.")
-            running = False
-            break
-
-        # ── Parar emergência ──────────────────────────────────────────────
-        if btn_b:
-            motors.stop_motors()
-            yaw_ref = None
-            if prev_mode != "stop":
-                print("  [B] PARADO")
-                prev_mode = "stop"
-            time.sleep(loop_dt)
-            continue
-
-        # ── Analógico: Y = frente/ré (reta BNO, X ignorado) ────────────────
-        #             X = giro no lugar só se |Y| neutro (sem misturar curva)
+        # ── Analógico: histerese em Y (evita “frente” só com drift do stick)
         abs_y = abs(axis_y)
         abs_x = abs(axis_x)
-        y_neutral = abs_y <= SPIN_MAX_ABS_Y
-        y_command = abs_y > SPIN_MAX_ABS_Y
+        if abs_y <= Y_NEUTRAL_MAX:
+            y_zone = "neutral"
+        elif abs_y >= Y_MOVE_MIN:
+            y_zone = "move"
+        else:
+            y_zone = "dead"
+        y_command = y_zone == "move"
+        y_neutral = y_zone == "neutral"
         x_spin    = y_neutral and (abs_x >= SPIN_MIN_ABS_X)
 
         if y_command:
@@ -445,6 +480,11 @@ def init_pygame_joystick():
         print("ERRO: Nenhum joystick detectado.")
         print("  Conecte o iPega PG-9076 via Bluetooth ou USB e tente novamente.")
         sys.exit(1)
+
+    if count > 1:
+        print(f"  AVISO: {count} joysticks encontrados — usando o índice 0.")
+        print("  Se o robô se mover sozinho, pode ser o dispositivo errado.")
+        print("  Feche outros controles virtuais ou defina: export SDL_JOYSTICK_DEVICE=...")
 
     joy = pygame.joystick.Joystick(0)
     joy.init()
@@ -531,6 +571,10 @@ def main() -> None:
         "--step-deg", type=float, default=DPAD_TURN_DEG_DEFAULT,
         help=f"Graus por clique no D-pad (padrao {DPAD_TURN_DEG_DEFAULT})",
     )
+    parser.add_argument(
+        "--arm-start", action="store_true",
+        help="Inicia com motores já armados (padrão: desarmado até SELECT)",
+    )
     args = parser.parse_args()
     if args.invert_bno:
         invert_bno = True
@@ -585,6 +629,7 @@ def main() -> None:
             invert_bno     = invert_bno,
             qt_app         = qt_app,
             dpad_step_deg  = args.step_deg,
+            arm_start      = args.arm_start,
         )
     except KeyboardInterrupt:
         print("\n  Ctrl+C — encerrando.")
