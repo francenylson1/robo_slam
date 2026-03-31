@@ -86,7 +86,8 @@ DPAD_TURN_THRESHOLD_DEG  = 1.5
 DPAD_TURN_TIMEOUT_S      = 5.0
 # Ignora critério de parada pelo BNO nos primeiros instantes (evita falso 0° se o yaw atrasar)
 DPAD_TURN_MIN_ACTIVE_S   = 0.22
-TURN_180_TIMEOUT_S       = 14.0
+# Se a parada por ângulo falhar, limita quanto tempo gira (antes ~720° com timeout 14s)
+TURN_180_TIMEOUT_S       = 8.0
 # Giro sem BNO (--no-bno): duração ≈ |Δ°| / OPEN_LOOP_TURN_DPS (ajuste com --turn-open-loop-dps)
 OPEN_LOOP_TURN_DPS_DEFAULT = 58.0
 
@@ -232,6 +233,8 @@ def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
     target_abs  = abs(delta_deg)
     stop_at     = target_abs - threshold_deg   # para um pouco antes (inércia completa)
     t0          = time.time()
+    prev_yaw    = yaw_start
+    accum_deg   = 0.0  # soma dos passos (evita wrap: |yaw_now-yaw_start| volta a ~0 após ~360°)
 
     while time.time() - t0 < timeout_s:
         if qt_app:
@@ -239,17 +242,17 @@ def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
 
         elapsed = time.time() - t0
         yaw_now = get_bno_yaw()
-        if yaw_now is not None and elapsed >= DPAD_TURN_MIN_ACTIVE_S:
-            # get_yaw (quaternion) segue convenção habitual: yaw aumenta em CCW.
-            # delta_deg > 0 = giro à direita (CW) → yaw diminui → delta_done negativo.
-            # delta_deg < 0 = giro à esquerda (CCW) → yaw aumenta → delta_done positivo.
-            delta_done = normalize_angle_deg(yaw_now - yaw_start)
-            if delta_deg > 0.0:
-                if delta_done <= -stop_at:
-                    break
-            else:
-                if delta_done >= stop_at:
-                    break
+        if yaw_now is not None:
+            dy = normalize_angle_deg(yaw_now - prev_yaw)
+            accum_deg += dy
+            prev_yaw = yaw_now
+
+        if elapsed >= DPAD_TURN_MIN_ACTIVE_S:
+            if abs(accum_deg) >= stop_at:
+                break
+            # Evita uma volta extra se o integrando divergir do alvo
+            if abs(accum_deg) > target_abs + 40.0:
+                break
 
         time.sleep(0.015)
 
@@ -262,8 +265,10 @@ def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
 
     if actual_deg is not None:
         erro = actual_deg - delta_deg
-        print(f"  D-pad concluído: girou {actual_deg:+.1f}°  "
-              f"(alvo {delta_deg:+.1f}°, erro {erro:+.1f}°)")
+        print(
+            f"  D-pad concluído: girou {actual_deg:+.1f}° (integrado {accum_deg:+.1f}°)  "
+            f"(alvo {delta_deg:+.1f}°, erro {erro:+.1f}°)"
+        )
         if abs(actual_deg) < 1.0 and abs(delta_deg) > 3.0:
             print(
                 "  AVISO: BNO não registrou giro — patinagem, fusão IMU, obstáculo ou motores; "
