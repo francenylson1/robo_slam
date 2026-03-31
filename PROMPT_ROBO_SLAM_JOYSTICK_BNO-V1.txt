@@ -1,0 +1,105 @@
+================================================================================
+PROMPT_ROBO_SLAM_JOYSTICK_BNO-V1 — Desenvolvimento semi-autônomo (Joystick + BNO)
+================================================================================
+Use este texto no início de um chat dedicado à TRACK 1. Branch Git associada:
+  robo_slam_2026_joystick_bno-V1
+
+--------------------------------------------------------------------------------
+FLUXO DE DESENVOLVIMENTO (obrigatório manter alinhado)
+--------------------------------------------------------------------------------
+1) Desenvolvimento no desktop (Linux) — edição, testes sem hardware ou simulação.
+2) Atualização no Git — commit/push na branch da track; mensagens claras em PT-BR.
+3) Atualização na Raspberry Pi — git pull da mesma branch; venv; teste físico
+   (joystick, BNO, motores, C1 se necessário). A Pi é o hardware de validação real.
+
+--------------------------------------------------------------------------------
+OBJETIVO DESTA VERSÃO
+--------------------------------------------------------------------------------
+Navegação SEMI-AUTOMÁTICA: operador com joystick; o robô usa BNO08x para manter
+linha reta ao comando “frente”, compensando deriva mecânica (motores, rodas,
+piso liso, desgaste). Não confundir com navegação autônoma até POIs (track 2).
+
+Requisitos funcionais alinhados ao produto:
+- Frente/ré proporcional (analógico); em modo “reto” (eixo lateral pequeno),
+  BNO corrige yaw para trajetória retilínea.
+- Curvas: mecanismo de graus por clique (ex.: D-pad / botões); atalho para
+  giro de ~180° (menos cliques, mais previsível).
+- Conflito histórico BNO × odometria na navegação AUTÔNOMA levou a USE_BNO_IN_
+  NAVIGATION=False na track autônoma. AQUI, no modo joystick, o BNO é o eixo
+  de correção em reta — sem fundir BNO na pose global do navegador POI.
+
+FASE POSTERIOR (só depois de semi-automático estável — não misturar no escopo atual):
+- Voz operador ↔ público (microfone remoto); webcam; avatar olhos/boca no display 7".
+
+--------------------------------------------------------------------------------
+O QUE JÁ EXISTE NO REPOSITÓRIO (baseline)
+--------------------------------------------------------------------------------
+- joystick_controller_2026.py — teleop iPega PG-9076 com correção BNO em reta;
+  flags --no-bno, --identify, --tps; D-pad com graus por clique (DPAD_TURN_DEG).
+- src/main.py — inicia só a MainWindow PyQt5 (modo “aplicativo garçom”); não há
+  ainda seletor “joystick vs autônomo” na entrada.
+- src/core/config.py — BNO_STRAIGHT_*, TURN_TPS_DEFAULT, BNO08X_*; navegação
+  autônoma com USE_BNO_IN_NAVIGATION=False por decisão de estabilidade.
+- src/core/robot_motor_controller.py — PWM/TPS, fatores L/R, integração C1,
+  RIGHT_MOTOR_CORRECTION_FACTOR (calibração mecânica em reta).
+- Documentação útil: docs/REVISAO_BNO_LINHA_RETA.md, docs/NAVEGACAO_ODOMETRIA_
+  VS_IMU_BNO.md, docs/SINCRONIZACAO_DESKTOP_GIT_RASPBERRY.md
+
+--------------------------------------------------------------------------------
+O QUE ESTÁ PENDENTE (TRACK 1)
+--------------------------------------------------------------------------------
+- Integrar teleop na mesma “porta de entrada” que o app principal (ver seção
+  “Launcher” abaixo) sem quebrar o modo autônomo existente.
+- Refinar curvas: graus/clique configuráveis; botão ou combinação para 180°.
+- Garantir transição limpa BNO “referência de reta” vs giro intencional (já
+  esboçado no joystick_controller; validar em piso real).
+- Testes Pi: latência do loop (LOOP_HZ), deadzone, segurança PARAR (C1 opcional
+  em teleop — definir se teleop também respeita LIDAR_OBSTACLE_MIN_DISTANCE).
+
+--------------------------------------------------------------------------------
+SUGESTÃO DE LAUNCHER (main / UX) — alinhar implementação nesta branch
+--------------------------------------------------------------------------------
+Objetivo: um único comando na Pi e no desktop, com escolha explícita de modo.
+
+Opção A (recomendada): argumentos de linha de comando + espelho na GUI
+  python src/main.py --mode autonomous   # comportamento atual (mapa/POIs)
+  python src/main.py --mode joystick     # UI ou painel mínimo + teleop BNO
+  Sem flag: exibir diálogo inicial (PyQt) “1) Autônomo  2) Joystick” e então
+  fluxo de mapa/arquivo se aplicável ao modo autônomo; joystick pode reutilizar
+  o mesmo PGM só para visualização ou tela reduzida.
+
+Opção B: dois executáveis finos que chamam módulos compartilhados (mais manutenção).
+
+Regra de produto: mesmo com autonomia madura, o robô DEVE continuar oferecendo
+modo semi-autônomo com joystick.
+
+--------------------------------------------------------------------------------
+VARIÁVEIS / CONFIG RELEVANTES (config.py e joystick_controller_2026.py)
+--------------------------------------------------------------------------------
+- BNO_STRAIGHT_KP, BNO_STRAIGHT_MAX_CORRECTION_TPS, BNO_STRAIGHT_INVERT_CORRECTION
+- BNO_FIRST_READ_TIMEOUT, TURN_TPS_DEFAULT
+- BNO08X_I2C_ADDRESS, BNO08X_GPIO_RST, BNO08X_GPIO_INT
+- DEADZONE, STRAIGHT_THRESHOLD_X, TPS_DEFAULT/MIN/MAX, LOOP_HZ
+- DPAD_TURN_DEG, DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG, DPAD_TURN_TIMEOUT_S
+- MANUAL_CONTROL_MAX_TPS, SPEED_*_TPS, PID_PROFILES (se teleop usar PID)
+- LIDAR_C1_ENABLED, LIDAR_OBSTACLE_MIN_DISTANCE (decisão de política em teleop)
+
+--------------------------------------------------------------------------------
+ARQUIVOS PARA TOCAR COM FREQUÊNCIA (TRACK 1)
+--------------------------------------------------------------------------------
+joystick_controller_2026.py
+src/main.py
+src/interfaces/main_window.py (ou novo widget/painel joystick)
+src/core/robot_motor_controller.py
+src/core/config.py
+docs/SINCRONIZACAO_DESKTOP_GIT_RASPBERRY.md (atualizar se fluxo mudar)
+
+--------------------------------------------------------------------------------
+O QUE NÃO É ESCOPO DESTE CHAT (delegar ao PROMPT_AUTONOMO-V2)
+--------------------------------------------------------------------------------
+Scan matching POI, LidarPoseCorrector thresholds, watchdog POI, fusão BNO na
+pose do RobotNavigator para garçom autônomo.
+
+================================================================================
+Prompt criado em: 27/03/2026
+================================================================================

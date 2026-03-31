@@ -1,0 +1,100 @@
+================================================================================
+PROMPT_ROBO_SLAM_AUTONOMO-V2 — Navegação autônoma até POIs (C1 + mapa PGM)
+================================================================================
+Use este texto no início de um chat dedicado à TRACK 2. Branch Git associada:
+  robo_slam_autonomo-V2
+
+--------------------------------------------------------------------------------
+FLUXO DE DESENVOLVIMENTO (obrigatório manter alinhado)
+--------------------------------------------------------------------------------
+1) Desenvolvimento no desktop — simulação, revisão de logs, ajuste de thresholds.
+2) Atualização no Git — commit/push na branch autônoma; merges conscientes com a
+   track joystick (evitar misturar BNO-na-pose com teleop sem revisão).
+3) Atualização na Raspberry Pi — git pull desta branch; testes reais com Aurora
+   (mapa) + C1 (navegação/obstáculo) + Slamtec/odometria conforme stack atual.
+   A Pi é o hardware de teste físico do robô.
+
+--------------------------------------------------------------------------------
+OBJETIVO DESTA VERSÃO
+--------------------------------------------------------------------------------
+Robô garçom autônomo: atingir POIs com confiabilidade aceitável, corrigindo
+deriva à direita/esquerda e falhas de chegada. Pipeline conceitual: Aurora como
+ferramenta de mapeamento/exportação PGM+YAML; C1 como sensor de obstáculo e
+dados para scan matching / diagnóstico; odometria como base da pose na decisão
+atual (BNO desligado na navegação autônoma por conflitos anteriores).
+
+Pesquisa em aberto (explicitar em cada experimento):
+- C1 sozinho (só segurança?)
+- C1 + odometria (estado atual preferido)
+- C1 + BNO (só se houver arquitetura que evite briga com correção de trajetória)
+
+--------------------------------------------------------------------------------
+O QUE JÁ FOI IMPLEMENTADO (histórico recente relevante)
+--------------------------------------------------------------------------------
+- Scan matching (LidarPoseCorrector) com mapa PGM+YAML; busca em grade XY/θ;
+  correção híbrida: FULL (dx,dy,dθ) se score alto; θ-only se score intermediário;
+  abaixo de SCAN_MATCH_THETA_MIN_SCORE não publica correção (reduz zigzag dθ).
+- SCAN_MATCH_SUPPRESS_WHEN_LIDAR_BLOCKS_S — não aplicar matching quando C1
+  bloqueia (geometria degenerada frente a obstáculo).
+- Requisitos mínimos de odometria para aceitar dx/dy (robô parado).
+- Clamp/rejeição de pose fora do mapa; comentários em YAML/resolução do mapa.
+- C1: LIDAR_OBSTACLE_MIN_DISTANCE, pivot quando bloqueado, backend pyrplidarsdk.
+- robot_motor_controller: RIGHT_MOTOR_CORRECTION_FACTOR calibrável (ex.: 0.966).
+- USE_BNO_IN_NAVIGATION = False (estabilidade vs fusão com odom no navegador).
+
+Arquivos centrais:
+- src/core/robot_navigator.py — estados, POIs, integração pose corrector, C1.
+- src/core/lidar_pose_corrector.py — matching, thresholds híbridos.
+- src/core/robot_motor_controller.py — motores, C1, fatores, pivot.
+- src/core/config.py — todas as constantes SCAN_MATCH_*, LIDAR_*, NAVIGATION_*.
+- src/core/lidar_c1_reader.py (ou equivalente), src/interfaces/main_window.py
+- Mapeamento Aurora → C1: mapas/c1/aurora_map_exporter.py, src/core/
+  aurora_to_c1_pipeline.py, docs/mapping/* (GUIA_TESTE_AURORA_C1, FLUXO_*,
+  PROCESSAMENTO_MAPAS_AURORA_C1, EXPORTAR_MAPA_AURORA, etc.)
+
+--------------------------------------------------------------------------------
+O QUE ESTÁ PENDENTE (TRACK 2)
+--------------------------------------------------------------------------------
+- Validar em campo os últimos ajustes (THETA_MIN_SCORE, fator motor direito);
+  reproduzir cenário “obstáculo ~0,32 m” vs POI distante — decidir replanejamento
+  ou limiar C1 contextual.
+- Reduzir segfault no encerramento (Qt/GPIO/cleanup) se ainda ocorrer.
+- Documentar e repetir procedimento Aurora (mapeamento → export → YAML correto).
+- Opcional: ensaios controlados C1+BNO com USE_BNO_IN_NAVIGATION isolado em
+  branch de experimento, sem regressão na branch principal autônoma.
+
+--------------------------------------------------------------------------------
+VARIÁVEIS FUNDAMENTAIS (config.py — conferir valores no arquivo)
+--------------------------------------------------------------------------------
+USE_SCAN_MATCHING, SCAN_MATCH_PGM_PATH, SCAN_MATCH_YAML_PATH
+SCAN_MATCH_XY_RANGE_M, SCAN_MATCH_XY_STEP_M, SCAN_MATCH_THETA_RANGE_DEG,
+  SCAN_MATCH_THETA_STEP_DEG, SCAN_MATCH_INTERVAL_S, SCAN_MATCH_MAX_SCAN_PTS
+SCAN_MATCH_MIN_SCORE, SCAN_MATCH_POSITION_MIN_SCORE, SCAN_MATCH_THETA_MIN_SCORE
+SCAN_MATCH_MAX_CORR_M, SCAN_MATCH_MAX_CORR_DEG, SCAN_MATCH_CORRECTION_GAIN
+SCAN_MATCH_MIN_ODOM_M_FOR_POSITION, SCAN_MATCH_MIN_ODOM_DEG_FOR_POSITION
+SCAN_MATCH_SUPPRESS_WHEN_LIDAR_BLOCKS_S
+LIDAR_C1_ENABLED, LIDAR_OBSTACLE_MIN_DISTANCE, LIDAR_ALLOW_PIVOT_WHEN_BLOCKED,
+  LIDAR_PIVOT_WHEEL_RATIO_MIN, LIDAR_C1_BACKEND
+NAVIGATION_GOAL_TOLERANCE, NAVIGATION_ANGLE_TOLERANCE, NAVIGATION_MAX_DURATION_S
+USE_BNO_IN_NAVIGATION, USE_BNO_POSE_FUSION, BNO_FILTER_ALPHA
+ROBOT_SPEED, ROBOT_WHEEL_BASE_M, TICKS_PER_REVOLUTION, PID_PROFILES
+
+--------------------------------------------------------------------------------
+RELACIONAMENTO COM A TRACK JOYSTICK (V1)
+--------------------------------------------------------------------------------
+O produto final deve oferecer AMBOS os modos. Mudanças compartilhadas
+(robot_motor_controller, config) exigem comentários e testes nas duas branches ou
+merge pontual desde main comum. Não reativar BNO na pose do navegador só porque
+o joystick usa BNO — são camadas diferentes.
+
+--------------------------------------------------------------------------------
+NOTA SOBRE EXPECTATIVA “C1 = solução perfeita SLAM”
+--------------------------------------------------------------------------------
+C1 no projeto está primariamente como navegação local (obstáculo + scan para
+correção contra mapa estático). SLAM completo em tempo real na Pi é outro
+escopo; Aurora cobre o mapeamento offline/semicontínuo. Ajustar expectativas e
+métricas de sucesso (chegada ao POI, tempo, falsos positivos de obstáculo).
+
+================================================================================
+Prompt criado em: 27/03/2026
+================================================================================
