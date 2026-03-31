@@ -74,7 +74,18 @@ def _apply_bno08x_library_patches():
         pass
 
 
+def _silence_bno08x_console_spam():
+    """Evita que _dbg da Adafruit imprima blocos 'Packet' / DBG:: (I/O no terminal atrasa o teleop)."""
+    try:
+        from adafruit_bno08x import BNO08X
+
+        setattr(BNO08X, "_dbg", lambda *args, **kwargs: None)
+    except Exception:
+        pass
+
+
 _apply_bno08x_library_patches()
+_silence_bno08x_console_spam()
 
 
 def init_bno(do_reset_cycle=False, verbose=True):
@@ -265,11 +276,11 @@ def init_bno(do_reset_cycle=False, verbose=True):
             time.sleep(0.04)
 
         yaw_ready = False
-        for _ in range(35):
+        for _ in range(18):
             if get_yaw() is not None:
                 yaw_ready = True
                 break
-            time.sleep(0.05)
+            time.sleep(0.04)
         if not yaw_ready:
             if verbose and init_attempt < max_init_attempts - 1:
                 print("BNO08x: yaw ainda indisponível após warm-up; retry...")

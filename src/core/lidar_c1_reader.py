@@ -318,6 +318,18 @@ class LidarC1Reader:
                 return
 
             while not self._stop_event.is_set():
+                # Crítico: se get_scan_data() falha sempre, o timeout tinha de estar *dentro* do ramo
+                # com dados válidos — o robô ficava com distância 0 m (obstáculo) até ao infinito.
+                if not first_scan_logged and time.time() > deadline_first_scan:
+                    first_scan_logged = True
+                    with self._lock:
+                        if self._obstacle_distance_m == 0.0:
+                            self._obstacle_distance_m = float("inf")
+                            logger.warning(
+                                "Lidar C1 (pyrplidarsdk): 1º scan não completou em %.0f s — desbloqueando.",
+                                FIRST_SCAN_TIMEOUT_SEC,
+                            )
+
                 scan_data = self._lidar.get_scan_data()
                 if not scan_data:
                     time.sleep(0.05)
@@ -371,16 +383,7 @@ class LidarC1Reader:
                     if prev == 0.0:
                         d_str = f"{d_obst:.2f} m" if d_obst != float("inf") else "livre (inf)"
                         logger.info("Lidar C1 (pyrplidarsdk): primeiro scan OK — distância frontal = %s", d_str)
-
-                if not first_scan_logged and time.time() > deadline_first_scan:
-                    first_scan_logged = True
-                    with self._lock:
-                        if self._obstacle_distance_m == 0.0:
-                            self._obstacle_distance_m = float("inf")
-                            logger.warning(
-                                "Lidar C1 (pyrplidarsdk): 1º scan não completou em %.0f s — desbloqueando.",
-                                FIRST_SCAN_TIMEOUT_SEC,
-                            )
+                        first_scan_logged = True
 
                 time.sleep(0.02)
 
