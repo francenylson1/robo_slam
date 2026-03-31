@@ -54,6 +54,7 @@ logs/
 *.yaml
 !mapas/**/*.yaml
 *.json
+!joystick_profile_shanwan_android.json
 
 # Arquivos de configuração local
 .env

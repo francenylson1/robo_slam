@@ -6,6 +6,7 @@ Modo de uso:
   python joystick_controller_2026.py             # controle normal com BNO
   python joystick_controller_2026.py --identify  # identifica eixos/botões (calibração)
   python joystick_map_tool.py                   # mapeamento completo (recomendado)
+  python joystick_controller_2026.py --preset shanwan   # perfil shanwan Android GamePad
   python joystick_controller_2026.py --no-bno    # frente sem correção BNO
   python joystick_controller_2026.py --tps 25 --step-deg 15
 
@@ -27,6 +28,7 @@ import sys
 import os
 import time
 import math
+import json
 import argparse
 
 # ── Raiz do projeto no sys.path ───────────────────────────────────────────────
@@ -81,6 +83,24 @@ DPAD_TURN_TPS            = 12.0
 DPAD_TURN_THRESHOLD_DEG  = 1.5
 DPAD_TURN_TIMEOUT_S      = 5.0
 TURN_180_TIMEOUT_S       = 14.0
+
+
+def default_button_map() -> dict[str, int]:
+    """Índices pygame para iPega PG-9076 (modo PC)."""
+    return {
+        "a": BTN_A,
+        "b": BTN_B,
+        "y": BTN_Y,
+        "select": BTN_SELECT,
+        "start": BTN_START,
+        "l1": BTN_L1,
+        "r1": BTN_R1,
+    }
+
+
+def load_joystick_profile_json(path: str) -> dict:
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def is_raspberry_pi() -> bool:
@@ -249,7 +269,9 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
                      debug_axes: bool,
                      stick_x_idx: int, stick_y_idx: int,
                      invert_stick_y: bool,
-                     arm_with_a: bool) -> None:
+                     arm_with_a: bool,
+                     btn_map: dict[str, int],
+                     hat_id: int) -> None:
     import pygame
 
     yaw_ref:   float | None = None   # Referência BNO para linha reta
@@ -313,14 +335,15 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         axis_x = apply_deadzone(raw_x, DEADZONE)
         axis_y = apply_deadzone(raw_y, DEADZONE)
 
-        # ── Lê botões ─────────────────────────────────────────────────────
-        btn_b     = joystick.get_button(BTN_B)
-        btn_a     = joystick.get_button(BTN_A)
-        btn_l1    = joystick.get_button(BTN_L1)
-        btn_r1    = joystick.get_button(BTN_R1)
-        btn_y     = joystick.get_button(BTN_Y)
-        btn_select = joystick.get_button(BTN_SELECT)
-        btn_start = joystick.get_button(BTN_START)
+        # ── Lê botões (índices do perfil / iPega) ─────────────────────────
+        bmap = btn_map
+        btn_b      = joystick.get_button(bmap["b"])
+        btn_a      = joystick.get_button(bmap["a"])
+        btn_l1     = joystick.get_button(bmap["l1"])
+        btn_r1     = joystick.get_button(bmap["r1"])
+        btn_y      = joystick.get_button(bmap["y"])
+        btn_select = joystick.get_button(bmap["select"])
+        btn_start  = joystick.get_button(bmap["start"])
         now_mono  = time.monotonic()
 
         def _toggle_arm(source: str) -> None:
@@ -394,7 +417,7 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
 
         # ── D-pad: giro fixo por clique (BNO) ─────────────────────────────
         try:
-            hat = joystick.get_hat(HAT_ID)
+            hat = joystick.get_hat(hat_id)
         except Exception:
             hat = (0, 0)
 
@@ -532,8 +555,7 @@ def init_pygame_joystick():
     print(f"  Eixos: {joy.get_numaxes()}  |  Botões: {joy.get_numbuttons()}  |  Hats: {joy.get_numhats()}")
     low = name.lower()
     if "shanwan" in low or "android" in low:
-        print("  Dica: muitos destes modelos usam o stick nos eixos 2 e 3, não 0 e 1.")
-        print("        Se não andar: python joystick_controller_2026.py --android-gamepad --debug-axes")
+        print("  Dica (shanwan): python joystick_controller_2026.py --preset shanwan")
     return joy
 
 
@@ -632,12 +654,25 @@ def main() -> None:
         help="Imprime a cada 1s todos os eixos pygame + stick usado (diagnóstico)",
     )
     parser.add_argument(
-        "--stick-x", type=int, default=0,
-        help="Índice pygame do eixo horizontal do analógico esquerdo (padrão 0, iPega)",
+        "--preset",
+        choices=["", "shanwan"],
+        default="",
+        help="Carrega perfil embutido (shanwan = joystick_profile_shanwan_android.json na raiz)",
     )
     parser.add_argument(
-        "--stick-y", type=int, default=1,
-        help="Índice pygame do eixo vertical (frente/ré) do analógico esquerdo (padrão 1)",
+        "--profile",
+        type=str,
+        default="",
+        metavar="FICHEIRO.json",
+        help="Perfil próprio: stick_x/y, hat_id, buttons {a,b,y,select,start,l1,r1}",
+    )
+    parser.add_argument(
+        "--stick-x", type=int, default=None,
+        help="Eixo X do stick (sobrescreve perfil; padrão 0 iPega se sem --preset)",
+    )
+    parser.add_argument(
+        "--stick-y", type=int, default=None,
+        help="Eixo Y do stick (sobrescreve perfil; padrão 1 iPega se sem --preset)",
     )
     parser.add_argument(
         "--android-gamepad", action="store_true",
@@ -669,8 +704,42 @@ def main() -> None:
         print("ERRO: --y-neutral-max deve ser menor que --y-move-min (faixa de histerese).")
         sys.exit(2)
 
-    stick_x_idx = 2 if args.android_gamepad else args.stick_x
-    stick_y_idx = 3 if args.android_gamepad else args.stick_y
+    profile_data = None
+    if args.profile:
+        profile_data = load_joystick_profile_json(args.profile)
+    elif args.preset == "shanwan":
+        profile_data = load_joystick_profile_json(
+            os.path.join(ROOT, "joystick_profile_shanwan_android.json")
+        )
+
+    btn_map = default_button_map()
+    hat_id = HAT_ID
+    invert_stick_eff = args.invert_stick_y
+    arm_with_a_eff = args.arm_with_a
+
+    if profile_data:
+        stick_x_idx = int(profile_data.get("stick_x", 0))
+        stick_y_idx = int(profile_data.get("stick_y", 1))
+        invert_stick_eff = bool(profile_data.get("invert_stick_y", invert_stick_eff))
+        hat_id = int(profile_data.get("hat_id", HAT_ID))
+        for k, v in profile_data.get("buttons", {}).items():
+            if k in btn_map:
+                btn_map[k] = int(v)
+        arm_with_a_eff = bool(args.arm_with_a or profile_data.get("arm_with_a_default"))
+        desc = profile_data.get("description") or (args.preset or args.profile or "perfil")
+        print(f"  Perfil carregado: {desc}")
+        print(f"  Botões pygame: {btn_map}")
+    elif args.android_gamepad:
+        stick_x_idx, stick_y_idx = 2, 3
+    else:
+        stick_x_idx = args.stick_x if args.stick_x is not None else 0
+        stick_y_idx = args.stick_y if args.stick_y is not None else 1
+
+    if profile_data is not None and (args.stick_x is not None or args.stick_y is not None):
+        if args.stick_x is not None:
+            stick_x_idx = args.stick_x
+        if args.stick_y is not None:
+            stick_y_idx = args.stick_y
 
     os.environ.setdefault("ROBOT_MOTOR_QUIET", "1")
 
@@ -726,8 +795,10 @@ def main() -> None:
             debug_axes     = args.debug_axes,
             stick_x_idx    = stick_x_idx,
             stick_y_idx    = stick_y_idx,
-            invert_stick_y = args.invert_stick_y,
-            arm_with_a     = args.arm_with_a,
+            invert_stick_y = invert_stick_eff,
+            arm_with_a     = arm_with_a_eff,
+            btn_map        = btn_map,
+            hat_id         = hat_id,
         )
     except KeyboardInterrupt:
         print("\n  Ctrl+C — encerrando.")
