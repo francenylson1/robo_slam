@@ -15,7 +15,8 @@ Mapeamento (iPega PG-9076 no modo PC):
   Analógico esquerdo Y   →  Frente / ré (reta; BNO corrige; X ignorado)
   Analógico esquerdo X   →  Giro no lugar (só com Y no centro)
   D-pad                  →  Giro de N graus/clique (--step-deg)
-  Botão Y                →  Giro 180°
+  Botão de giro 180°     →  por defeito o mesmo índice que "Y" no perfil; em muitos
+                            gamepads Android o índice 3 é o X físico — use buttons.turn_180 no JSON
   Botão B                →  Parar | L1/R1 TPS | Start sair
   Analógico direito      →  Reservado
 
@@ -86,6 +87,8 @@ DPAD_TURN_TIMEOUT_S      = 5.0
 # Ignora critério de parada pelo BNO nos primeiros instantes (evita falso 0° se o yaw atrasar)
 DPAD_TURN_MIN_ACTIVE_S   = 0.22
 TURN_180_TIMEOUT_S       = 14.0
+# Giro sem BNO (--no-bno): duração ≈ |Δ°| / OPEN_LOOP_TURN_DPS (ajuste com --turn-open-loop-dps)
+OPEN_LOOP_TURN_DPS_DEFAULT = 58.0
 
 
 def default_button_map() -> dict[str, int]:
@@ -94,6 +97,7 @@ def default_button_map() -> dict[str, int]:
         "a": BTN_A,
         "b": BTN_B,
         "y": BTN_Y,
+        "turn_180": BTN_Y,  # pode sobrescrever no perfil (ex.: índice do X físico)
         "select": BTN_SELECT,
         "start": BTN_START,
         "l1": BTN_L1,
@@ -207,7 +211,6 @@ def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
     - Retorna o ângulo efetivamente girado, ou None se BNO indisponível.
     """
     if get_bno_yaw is None:
-        print(f"  D-pad: BNO não disponível — giro de {delta_deg:+.1f}° cancelado.")
         return None
 
     yaw_start = get_bno_yaw()
@@ -267,6 +270,64 @@ def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
     return actual_deg
 
 
+def cmd_turn_open_loop(
+    motors,
+    delta_deg: float,
+    turn_tps: float,
+    deg_per_sec: float,
+    timeout_s: float,
+    qt_app=None,
+) -> None:
+    """
+    Giro por tempo quando não há BNO. Calibre --turn-open-loop-dps na pista
+    (graus/s reais do giro no lugar com DPAD_TURN_TPS).
+    """
+    if deg_per_sec <= 0:
+        print("  Giro: --turn-open-loop-dps deve ser > 0.")
+        return
+    dur = min(abs(delta_deg) / deg_per_sec, timeout_s)
+    lado = "DIR →" if delta_deg > 0 else "← ESQ"
+    print(f"  Giro {lado} {abs(delta_deg):.1f}° (malha aberta ~{dur:.1f}s, sem BNO)")
+
+    if delta_deg > 0:
+        motors.set_precise_rotation_direction(1, -1)
+        motors.set_target_speed(turn_tps, -turn_tps)
+    else:
+        motors.set_precise_rotation_direction(-1, 1)
+        motors.set_target_speed(-turn_tps, turn_tps)
+
+    t_spin = time.time()
+    while time.time() - t_spin < dur:
+        if qt_app:
+            qt_app.processEvents()
+        time.sleep(0.02)
+
+    motors.stop_motors()
+    motors.clear_precise_rotation_direction()
+    time.sleep(0.12)
+    print("  Giro concluído (malha aberta; ajuste --turn-open-loop-dps se passar/faltar ângulo).")
+
+
+def cmd_turn(
+    motors,
+    delta_deg: float,
+    get_bno_yaw,
+    open_loop_dps: float,
+    turn_tps: float,
+    threshold_deg: float,
+    timeout_s: float,
+    qt_app=None,
+) -> float | None:
+    """D-pad / 180°: BNO se disponível; senão malha aberta."""
+    if get_bno_yaw is not None:
+        return cmd_turn_bno(
+            motors, delta_deg, get_bno_yaw,
+            turn_tps, threshold_deg, timeout_s, qt_app,
+        )
+    cmd_turn_open_loop(motors, delta_deg, turn_tps, open_loop_dps, timeout_s, qt_app)
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Loop principal de controle
 # ─────────────────────────────────────────────────────────────────────────────
@@ -280,7 +341,8 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
                      invert_stick_y: bool,
                      arm_with_a: bool,
                      btn_map: dict[str, int],
-                     hat_id: int) -> None:
+                     hat_id: int,
+                     open_loop_dps: float) -> None:
     import pygame
 
     yaw_ref:   float | None = None   # Referência BNO para linha reta
@@ -299,7 +361,7 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
     prev_hat  = (0, 0)
     prev_l1     = False
     prev_r1     = False
-    prev_y      = False
+    prev_turn_180 = False
     prev_select = False
     prev_a      = False
     last_select_toggle_t = 0.0
@@ -321,7 +383,8 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         print("  Trim de motores (autónomo): LIGADO (--use-motor-trim)")
     if os.environ.get("ROBO_TELEOP_DISABLE_LIDAR", "").lower() in ("1", "true", "yes", "on"):
         print("  Lidar C1: DESLIGADO (--no-lidar) — sem parada automática por obstáculo")
-    print(f"  D-pad: {dpad_step_deg:.1f}°/clique | Botão Y: 180°")
+    turn_180_idx = btn_map.get("turn_180", btn_map["y"])
+    print(f"  D-pad: {dpad_step_deg:.1f}°/clique | Giro 180°: botão pygame índice {turn_180_idx} (perfil: turn_180 ou y)")
     print(f"  Stick: Y=frente/ré (|Y|>={y_move_min:.2f}) | X=gira só com |Y|<={y_neutral_max:.2f}")
     print(f"  Eixos stick: pygame índices X={stick_x_idx} Y={stick_y_idx}"
           f"{' (Y invertido)' if invert_stick_y else ''}")
@@ -356,7 +419,7 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         btn_a      = joystick.get_button(bmap["a"])
         btn_l1     = joystick.get_button(bmap["l1"])
         btn_r1     = joystick.get_button(bmap["r1"])
-        btn_y      = joystick.get_button(bmap["y"])
+        btn_turn_180 = joystick.get_button(bmap.get("turn_180", bmap["y"]))
         btn_select = joystick.get_button(bmap["select"])
         btn_start  = joystick.get_button(bmap["start"])
         now_mono  = time.monotonic()
@@ -441,36 +504,39 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
             if dpad_x == -1 and prev_hat[0] != -1:
                 motors.stop_motors()
                 yaw_ref = None
-                cmd_turn_bno(
+                cmd_turn(
                     motors, -dpad_step_deg,
                     get_bno_yaw if use_bno else None,
+                    open_loop_dps,
                     DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
                     DPAD_TURN_TIMEOUT_S, qt_app,
                 )
             elif dpad_x == 1 and prev_hat[0] != 1:
                 motors.stop_motors()
                 yaw_ref = None
-                cmd_turn_bno(
+                cmd_turn(
                     motors, +dpad_step_deg,
                     get_bno_yaw if use_bno else None,
+                    open_loop_dps,
                     DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
                     DPAD_TURN_TIMEOUT_S, qt_app,
                 )
             prev_hat = hat
 
-        # ── Botão Y: 180° (borda de subida + debounce) ─────────────────────
-        if btn_y and not prev_y and (now_mono - last_y_t) >= BTN_Y_DEBOUNCE_S:
+        # ── Botão turn_180 (perfil; por defeito = Y): 180° (borda de subida + debounce) ──
+        if btn_turn_180 and not prev_turn_180 and (now_mono - last_y_t) >= BTN_Y_DEBOUNCE_S:
             motors.stop_motors()
             yaw_ref = None
             last_y_t = now_mono
-            print("  [Y] Giro 180°")
-            cmd_turn_bno(
+            print("  [Giro 180°] botão índice {}".format(bmap.get("turn_180", bmap["y"])))
+            cmd_turn(
                 motors, 180.0,
                 get_bno_yaw if use_bno else None,
+                open_loop_dps,
                 DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
                 TURN_180_TIMEOUT_S, qt_app,
             )
-        prev_y = btn_y
+        prev_turn_180 = btn_turn_180
 
         # ── Analógico: histerese em Y (evita “frente” só com drift do stick)
         abs_y = abs(axis_y)
@@ -684,7 +750,7 @@ def main() -> None:
         type=str,
         default="",
         metavar="FICHEIRO.json",
-        help="Perfil próprio: stick_x/y, hat_id, buttons {a,b,y,select,start,l1,r1}",
+        help="Perfil próprio: stick_x/y, hat_id, buttons {a,b,y,turn_180,select,start,l1,r1}",
     )
     parser.add_argument(
         "--stick-x", type=int, default=None,
@@ -715,6 +781,16 @@ def main() -> None:
         "--no-lidar",
         action="store_true",
         help="Não inicia o Lidar C1 (sem parada por obstáculo; útil se o C1/USB falhar ou para testes).",
+    )
+    parser.add_argument(
+        "--turn-open-loop-dps",
+        type=float,
+        default=OPEN_LOOP_TURN_DPS_DEFAULT,
+        metavar="DEG/S",
+        help=(
+            "Com --no-bno: graus/s estimados para D-pad e giro 180° em malha aberta "
+            f"(padrão {OPEN_LOOP_TURN_DPS_DEFAULT}; suba se faltar ângulo, baixe se passar)"
+        ),
     )
     args = parser.parse_args()
     if args.invert_bno:
@@ -753,8 +829,10 @@ def main() -> None:
         invert_stick_eff = bool(profile_data.get("invert_stick_y", invert_stick_eff))
         hat_id = int(profile_data.get("hat_id", HAT_ID))
         for k, v in profile_data.get("buttons", {}).items():
-            if k in btn_map:
+            if k in btn_map or k == "turn_180":
                 btn_map[k] = int(v)
+        if "turn_180" not in profile_data.get("buttons", {}):
+            btn_map["turn_180"] = btn_map["y"]
         arm_with_a_eff = bool(args.arm_with_a or profile_data.get("arm_with_a_default"))
         desc = profile_data.get("description") or (args.preset or args.profile or "perfil")
         print(f"  Perfil carregado: {desc}")
@@ -838,6 +916,7 @@ def main() -> None:
             arm_with_a     = arm_with_a_eff,
             btn_map        = btn_map,
             hat_id         = hat_id,
+            open_loop_dps  = args.turn_open_loop_dps,
         )
     except KeyboardInterrupt:
         print("\n  Ctrl+C — encerrando.")

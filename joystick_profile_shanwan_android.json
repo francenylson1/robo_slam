@@ -1,5 +1,5 @@
 {
-  "description": "shanwan Android GamePad — mapeamento pygame (joystick_map_tool.py)",
+  "description": "shanwan Android GamePad — mapeamento pygame (joystick_map_tool.py). No Linux, o índice 3 costuma ser o X físico; turn_180 segue y salvo override.",
   "stick_x": 0,
   "stick_y": 1,
   "invert_stick_y": false,
@@ -8,6 +8,7 @@
     "a": 0,
     "b": 1,
     "y": 3,
+    "turn_180": 3,
     "select": 8,
     "start": 9,
     "l1": 6,

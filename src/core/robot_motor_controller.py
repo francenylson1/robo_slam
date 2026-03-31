@@ -55,6 +55,16 @@ def _command_is_pivot_turn(left_tps: float, right_tps: float) -> bool:
     return (min(ml, mr) / m) >= LIDAR_PIVOT_WHEEL_RATIO_MIN
 
 
+def _command_is_straight_forward(left_tps: float, right_tps: float) -> bool:
+    """
+    True se o comando é avanço em linha reta (ambas as rodas com TPS > 0).
+    Ré (ambas < 0) não deve ser bloqueada pelo Lidar frontal: o cone do sensor
+    aponta para onde o robô não se desloca, evitando solavancos por obstáculo
+    “à frente” enquanto anda para trás.
+    """
+    return left_tps > 0.0 and right_tps > 0.0
+
+
 if GPIO_AVAILABLE:
     try:
         import RPi.GPIO as GPIO
@@ -310,6 +320,11 @@ class RobotMotorController(QObject):
             if _command_is_pivot_turn(left_tps, right_tps):
                 logger.debug(
                     "Lidar C1: obstáculo próximo — mantendo comando de giro no lugar (L=%.1f R=%.1f).",
+                    left_tps, right_tps,
+                )
+            elif not _command_is_straight_forward(left_tps, right_tps):
+                logger.debug(
+                    "Lidar C1: obstáculo próximo — ré ou curva; não bloqueia (L=%.1f R=%.1f).",
                     left_tps, right_tps,
                 )
             else:
