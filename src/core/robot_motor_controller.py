@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Testar e ajustar: aumentar RIGHT se ainda for esquerda; reduzir se ainda for direita.
 # Ajuste fino: ver docs/AFINACAO_DESVIO_NAVEGACAO.md
 LEFT_MOTOR_CORRECTION_FACTOR  = 0.9100000   # Calibração 20/03/2026 — valor empírico estável
-RIGHT_MOTOR_CORRECTION_FACTOR = 0.9660000   # Meio-termo: 0.962 puxou esquerda demais em teste 31/03/2026.
+RIGHT_MOTOR_CORRECTION_FACTOR = 0.9260000   # Meio-termo: 0.962 puxou esquerda demais em teste 31/03/2026.
 
 # Teleop (joystick_controller_2026): ROBO_TELEOP_NO_MOTOR_TRIM=1 usa 1.0/1.0 para não somar calibração
 # do autónomo com a correção BNO (evita deriva paradoxal). Outros scripts não definem esta env.
@@ -53,6 +53,15 @@ def _command_is_pivot_turn(left_tps: float, right_tps: float) -> bool:
     if m < 1e-9:
         return False
     return (min(ml, mr) / m) >= LIDAR_PIVOT_WHEEL_RATIO_MIN
+
+
+def _teleop_slew_step(current: float, target: float, max_step: float) -> float:
+    """Limita variação do setpoint TPS por chamada (rampeamento)."""
+    if target > current + max_step:
+        return current + max_step
+    if target < current - max_step:
+        return current - max_step
+    return target
 
 
 def _command_is_straight_forward(left_tps: float, right_tps: float) -> bool:
@@ -100,7 +109,12 @@ class RobotMotorController(QObject):
         self.simulated_right_tps = 0.0
         self.last_sim_time = time.time()
 
+        self._teleop_cmd_l = 0.0
+        self._teleop_cmd_r = 0.0
+
         self.current_speed_profile = 'normal'
+        if os.environ.get("ROBO_TELEOP_JOYSTICK", "").lower() in ("1", "true", "yes", "on"):
+            self.current_speed_profile = "teleop"
         self._initialize_pid_controllers()
         self.pid_enabled = False
 
@@ -335,6 +349,19 @@ class RobotMotorController(QObject):
                     self.disable_pid_control()  # Parada imediata com freio (não esperar PID)
                 left_tps = 0.0
                 right_tps = 0.0
+
+        if os.environ.get("ROBO_TELEOP_JOYSTICK", "").lower() in ("1", "true", "yes", "on"):
+            try:
+                max_step = float(os.environ.get("ROBO_TELEOP_MAX_TPS_STEP", "6.0"))
+            except ValueError:
+                max_step = 6.0
+            if left_tps == 0.0 and right_tps == 0.0:
+                self._teleop_cmd_l = 0.0
+                self._teleop_cmd_r = 0.0
+            else:
+                self._teleop_cmd_l = _teleop_slew_step(self._teleop_cmd_l, left_tps, max_step)
+                self._teleop_cmd_r = _teleop_slew_step(self._teleop_cmd_r, right_tps, max_step)
+                left_tps, right_tps = self._teleop_cmd_l, self._teleop_cmd_r
 
         lf, rf = _motor_trim_factors()
         left_tps_corrected = left_tps * lf

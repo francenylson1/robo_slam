@@ -315,7 +315,17 @@ PID_PROFILES = {
         'output_limits': (-15, 15),  # 15% potência máxima (LIMITE SEGURANÇA)
         'tps': SPEED_FAST_TPS,
         'description': 'PID SUAVE - Velocidade controlada'
-    }
+    },
+    # Joystick (ROBO_TELEOP_JOYSTICK): setpoint a 50 Hz + encoder ~10 Hz com quantização
+    # → PID “caça” erro de tick; reduzir Kp/Ki e limitar rampa do setpoint em set_target_speed.
+    'teleop': {
+        'Kp': 0.09,
+        'Ki': 0.035,
+        'Kd': 0.008,
+        'output_limits': (-10, 10),
+        'tps': SPEED_NORMAL_TPS,
+        'description': 'PID teleop — menos oscilação em comando manual',
+    },
 }
 
 # Configurações de segurança para validação automática
