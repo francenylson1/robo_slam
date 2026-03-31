@@ -26,9 +26,7 @@ logger = logging.getLogger(__name__)
 # Testar e ajustar: aumentar RIGHT se ainda for esquerda; reduzir se ainda for direita.
 # Ajuste fino: ver docs/AFINACAO_DESVIO_NAVEGACAO.md
 LEFT_MOTOR_CORRECTION_FACTOR  = 0.9100000   # Calibração 20/03/2026 — valor empírico estável
-RIGHT_MOTOR_CORRECTION_FACTOR = 0.9620000   # Reduzir roda direita vs esquerda = contrai deriva à direita
-                                            # em reta (31/03/2026 após orientação ok e curva à direita).
-                                            # Histórico: 0.968 → 0.962; se esquerda demais → 0.965–0.968.
+RIGHT_MOTOR_CORRECTION_FACTOR = 0.9660000   # Meio-termo: 0.962 puxou esquerda demais em teste 31/03/2026.
 
 def _command_is_pivot_turn(left_tps: float, right_tps: float) -> bool:
     """

@@ -252,10 +252,9 @@ SCAN_MATCH_CORRECTION_GAIN = 1.0  # Reservado. Não reduzir: ganho < 1.0 causa
 # posição virtual derivar (+1.6m em 31 ciclos → giro de 270° no desvio de obstáculo).
 # Aceitar posição apenas quando o scan matching "tem certeza" evita drift sem
 # abrir mão da correção de posição em trechos com paredes visíveis.
-SCAN_MATCH_POSITION_MIN_SCORE = 0.58   # Só dx/dy quando match forte; 0.48–0.55 ainda é ambíguo
-                                       # (logs 31/03/2026: score ~0.51 com obstáculo ~0,23 m → dx/dy
-                                       # espúrios). θ-only preserva correção de rumo sem puxar a pose.
-                                       # Histórico: 0.35 aceitava esses casos e somava à deriva percebida.
+SCAN_MATCH_POSITION_MIN_SCORE = 0.58   # Só dx/dy quando match forte
+SCAN_MATCH_THETA_MIN_SCORE = 0.52        # Abaixo disto não publica nem dθ (evita +3°/-3° com score ~0.42)
+                                       # que zigzaga o rumo após “corrigir” deriva mecânica).
 
 # Scan matching na pose: não aplicar dx/dy se os encoders não registraram movimento no ciclo
 # (robô parado). Caso contrário o matcher oscila (±30 cm) só com ruído do C1 em frente à parede.

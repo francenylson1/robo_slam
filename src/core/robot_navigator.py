@@ -123,6 +123,7 @@ class RobotNavigator(QObject):
                     correction_interval_s = SCAN_MATCH_INTERVAL_S,
                     min_score             = SCAN_MATCH_MIN_SCORE,
                     position_min_score    = SCAN_MATCH_POSITION_MIN_SCORE,
+                    theta_min_score       = SCAN_MATCH_THETA_MIN_SCORE,
                     max_correction_m      = SCAN_MATCH_MAX_CORR_M,
                     max_correction_deg    = SCAN_MATCH_MAX_CORR_DEG,
                     max_scan_pts          = SCAN_MATCH_MAX_SCAN_PTS,
