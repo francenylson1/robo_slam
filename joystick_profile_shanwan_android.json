@@ -1,0 +1,17 @@
+{
+  "description": "shanwan Android GamePad — mapeamento pygame (joystick_map_tool.py)",
+  "stick_x": 0,
+  "stick_y": 1,
+  "invert_stick_y": false,
+  "hat_id": 0,
+  "buttons": {
+    "a": 0,
+    "b": 1,
+    "y": 3,
+    "select": 8,
+    "start": 9,
+    "l1": 6,
+    "r1": 7
+  },
+  "arm_with_a_default": true
+}
