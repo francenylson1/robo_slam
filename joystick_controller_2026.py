@@ -6,22 +6,18 @@ Modo de uso:
   python joystick_controller_2026.py             # controle normal com BNO
   python joystick_controller_2026.py --identify  # identifica eixos/botões (calibração)
   python joystick_controller_2026.py --no-bno    # frente sem correção BNO
-  python joystick_controller_2026.py --tps 25    # velocidade máxima personalizada
+  python joystick_controller_2026.py --tps 25 --step-deg 15
 
-Mapeamento dos controles (iPega PG-9076 no modo PC):
-  Analógico esquerdo Y   →  Frente (cima) / Ré (baixo) — velocidade proporcional
-  Analógico esquerdo X   →  Giro esquerda/direita — proporcional
-  Analógico direito      →  Reservado (futuro)
-  Botão B (círculo)      →  PARAR imediatamente
-  Botão L1               →  Reduzir velocidade base (-5 TPS)
-  Botão R1               →  Aumentar velocidade base (+5 TPS)
-  Botão Start            →  Sair do programa
+Mapeamento (iPega PG-9076 no modo PC):
+  Analógico esquerdo Y   →  Frente / ré (reta; BNO corrige; X ignorado)
+  Analógico esquerdo X   →  Giro no lugar (só com Y no centro)
+  D-pad                  →  Giro de N graus/clique (--step-deg)
+  Botão Y                →  Giro 180°
+  Botão B                →  Parar | L1/R1 TPS | Start sair
+  Analógico direito      →  Reservado
 
-Correção BNO:
-  Quando o robô vai reto (eixo Y dominante, X < 20%), o BNO08x corrige
-  automaticamente qualquer desvio angular, mantendo a linha reta.
-  Ao iniciar um giro (X > 20%), a referência BNO é descartada e o controle
-  passa a ser puramente diferencial (sem conflito com o BNO).
+Resumo: frente/ré = só eixo Y (BNO). Eixo X não curva durante frente/ré.
+Giro no lugar = X com Y neutro. D-pad = passos em graus; Y = 180°.
 
 Execute na Raspberry Pi com o joystick conectado via Bluetooth ou USB.
 """
@@ -60,20 +56,26 @@ BTN_START    = 9   # Start                  → SAIR
 # ─────────────────────────────────────────────────────────────────────────────
 # Parâmetros de controle
 # ─────────────────────────────────────────────────────────────────────────────
-DEADZONE               = 0.12   # Zona morta do analógico (0–1). Ignora ruído do stick.
-STRAIGHT_THRESHOLD_X   = 0.20   # Abaixo deste X: modo reto com BNO. Acima: giro puro.
-TPS_DEFAULT            = 25.0   # Velocidade base padrão (Ticks Por Segundo)
-TPS_MIN                = 10.0   # Velocidade mínima permitida
-TPS_MAX                = 45.0   # Velocidade máxima permitida
-TPS_STEP               = 5.0    # Passo de ajuste L1/R1
-LOOP_HZ                = 50     # Frequência do loop de controle (50 Hz = 20 ms)
+DEADZONE               = 0.14   # Zona morta dos eixos
+# |Y| abaixo: stick neutro em frente/ré -> permite giro no lugar pelo X
+SPIN_MAX_ABS_Y         = 0.16
+# |X| acima (com Y neutro): giro no lugar proporcional
+SPIN_MIN_ABS_X         = 0.12
+TPS_DEFAULT            = 25.0
+TPS_MIN                = 10.0
+TPS_MAX                = 45.0
+TPS_STEP               = 5.0
+LOOP_HZ                = 50
+L1_R1_DEBOUNCE_S       = 0.28
+BTN_Y_DEBOUNCE_S       = 0.55
 
-# D-pad — giro preciso com BNO (22.5° por clique = 16 cliques por volta completa)
-HAT_ID                  = 0     # D-pad é o hat 0 na maioria dos controles
-DPAD_TURN_DEG           = 22.5  # Graus por clique (360°/16)
-DPAD_TURN_TPS           = 12.0  # Velocidade do giro (não muito rápido para BNO acompanhar)
-DPAD_TURN_THRESHOLD_DEG = 1.0   # Para dentro desta margem do alvo (inércia faz o resto)
-DPAD_TURN_TIMEOUT_S     = 4.0   # Timeout de segurança por clique
+# D-pad: graus por clique (padrao 22.5); --step-deg no argparse
+HAT_ID                   = 0
+DPAD_TURN_DEG_DEFAULT    = 22.5
+DPAD_TURN_TPS            = 12.0
+DPAD_TURN_THRESHOLD_DEG  = 1.5
+DPAD_TURN_TIMEOUT_S      = 5.0
+TURN_180_TIMEOUT_S       = 14.0
 
 
 def is_raspberry_pi() -> bool:
@@ -236,32 +238,38 @@ def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
 # ─────────────────────────────────────────────────────────────────────────────
 def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
                      tps_base: float, kp: float, max_corr: float,
-                     invert_bno: bool, qt_app) -> None:
+                     invert_bno: bool, qt_app,
+                     dpad_step_deg: float) -> None:
     import pygame
 
     yaw_ref:   float | None = None   # Referência BNO para linha reta
     speed_tps: float        = tps_base
     running:   bool         = True
 
-    # Labels para log no terminal
     MODE_LABELS = {
-        "forward":    "FRENTE",
-        "back":       "RÉ    ",
-        "turn_left":  "ESQ   ",
-        "turn_right": "DIR   ",
+        "forward":    "FRENTE (reta BNO)",
+        "back":       "RÉ    (reta BNO)",
+        "turn_left":  "GIRO ESQ (no lugar)",
+        "turn_right": "GIRO DIR (no lugar)",
         "stop":       "PARAR ",
     }
 
     prev_mode = "stop"
-    prev_hat  = (0, 0)   # estado anterior do D-pad (edge detection)
+    prev_hat  = (0, 0)
+    prev_l1   = False
+    prev_r1   = False
+    prev_y    = False
+    last_l1r1_t = 0.0
+    last_y_t    = 0.0
     loop_dt   = 1.0 / LOOP_HZ
 
     print()
     print("=" * 60)
     print(f"  CONTROLE ATIVO — velocidade base: {speed_tps:.0f} TPS")
-    print(f"  BNO correção: {'SIM' if use_bno and get_bno_yaw else 'NÃO'}")
-    print(f"  D-pad ←/→: giro preciso {DPAD_TURN_DEG:.1f}° por clique (BNO)")
-    print(f"  L1/R1=velocidade  B=parar  Start=sair")
+    print(f"  BNO na reta (só eixo Y): {'SIM' if use_bno and get_bno_yaw else 'NÃO'}")
+    print(f"  D-pad: {dpad_step_deg:.1f}°/clique | Botão Y: 180°")
+    print(f"  Stick: Y=frente/ré | X=girar só com Y no centro")
+    print(f"  L1/R1=TPS  B=parar  Start=sair")
     print("=" * 60)
 
     while running:
@@ -283,9 +291,11 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         btn_b     = joystick.get_button(BTN_B)
         btn_l1    = joystick.get_button(BTN_L1)
         btn_r1    = joystick.get_button(BTN_R1)
+        btn_y     = joystick.get_button(BTN_Y)
         btn_start = joystick.get_button(BTN_START)
+        now_mono  = time.monotonic()
 
-        # ── D-pad: giro preciso 22.5° por clique (edge detection) ─────────
+        # ── D-pad: giro fixo por clique (BNO) ─────────────────────────────
         try:
             hat = joystick.get_hat(HAT_ID)
         except Exception:
@@ -293,35 +303,51 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
 
         if hat != prev_hat:
             dpad_x = hat[0]
-            if dpad_x == -1 and prev_hat[0] != -1:      # clique ← esquerda
+            if dpad_x == -1 and prev_hat[0] != -1:
                 motors.stop_motors()
                 yaw_ref = None
                 cmd_turn_bno(
-                    motors, -DPAD_TURN_DEG,
+                    motors, -dpad_step_deg,
                     get_bno_yaw if use_bno else None,
                     DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
                     DPAD_TURN_TIMEOUT_S, qt_app,
                 )
-            elif dpad_x == 1 and prev_hat[0] != 1:      # clique → direita
+            elif dpad_x == 1 and prev_hat[0] != 1:
                 motors.stop_motors()
                 yaw_ref = None
                 cmd_turn_bno(
-                    motors, +DPAD_TURN_DEG,
+                    motors, +dpad_step_deg,
                     get_bno_yaw if use_bno else None,
                     DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
                     DPAD_TURN_TIMEOUT_S, qt_app,
                 )
             prev_hat = hat
 
-        # ── Ajuste de velocidade (L1/R1) ──────────────────────────────────
-        if btn_l1:
+        # ── Botão Y: 180° (borda de subida + debounce) ─────────────────────
+        if btn_y and not prev_y and (now_mono - last_y_t) >= BTN_Y_DEBOUNCE_S:
+            motors.stop_motors()
+            yaw_ref = None
+            last_y_t = now_mono
+            print("  [Y] Giro 180°")
+            cmd_turn_bno(
+                motors, 180.0,
+                get_bno_yaw if use_bno else None,
+                DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
+                TURN_180_TIMEOUT_S, qt_app,
+            )
+        prev_y = btn_y
+
+        # ── L1/R1: uma mudança por pressão (não trava o loop) ─────────────
+        if (btn_l1 and not prev_l1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
             speed_tps = max(TPS_MIN, speed_tps - TPS_STEP)
-            print(f"  Velocidade base: {speed_tps:.0f} TPS (–)")
-            time.sleep(0.3)   # debounce
-        if btn_r1:
+            last_l1r1_t = now_mono
+            print(f"  Velocidade base: {speed_tps:.0f} TPS (L1 -)")
+        if (btn_r1 and not prev_r1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
             speed_tps = min(TPS_MAX, speed_tps + TPS_STEP)
-            print(f"  Velocidade base: {speed_tps:.0f} TPS (+)")
-            time.sleep(0.3)
+            last_l1r1_t = now_mono
+            print(f"  Velocidade base: {speed_tps:.0f} TPS (R1 +)")
+        prev_l1 = btn_l1
+        prev_r1 = btn_r1
 
         # ── Sair ──────────────────────────────────────────────────────────
         if btn_start:
@@ -339,22 +365,44 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
             time.sleep(loop_dt)
             continue
 
-        # ── Determina modo pelo analógico ─────────────────────────────────
-        moving_y    = abs(axis_y) > 0.0
-        turning     = abs(axis_x) > STRAIGHT_THRESHOLD_X
-        going_fwd   = axis_y < 0.0   # –1 = cima = frente
-        going_back  = axis_y > 0.0
+        # ── Analógico: Y = frente/ré (reta BNO, X ignorado) ────────────────
+        #             X = giro no lugar só se |Y| neutro (sem misturar curva)
+        abs_y = abs(axis_y)
+        abs_x = abs(axis_x)
+        y_neutral = abs_y <= SPIN_MAX_ABS_Y
+        y_command = abs_y > SPIN_MAX_ABS_Y
+        x_spin    = y_neutral and (abs_x >= SPIN_MIN_ABS_X)
 
-        if not moving_y and not turning:
-            # ── Parado ────────────────────────────────────────────────────
-            motors.stop_motors()
-            yaw_ref = None
-            mode = "stop"
+        if y_command:
+            # Frente ou ré: sempre reta; eixo X não altera L/R (só BNO)
+            base_tps = -axis_y * speed_tps
+            if use_bno and get_bno_yaw:
+                yaw_now = get_bno_yaw()
+                if yaw_now is not None:
+                    if yaw_ref is None:
+                        yaw_ref = yaw_now
+                        tag = "FRENTE" if base_tps > 0 else "RÉ"
+                        print(f"  BNO ref={yaw_ref:.1f}° ({tag}, X ignorado)")
 
-        elif turning and not moving_y:
-            # ── Giro no lugar ─────────────────────────────────────────────
+                    err = normalize_angle_deg(yaw_now - yaw_ref)
+                    if invert_bno:
+                        err = -err
+                    corr = max(-max_corr, min(max_corr, kp * err))
+                    left_tps  = base_tps - corr
+                    right_tps = base_tps + corr
+                else:
+                    left_tps = right_tps = base_tps
+            else:
+                left_tps = right_tps = base_tps
+
+            motors.clear_precise_rotation_direction()
+            motors.set_target_speed(left_tps, right_tps)
+            mode = "forward" if base_tps > 0 else "back"
+
+        elif x_spin:
+            # Giro no lugar proporcional ao X (BNO não corrige reta aqui)
             yaw_ref = None
-            tps = speed_tps * abs(axis_x)
+            tps = speed_tps * min(1.0, abs_x)
             if axis_x > 0:
                 motors.set_precise_rotation_direction(1, -1)
                 motors.set_target_speed(tps, -tps)
@@ -365,46 +413,9 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
                 mode = "turn_left"
 
         else:
-            # ── Movimento com possível curva ──────────────────────────────
-            # base_tps proporcional ao eixo Y (negativo = frente)
-            base_tps = -axis_y * speed_tps   # positivo = frente, negativo = ré
-
-            if turning:
-                # Curva com deslocamento: modo diferencial, sem BNO
-                yaw_ref = None
-                motors.clear_precise_rotation_direction()
-                diff = axis_x * speed_tps * 0.6   # suaviza a curva
-                left_tps  = base_tps + diff
-                right_tps = base_tps - diff
-                motors.set_target_speed(left_tps, right_tps)
-            else:
-                # Linha reta: BNO corrige desvio angular
-                if use_bno and get_bno_yaw:
-                    yaw_now = get_bno_yaw()
-                    if yaw_now is not None:
-                        if yaw_ref is None:
-                            # Nova referência ao entrar em modo reto
-                            yaw_ref = yaw_now
-                            if get_bno_yaw:
-                                print(f"  BNO ref={yaw_ref:.1f}° ({MODE_LABELS.get('forward' if base_tps > 0 else 'back', '')})")
-
-                        err = normalize_angle_deg(yaw_now - yaw_ref)
-                        if invert_bno:
-                            err = -err
-                        corr = max(-max_corr, min(max_corr, kp * err))
-                        left_tps  = base_tps - corr
-                        right_tps = base_tps + corr
-                    else:
-                        # BNO sem leitura: modo sem correção
-                        left_tps = right_tps = base_tps
-                else:
-                    # BNO desativado ou indisponível
-                    left_tps = right_tps = base_tps
-
-                motors.clear_precise_rotation_direction()
-                motors.set_target_speed(left_tps, right_tps)
-
-            mode = "forward" if base_tps > 0 else "back"
+            motors.stop_motors()
+            yaw_ref = None
+            mode = "stop"
 
         # ── Log de mudança de modo ─────────────────────────────────────────
         if mode != prev_mode:
@@ -507,11 +518,26 @@ def main() -> None:
         "--max-corr", type=float, default=BNO_STRAIGHT_MAX_CORRECTION_TPS,
         help=f"Correção máxima BNO em TPS (padrão config: {BNO_STRAIGHT_MAX_CORRECTION_TPS})"
     )
+    inv = parser.add_mutually_exclusive_group()
+    inv.add_argument(
+        "--invert-bno", action="store_true",
+        help="Força correção BNO invertida (sobrescreve config)",
+    )
+    inv.add_argument(
+        "--no-invert-bno", action="store_true",
+        help="Desliga inversão da correção BNO (sobrescreve config)",
+    )
     parser.add_argument(
-        "--invert-bno", action="store_true", default=BNO_STRAIGHT_INVERT_CORRECTION,
-        help="Inverte a correção BNO (use se o robô corrigir para o lado errado)"
+        "--step-deg", type=float, default=DPAD_TURN_DEG_DEFAULT,
+        help=f"Graus por clique no D-pad (padrao {DPAD_TURN_DEG_DEFAULT})",
     )
     args = parser.parse_args()
+    if args.invert_bno:
+        invert_bno = True
+    elif args.no_invert_bno:
+        invert_bno = False
+    else:
+        invert_bno = BNO_STRAIGHT_INVERT_CORRECTION
 
     if not is_raspberry_pi():
         print("AVISO: Este script foi projetado para rodar na Raspberry Pi.")
@@ -549,15 +575,16 @@ def main() -> None:
     # ── Loop de controle ──────────────────────────────────────────────────────
     try:
         run_control_loop(
-            joystick    = joystick,
-            motors      = motors,
-            get_bno_yaw = get_bno_yaw,
-            use_bno     = use_bno,
-            tps_base    = args.tps,
-            kp          = args.kp,
-            max_corr    = args.max_corr,
-            invert_bno  = args.invert_bno,
-            qt_app      = qt_app,
+            joystick       = joystick,
+            motors         = motors,
+            get_bno_yaw    = get_bno_yaw,
+            use_bno        = use_bno,
+            tps_base       = args.tps,
+            kp             = args.kp,
+            max_corr       = args.max_corr,
+            invert_bno     = invert_bno,
+            qt_app         = qt_app,
+            dpad_step_deg  = args.step_deg,
         )
     except KeyboardInterrupt:
         print("\n  Ctrl+C — encerrando.")
