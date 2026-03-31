@@ -319,6 +319,8 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         print("  Trim de motores (autónomo): DESLIGADO — fatores 1.0; use --use-motor-trim se precisar da calibração mecânica")
     else:
         print("  Trim de motores (autónomo): LIGADO (--use-motor-trim)")
+    if os.environ.get("ROBO_TELEOP_DISABLE_LIDAR", "").lower() in ("1", "true", "yes", "on"):
+        print("  Lidar C1: DESLIGADO (--no-lidar) — sem parada automática por obstáculo")
     print(f"  D-pad: {dpad_step_deg:.1f}°/clique | Botão Y: 180°")
     print(f"  Stick: Y=frente/ré (|Y|>={y_move_min:.2f}) | X=gira só com |Y|<={y_neutral_max:.2f}")
     print(f"  Eixos stick: pygame índices X={stick_x_idx} Y={stick_y_idx}"
@@ -709,6 +711,11 @@ def main() -> None:
         action="store_true",
         help="Aplica LEFT/RIGHT_MOTOR_CORRECTION_FACTOR (autónomo). Padrão: fatores 1.0 no teleop para não somar com BNO.",
     )
+    parser.add_argument(
+        "--no-lidar",
+        action="store_true",
+        help="Não inicia o Lidar C1 (sem parada por obstáculo; útil se o C1/USB falhar ou para testes).",
+    )
     args = parser.parse_args()
     if args.invert_bno:
         invert_bno = True
@@ -766,6 +773,10 @@ def main() -> None:
 
     os.environ.setdefault("ROBOT_MOTOR_QUIET", "1")
     os.environ["ROBO_TELEOP_JOYSTICK"] = "1"
+    if args.no_lidar:
+        os.environ["ROBO_TELEOP_DISABLE_LIDAR"] = "1"
+    else:
+        os.environ.pop("ROBO_TELEOP_DISABLE_LIDAR", None)
     if args.use_motor_trim:
         os.environ.pop("ROBO_TELEOP_NO_MOTOR_TRIM", None)
     else:

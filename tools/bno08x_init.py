@@ -59,17 +59,23 @@ def _apply_bno08x_library_patches():
         pass
     try:
         from adafruit_bno08x import BNO08X
-        if getattr(BNO08X, "_robo_skip_0x7b_patched", False):
-            return
-        _orig_pr = BNO08X._process_report
+        from adafruit_bno08x import debug as _bno_dbgmod
+        if not getattr(BNO08X, "_robo_safe_process_report_patched", False):
+            _orig_pr = BNO08X._process_report
 
-        def _process_skip_0x7b(self, report_id, report_bytes):
-            if report_id == 0x7B:
-                return
-            return _orig_pr(self, report_id, report_bytes)
+            def _robo_safe_process_report(self, report_id, report_bytes):
+                # 0x7B = padding; firmware também envia IDs não mapeados na Adafruit → KeyError / UNKNOWN
+                if report_id == 0x7B:
+                    return
+                if report_id < 0xF0 and _bno_dbgmod.reports.get(report_id) is None:
+                    return
+                try:
+                    return _orig_pr(self, report_id, report_bytes)
+                except KeyError:
+                    return
 
-        BNO08X._process_report = _process_skip_0x7b
-        BNO08X._robo_skip_0x7b_patched = True
+            BNO08X._process_report = _robo_safe_process_report
+            BNO08X._robo_safe_process_report_patched = True
     except Exception:
         pass
 
@@ -80,6 +86,13 @@ def _silence_bno08x_console_spam():
         from adafruit_bno08x import BNO08X
 
         setattr(BNO08X, "_dbg", lambda *args, **kwargs: None)
+        try:
+            from adafruit_bno08x import i2c as _bno_i2c
+
+            if hasattr(_bno_i2c, "BNO08X_I2C"):
+                setattr(_bno_i2c.BNO08X_I2C, "_dbg", lambda *args, **kwargs: None)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -190,11 +203,6 @@ def init_bno(do_reset_cycle=False, verbose=True):
     if 0x4A not in addrs_to_try:
         addrs_to_try.append(0x4A)
 
-    try:
-        from adafruit_bno08x import BNO_REPORT_GAME_ROTATION_VECTOR
-    except ImportError:
-        BNO_REPORT_GAME_ROTATION_VECTOR = None
-
     # Várias tentativas: conexão, enable, yaw válido (pacote 0x7B costumava quebrar só o enable)
     max_init_attempts = 4
     for init_attempt in range(max_init_attempts):
@@ -202,6 +210,7 @@ def init_bno(do_reset_cycle=False, verbose=True):
         for addr in addrs_to_try:
             try:
                 bno = BNO08X_I2C(i2c, reset=None, address=addr, debug=False)
+                setattr(bno, "_debug", False)
                 if verbose:
                     print("BNO08x conectado no endereço {}.".format(hex(addr)))
                 break
@@ -222,11 +231,6 @@ def init_bno(do_reset_cycle=False, verbose=True):
                 bno.enable_feature(BNO_REPORT_ACCELEROMETER)
                 bno.enable_feature(BNO_REPORT_GYROSCOPE)
                 bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
-                if BNO_REPORT_GAME_ROTATION_VECTOR is not None:
-                    try:
-                        bno.enable_feature(BNO_REPORT_GAME_ROTATION_VECTOR)
-                    except Exception:
-                        pass
                 features_ok = True
                 break
             except (RuntimeError, KeyError, ValueError) as e:

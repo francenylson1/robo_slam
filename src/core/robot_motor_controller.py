@@ -155,7 +155,10 @@ class RobotMotorController(QObject):
         self.lidar_reader = None
         self._last_obstacle_detected_at: float = 0.0  # Timestamp da última detecção (para blocking "sticky")
         self._last_lidar_diag_log_time: float = 0.0  # Throttle para log diagnóstico (a cada 1 s quando em movimento)
-        if GPIO_AVAILABLE and LIDAR_C1_ENABLED:
+        _teleop_skip_lidar = os.environ.get("ROBO_TELEOP_DISABLE_LIDAR", "").lower() in (
+            "1", "true", "yes", "on",
+        )
+        if GPIO_AVAILABLE and LIDAR_C1_ENABLED and not _teleop_skip_lidar:
             try:
                 from src.core.lidar_c1_reader import LidarC1Reader
                 self.lidar_reader = LidarC1Reader(min_stop_m=LIDAR_OBSTACLE_MIN_DISTANCE)
