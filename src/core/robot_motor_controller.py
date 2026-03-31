@@ -28,6 +28,15 @@ logger = logging.getLogger(__name__)
 LEFT_MOTOR_CORRECTION_FACTOR  = 0.9100000   # Calibração 20/03/2026 — valor empírico estável
 RIGHT_MOTOR_CORRECTION_FACTOR = 0.9660000   # Meio-termo: 0.962 puxou esquerda demais em teste 31/03/2026.
 
+# Teleop (joystick_controller_2026): ROBO_TELEOP_NO_MOTOR_TRIM=1 usa 1.0/1.0 para não somar calibração
+# do autónomo com a correção BNO (evita deriva paradoxal). Outros scripts não definem esta env.
+def _motor_trim_factors() -> tuple[float, float]:
+    v = os.environ.get("ROBO_TELEOP_NO_MOTOR_TRIM", "")
+    if v.lower() in ("1", "true", "yes", "on"):
+        return 1.0, 1.0
+    return LEFT_MOTOR_CORRECTION_FACTOR, RIGHT_MOTOR_CORRECTION_FACTOR
+
+
 def _command_is_pivot_turn(left_tps: float, right_tps: float) -> bool:
     """
     True se o comando é essencialmente giro no lugar (rodas em sentidos opostos,
@@ -283,15 +292,16 @@ class RobotMotorController(QObject):
         Aplica correção de deriva lateral baseada em calibração.
         Se Lidar C1 detectar obstáculo < limite, força velocidade 0 (parada automática).
         """
-        # Diagnóstico: a cada 0.5 s quando movendo — print() visível no terminal (independente de log level)
+        # Diagnóstico: a cada 0.5 s quando movendo — omitido em modo teleop (ROBO_TELEOP_JOYSTICK) para não spammar
         if self.lidar_reader and (left_tps != 0 or right_tps != 0):
-            t = time.time()
-            if t - getattr(self, '_last_lidar_diag_log_time', 0) >= 0.5:
-                self._last_lidar_diag_log_time = t
-                d = self.lidar_reader.obstacle_distance()
-                d_str = f"{d:.2f}m" if d != float("inf") else "livre"
-                print(f"📡 LIDAR C1: distância frontal = {d_str} (parar se < {LIDAR_OBSTACLE_MIN_DISTANCE:.2f}m)", flush=True)
-                logger.info("Lidar C1 diagnóstico: distância frontal = %s m (parar se < %.2f m)", d_str, LIDAR_OBSTACLE_MIN_DISTANCE)
+            if os.environ.get("ROBO_TELEOP_JOYSTICK", "").lower() not in ("1", "true", "yes", "on"):
+                t = time.time()
+                if t - getattr(self, '_last_lidar_diag_log_time', 0) >= 0.5:
+                    self._last_lidar_diag_log_time = t
+                    d = self.lidar_reader.obstacle_distance()
+                    d_str = f"{d:.2f}m" if d != float("inf") else "livre"
+                    print(f"📡 LIDAR C1: distância frontal = {d_str} (parar se < {LIDAR_OBSTACLE_MIN_DISTANCE:.2f}m)", flush=True)
+                    logger.info("Lidar C1 diagnóstico: distância frontal = %s m (parar se < %.2f m)", d_str, LIDAR_OBSTACLE_MIN_DISTANCE)
 
         if self.lidar_reader and self.lidar_reader.has_obstacle():
             if _command_is_pivot_turn(left_tps, right_tps):
@@ -308,13 +318,14 @@ class RobotMotorController(QObject):
                 left_tps = 0.0
                 right_tps = 0.0
 
-        left_tps_corrected = left_tps * LEFT_MOTOR_CORRECTION_FACTOR
-        right_tps_corrected = right_tps * RIGHT_MOTOR_CORRECTION_FACTOR
+        lf, rf = _motor_trim_factors()
+        left_tps_corrected = left_tps * lf
+        right_tps_corrected = right_tps * rf
 
         logger.debug(
             "set_target_speed: L=%.1f→%.1f, R=%.1f→%.1f (fatores E=%.4f D=%.4f)",
             left_tps, left_tps_corrected, right_tps, right_tps_corrected,
-            LEFT_MOTOR_CORRECTION_FACTOR, RIGHT_MOTOR_CORRECTION_FACTOR
+            lf, rf
         )
 
         if not self.pid_enabled:
