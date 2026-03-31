@@ -28,6 +28,10 @@ LIDAR_C1_ENABLED = True  # True = tenta conectar C1 na Pi; False = desativa
 LIDAR_OBSTACLE_MIN_DISTANCE = 0.40  # Parar motores se obstáculo < 40 cm
                                     # Histórico: 60cm → 85cm (lixeira não detectada) → 40cm (20/03/2026:
                                     # corredor de 1.78m com robô 52cm — 40cm de margem frontal é seguro)
+# Com obstáculo frontal, ainda permitir giro no lugar (rodas opostas) para reorientar.
+# Sem isso, ~31 cm à frente zerava L e R e o robô não saía da orientação nem iniciava diagonal.
+LIDAR_ALLOW_PIVOT_WHEN_BLOCKED = True
+LIDAR_PIVOT_WHEEL_RATIO_MIN = 0.55  # min(|L|,|R|)/max(|L|,|R|) com sinais opostos
 # Backend do C1: "rplidarc1" ou "pyrplidarsdk" (SDK oficial SLAMTEC)
 # pyrplidarsdk testado como alternativa — rplidarc1 apresentou parada inconsistente (Mar 2026)
 # C1 exige baudrate 460800 (já configurado). Vide docs/INTEGRACAO_PYRPLIDARSDK_C1_MAR2026.md

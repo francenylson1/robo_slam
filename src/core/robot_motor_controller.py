@@ -14,7 +14,8 @@ from src.core.pid_controller import PIDController
 from src.core.config import (TICKS_PER_REVOLUTION, MANUAL_CONTROL_MAX_TPS,
                             PID_PROFILES, SAFETY_MAX_MOTOR_POWER_PERCENT,
                             SAFETY_POWER_MONITOR_INTERVAL, SAFETY_POWER_VIOLATION_TIMEOUT,
-                            LIDAR_C1_ENABLED, LIDAR_OBSTACLE_MIN_DISTANCE)
+                            LIDAR_C1_ENABLED, LIDAR_OBSTACLE_MIN_DISTANCE,
+                            LIDAR_ALLOW_PIVOT_WHEN_BLOCKED, LIDAR_PIVOT_WHEEL_RATIO_MIN)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,24 @@ RIGHT_MOTOR_CORRECTION_FACTOR = 0.9680000   # Calibração 20/03/2026 — histó
                                             #   R=0.965 → ainda direita (teste 20/03/2026)
                                             #   R=0.968 → próximo teste (20/03/2026)
                                             # Se ainda direita → R=0.970; se esquerda → R=0.966
+
+def _command_is_pivot_turn(left_tps: float, right_tps: float) -> bool:
+    """
+    True se o comando é essencialmente giro no lugar (rodas em sentidos opostos,
+    magnitudes parecidas). Não avança o centro do robô na direção frontal.
+    """
+    if not LIDAR_ALLOW_PIVOT_WHEN_BLOCKED:
+        return False
+    if left_tps == 0.0 and right_tps == 0.0:
+        return False
+    if left_tps * right_tps >= 0.0:
+        return False
+    ml, mr = abs(left_tps), abs(right_tps)
+    m = max(ml, mr)
+    if m < 1e-9:
+        return False
+    return (min(ml, mr) / m) >= LIDAR_PIVOT_WHEEL_RATIO_MIN
+
 
 if GPIO_AVAILABLE:
     try:
@@ -280,13 +299,19 @@ class RobotMotorController(QObject):
                 logger.info("Lidar C1 diagnóstico: distância frontal = %s m (parar se < %.2f m)", d_str, LIDAR_OBSTACLE_MIN_DISTANCE)
 
         if self.lidar_reader and self.lidar_reader.has_obstacle():
-            if left_tps != 0 or right_tps != 0:
-                print(f"🛑 LIDAR C1: OBSTÁCULO < {LIDAR_OBSTACLE_MIN_DISTANCE:.2f}m — PARANDO MOTORES!", flush=True)
-                logger.info("Lidar C1: obstáculo < %.2f m — parando motores.", LIDAR_OBSTACLE_MIN_DISTANCE)
-                self._last_obstacle_detected_at = time.time()
-                self.disable_pid_control()  # Parada imediata com freio (não esperar PID)
-            left_tps = 0.0
-            right_tps = 0.0
+            if _command_is_pivot_turn(left_tps, right_tps):
+                logger.debug(
+                    "Lidar C1: obstáculo próximo — mantendo comando de giro no lugar (L=%.1f R=%.1f).",
+                    left_tps, right_tps,
+                )
+            else:
+                if left_tps != 0 or right_tps != 0:
+                    print(f"🛑 LIDAR C1: OBSTÁCULO < {LIDAR_OBSTACLE_MIN_DISTANCE:.2f}m — PARANDO MOTORES!", flush=True)
+                    logger.info("Lidar C1: obstáculo < %.2f m — parando motores.", LIDAR_OBSTACLE_MIN_DISTANCE)
+                    self._last_obstacle_detected_at = time.time()
+                    self.disable_pid_control()  # Parada imediata com freio (não esperar PID)
+                left_tps = 0.0
+                right_tps = 0.0
 
         left_tps_corrected = left_tps * LEFT_MOTOR_CORRECTION_FACTOR
         right_tps_corrected = right_tps * RIGHT_MOTOR_CORRECTION_FACTOR
