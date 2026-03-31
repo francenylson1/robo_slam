@@ -240,11 +240,16 @@ def cmd_turn_bno(motors, delta_deg: float, get_bno_yaw,
         elapsed = time.time() - t0
         yaw_now = get_bno_yaw()
         if yaw_now is not None and elapsed >= DPAD_TURN_MIN_ACTIVE_S:
+            # get_yaw (quaternion) segue convenção habitual: yaw aumenta em CCW.
+            # delta_deg > 0 = giro à direita (CW) → yaw diminui → delta_done negativo.
+            # delta_deg < 0 = giro à esquerda (CCW) → yaw aumenta → delta_done positivo.
             delta_done = normalize_angle_deg(yaw_now - yaw_start)
-            if delta_deg > 0 and delta_done >= stop_at:
-                break
-            if delta_deg < 0 and delta_done <= -stop_at:
-                break
+            if delta_deg > 0.0:
+                if delta_done <= -stop_at:
+                    break
+            else:
+                if delta_done >= stop_at:
+                    break
 
         time.sleep(0.015)
 
