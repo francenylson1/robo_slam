@@ -70,14 +70,14 @@ html, body {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8vmin;
+  gap: 9.6vmin;
   margin-top: 8vmin;
   flex: 0 0 auto;
 }
 
 .eye {
-  width: 22vmin;
-  height: 26vmin;
+  width: 26.4vmin;
+  height: 31.2vmin;
   position: relative;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #ffffff 0%, var(--sclera) 55%, #c8d4e8 100%);
@@ -165,12 +165,12 @@ html, body {
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 28vmin;
+  min-height: 33.6vmin;
 }
 
 .mouth {
-  width: 38vmin;
-  height: 16vmin;
+  width: 45.6vmin;
+  height: 19.2vmin;
   position: relative;
 }
 
@@ -183,32 +183,22 @@ html, body {
 .mouth-path {
   fill: none;
   stroke: var(--mouth-stroke);
-  stroke-width: 1.4vmin;
+  stroke-width: 1.68vmin;
   stroke-linecap: round;
-  transition: d 0.35s ease;
+  transition: d 0.22s ease;
   filter: drop-shadow(0 0 1.2vmin rgba(255, 107, 157, 0.5));
 }
 
 .mouth-inner {
   fill: var(--mouth-fill);
   opacity: 0.55;
-  transition: d 0.35s ease;
+  transition: d 0.22s ease;
 }
 
-.face.talking .mouth-path,
-.face.talking .mouth-inner {
-  animation: mouth-jitter 0.25s ease-in-out infinite alternate;
-}
-
-@keyframes mouth-jitter {
-  from { transform: translateY(0); }
-  to { transform: translateY(0.25vmin); }
-}
+/* Fala: curvatura vem do morph do path em face.js (sem tremer a linha) */
 
 /* Acessibilidade: reduzir movimento */
 @media (prefers-reduced-motion: reduce) {
   .eye .pupil { transition: none; }
   .mouth-path, .mouth-inner { transition: none; }
-  .face.talking .mouth-path,
-  .face.talking .mouth-inner { animation: none; }
 }

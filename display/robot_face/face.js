@@ -1,6 +1,5 @@
 /**
- * Animação do rosto — olhos, piscar (um/b dois), boca, humor.
- * Canvas-free: DOM + SVG path para boca (d morphing).
+ * Animação do rosto — olhos, piscar (um/b dois), boca em arco (sorriso), fala.
  */
 (function () {
   "use strict";
@@ -13,7 +12,7 @@
   const mouthPath = document.getElementById("mouth-path");
   const mouthInner = document.getElementById("mouth-inner");
 
-  const maxOffset = 28; // % do raio aproximado — movimento da íris/pupila
+  const maxOffset = 28;
 
   let targetLX = 0,
     targetLY = 0,
@@ -24,38 +23,41 @@
     curRX = 0,
     curRY = 0;
 
-  function mouthDNeutral() {
-    return "M 20 45 Q 100 75 180 45";
+  /** Arco de sorriso: cantos em y, vértice da curva em dip (maior = sorriso mais “aberto”). */
+  function pathsSmile(cornerL, cornerR, y, dip) {
+    const d = `M ${cornerL} ${y} Q 100 ${dip} ${cornerR} ${y}`;
+    const inner = `M ${cornerL + 1} ${y + 0.5} Q 100 ${dip} ${cornerR - 1} ${y + 0.5} L ${cornerR - 1} ${y + 9} Q 100 ${dip + 8} ${cornerL + 1} ${y + 9} Z`;
+    return { d, inner };
   }
 
-  function mouthDSmile(amount) {
-    // amount 0..1
-    const dip = 35 + amount * 25;
-    return `M 25 40 Q 100 ${dip} 175 40`;
+  /** Baseline: sempre curvado (aspecto feliz), não linha reta. */
+  function mouthDRest() {
+    return pathsSmile(20, 180, 46, 78);
   }
 
+  /** Momento extra feliz (clique / humor). */
   function mouthDHappy() {
-    return "M 15 35 Q 100 95 185 35";
+    return pathsSmile(12, 188, 39, 96);
   }
 
-  function mouthDTalk(open) {
-    const y = 50 + open * 18;
-    return `M 35 ${y - 8} Q 100 ${y + 12} 165 ${y - 8}`;
+  /**
+   * Fala: curvatura maior que o repouso, depois volta ao rest com setMouth(mouthDRest).
+   * intensity 0..1 — quanto mais alto, mais “sorriso” acentuado (boca mais animada).
+   */
+  function mouthDTalk(intensity) {
+    const t = Math.min(1, Math.max(0, intensity));
+    const dip = 78 + t * 24;
+    const y = 46 - t * 5;
+    const cornerL = 18 - t * 3;
+    const cornerR = 182 + t * 3;
+    return pathsSmile(cornerL, cornerR, y, dip);
   }
 
-  function mouthInnerD(pathD) {
-    if (!mouthInner) return;
-    const closed = pathD.includes("Q 100 75");
-    if (closed) {
-      mouthInner.setAttribute("d", "M 25 42 Q 100 68 175 42 Z");
-    } else {
-      mouthInner.setAttribute("d", "");
+  function setMouthParts(parts) {
+    mouthPath.setAttribute("d", parts.d);
+    if (mouthInner) {
+      mouthInner.setAttribute("d", parts.inner);
     }
-  }
-
-  function setMouth(pathD) {
-    mouthPath.setAttribute("d", pathD);
-    mouthInnerD(pathD);
   }
 
   function setPupilTransform(el, x, y) {
@@ -128,11 +130,11 @@
 
   function enterHappy() {
     face.classList.add("happy");
-    setMouth(mouthDHappy());
+    setMouthParts(mouthDHappy());
     if (happyTimer) clearTimeout(happyTimer);
     happyTimer = setTimeout(() => {
       face.classList.remove("happy");
-      setMouth(mouthDSmile(0.4));
+      setMouthParts(mouthDRest());
     }, 4000 + Math.random() * 3000);
   }
 
@@ -151,19 +153,20 @@
     let n = 0;
     talkInterval = setInterval(() => {
       n++;
-      const open = (n % 2) * 0.7 + Math.random() * 0.3;
+      const phase = n % 2 === 0 ? 0.35 : 0.92;
+      const jitter = Math.random() * 0.08;
       if (!face.classList.contains("happy")) {
-        setMouth(mouthDTalk(open));
+        setMouthParts(mouthDTalk(phase + jitter));
       }
       if (n > 14) {
         clearInterval(talkInterval);
         talkInterval = null;
         face.classList.remove("talking");
         if (!face.classList.contains("happy")) {
-          setMouth(mouthDSmile(0.35));
+          setMouthParts(mouthDRest());
         }
       }
-    }, 180);
+    }, 200);
   }
 
   function scheduleTalk() {
@@ -175,7 +178,7 @@
   }
 
   randomEyeTargets();
-  setMouth(mouthDSmile(0.35));
+  setMouthParts(mouthDRest());
   tick();
   scheduleSaccade();
   scheduleBlink();
