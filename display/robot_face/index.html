@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Rosto do robô</title>
+  <link rel="stylesheet" href="face.css" />
+</head>
+<body>
+  <div class="stage">
+    <div id="face" class="face">
+      <span class="cheek left" aria-hidden="true"></span>
+      <span class="cheek right" aria-hidden="true"></span>
+
+      <div class="eyes-row">
+        <div id="eye-left" class="eye" role="img" aria-label="Olho esquerdo">
+          <div class="iris">
+            <div class="pupil"></div>
+            <div class="shine"></div>
+          </div>
+          <div class="eyelid"></div>
+        </div>
+        <div id="eye-right" class="eye" role="img" aria-label="Olho direito">
+          <div class="iris">
+            <div class="pupil"></div>
+            <div class="shine"></div>
+          </div>
+          <div class="eyelid"></div>
+        </div>
+      </div>
+
+      <div class="mouth-zone">
+        <div class="mouth">
+          <svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path id="mouth-inner" class="mouth-inner" d="" />
+            <path id="mouth-path" class="mouth-path" d="M 20 45 Q 100 75 180 45" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="face.js"></script>
+</body>
+</html>

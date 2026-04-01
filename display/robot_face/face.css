@@ -1,0 +1,214 @@
+/* Robô — rosto 7" (landscape); escalável com vmin */
+:root {
+  --bg1: #1a0a2e;
+  --bg2: #2d1b4e;
+  --bg3: #16213e;
+  --cheek: rgba(255, 120, 180, 0.35);
+  --sclera: #f0f4ff;
+  --iris1: #4ecdc4;
+  --iris2: #44a08d;
+  --pupil: #0d1b1a;
+  --mouth-stroke: #ff6b9d;
+  --mouth-fill: #ff8fab;
+  --eyelid: #2d1b4e;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: system-ui, "Segoe UI", sans-serif;
+  background: linear-gradient(145deg, var(--bg1) 0%, var(--bg2) 45%, var(--bg3) 100%);
+}
+
+.stage {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3vmin;
+}
+
+.face {
+  width: min(96vw, 160vmin);
+  height: min(88vh, 90vmin);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
+
+.cheek {
+  position: absolute;
+  width: 18vmin;
+  height: 10vmin;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, var(--cheek) 0%, transparent 70%);
+  top: 42%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.cheek.left { left: 4%; }
+.cheek.right { right: 4%; }
+
+.face.happy .cheek {
+  opacity: 1;
+}
+
+.eyes-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8vmin;
+  margin-top: 8vmin;
+  flex: 0 0 auto;
+}
+
+.eye {
+  width: 22vmin;
+  height: 26vmin;
+  position: relative;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, var(--sclera) 55%, #c8d4e8 100%);
+  box-shadow:
+    inset 0 -0.8vmin 2vmin rgba(0, 0, 40, 0.15),
+    0 1.2vmin 3vmin rgba(0, 0, 0, 0.35),
+    0 0 0 0.4vmin rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.eye .iris {
+  position: absolute;
+  width: 58%;
+  height: 62%;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 38%, var(--iris1) 0%, var(--iris2) 55%, #1a5c52 100%);
+  box-shadow: inset 0 -0.3vmin 0.8vmin rgba(0, 0, 0, 0.25);
+}
+
+.eye .pupil {
+  position: absolute;
+  width: 42%;
+  height: 44%;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, #2a2a2a 0%, var(--pupil) 100%);
+  transition: transform 0.08s linear;
+}
+
+.eye .shine {
+  position: absolute;
+  width: 22%;
+  height: 22%;
+  left: 28%;
+  top: 22%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+}
+
+.eyelid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--eyelid) 0%, #1a0a2e 100%);
+  transform-origin: center top;
+  transform: scaleY(0);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.eye.blinking:not(.open) .eyelid {
+  animation: blink-shut 0.14s ease-in forwards;
+}
+
+.eye.blinking.open .eyelid {
+  animation: blink-open 0.22s ease-out forwards;
+}
+
+@keyframes blink-shut {
+  to { transform: scaleY(1); }
+}
+
+@keyframes blink-open {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(0); }
+}
+
+.face.happy .eye {
+  transform: scaleY(0.88);
+  transition: transform 0.5s ease;
+}
+
+.mouth-zone {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 28vmin;
+}
+
+.mouth {
+  width: 38vmin;
+  height: 16vmin;
+  position: relative;
+}
+
+.mouth svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.mouth-path {
+  fill: none;
+  stroke: var(--mouth-stroke);
+  stroke-width: 1.4vmin;
+  stroke-linecap: round;
+  transition: d 0.35s ease;
+  filter: drop-shadow(0 0 1.2vmin rgba(255, 107, 157, 0.5));
+}
+
+.mouth-inner {
+  fill: var(--mouth-fill);
+  opacity: 0.55;
+  transition: d 0.35s ease;
+}
+
+.face.talking .mouth-path,
+.face.talking .mouth-inner {
+  animation: mouth-jitter 0.25s ease-in-out infinite alternate;
+}
+
+@keyframes mouth-jitter {
+  from { transform: translateY(0); }
+  to { transform: translateY(0.25vmin); }
+}
+
+/* Acessibilidade: reduzir movimento */
+@media (prefers-reduced-motion: reduce) {
+  .eye .pupil { transition: none; }
+  .mouth-path, .mouth-inner { transition: none; }
+  .face.talking .mouth-path,
+  .face.talking .mouth-inner { animation: none; }
+}

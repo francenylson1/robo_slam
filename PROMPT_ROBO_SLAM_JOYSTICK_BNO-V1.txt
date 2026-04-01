@@ -1,105 +1,159 @@
 ================================================================================
 PROMPT_ROBO_SLAM_JOYSTICK_BNO-V1 — Desenvolvimento semi-autônomo (Joystick + BNO)
+Última revisão do documento: 27/03/2026 (contexto pós-implementações Mar/2026)
 ================================================================================
-Use este texto no início de um chat dedicado à TRACK 1. Branch Git associada:
-  robo_slam_2026_joystick_bno-V1
+Use este texto no início de um chat dedicado à TRACK 1 (teleop + BNO).
+
+Branch Git de trabalho recente (confirmar com `git branch` na máquina):
+  feature/scan-matching-pgm
+(Referência histórica: robo_slam_2026_joystick_bno-V1 — pode divergir.)
 
 --------------------------------------------------------------------------------
 FLUXO DE DESENVOLVIMENTO (obrigatório manter alinhado)
 --------------------------------------------------------------------------------
-1) Desenvolvimento no desktop (Linux) — edição, testes sem hardware ou simulação.
-2) Atualização no Git — commit/push na branch da track; mensagens claras em PT-BR.
-3) Atualização na Raspberry Pi — git pull da mesma branch; venv; teste físico
-   (joystick, BNO, motores, C1 se necessário). A Pi é o hardware de validação real.
+1) Desktop (Linux) — edição, revisão de código, py_compile onde aplicável.
+2) Git — commit/push na branch ativa; mensagens claras em PT-BR.
+3) Raspberry Pi — git pull da mesma branch; venv; teste físico (joystick, BNO,
+   motores). C1/Lidar: ver secção "C1 e --no-lidar" abaixo (crítico para segurança).
 
 --------------------------------------------------------------------------------
 OBJETIVO DESTA VERSÃO
 --------------------------------------------------------------------------------
 Navegação SEMI-AUTOMÁTICA: operador com joystick; o robô usa BNO08x para manter
-linha reta ao comando “frente”, compensando deriva mecânica (motores, rodas,
-piso liso, desgaste). Não confundir com navegação autônoma até POIs (track 2).
+linha reta em frente/ré (eixo Y), compensando deriva mecânica. Não confundir
+com navegação autônoma até POIs (track 2).
 
-Requisitos funcionais alinhados ao produto:
-- Frente/ré proporcional (analógico); em modo “reto” (eixo lateral pequeno),
-  BNO corrige yaw para trajetória retilínea.
-- Curvas: mecanismo de graus por clique (ex.: D-pad / botões); atalho para
-  giro de ~180° (menos cliques, mais previsível).
-- Conflito histórico BNO × odometria na navegação AUTÔNOMA levou a USE_BNO_IN_
-  NAVIGATION=False na track autônoma. AQUI, no modo joystick, o BNO é o eixo
-  de correção em reta — sem fundir BNO na pose global do navegador POI.
+Requisitos funcionais:
+- Frente/ré proporcional (analógico); eixo X ignorado em frente/ré; BNO corrige
+  yaw (referência ao entrar na zona de movimento).
+- Giros: D-pad = graus por clique; botão de giro 180° (mapeável por perfil).
+- Conflito BNO × odometria na navegação AUTÔNOMA: USE_BNO_IN_NAVIGATION=False na
+  track autônoma. No joystick, BNO só entra na reta e nos giros medidos — sem
+  fusão na pose global do navegador POI.
 
-FASE POSTERIOR (só depois de semi-automático estável — não misturar no escopo atual):
-- Voz operador ↔ público (microfone remoto); webcam; avatar olhos/boca no display 7".
-
---------------------------------------------------------------------------------
-O QUE JÁ EXISTE NO REPOSITÓRIO (baseline)
---------------------------------------------------------------------------------
-- joystick_controller_2026.py — teleop iPega PG-9076 com correção BNO em reta;
-  flags --no-bno, --identify, --tps; D-pad com graus por clique (DPAD_TURN_DEG).
-- src/main.py — inicia só a MainWindow PyQt5 (modo “aplicativo garçom”); não há
-  ainda seletor “joystick vs autônomo” na entrada.
-- src/core/config.py — BNO_STRAIGHT_*, TURN_TPS_DEFAULT, BNO08X_*; navegação
-  autônoma com USE_BNO_IN_NAVIGATION=False por decisão de estabilidade.
-- src/core/robot_motor_controller.py — PWM/TPS, fatores L/R, integração C1,
-  RIGHT_MOTOR_CORRECTION_FACTOR (calibração mecânica em reta).
-- Documentação útil: docs/REVISAO_BNO_LINHA_RETA.md, docs/NAVEGACAO_ODOMETRIA_
-  VS_IMU_BNO.md, docs/SINCRONIZACAO_DESKTOP_GIT_RASPBERRY.md
+FASE POSTERIOR (fora do escopo atual):
+- Voz operador ↔ público; webcam; avatar no display 7".
 
 --------------------------------------------------------------------------------
-O QUE ESTÁ PENDENTE (TRACK 1)
+O QUE FOI IMPLEMENTADO APÓS A CRIAÇÃO DESTE PROMPT (baseline → estado atual)
 --------------------------------------------------------------------------------
-- Integrar teleop na mesma “porta de entrada” que o app principal (ver seção
-  “Launcher” abaixo) sem quebrar o modo autônomo existente.
-- Refinar curvas: graus/clique configuráveis; botão ou combinação para 180°.
-- Garantir transição limpa BNO “referência de reta” vs giro intencional (já
-  esboçado no joystick_controller; validar em piso real).
-- Testes Pi: latência do loop (LOOP_HZ), deadzone, segurança PARAR (C1 opcional
-  em teleop — definir se teleop também respeita LIDAR_OBSTACLE_MIN_DISTANCE).
+Teleop e joystick (joystick_controller_2026.py):
+- --preset shanwan e ficheiro joystick_profile_shanwan_android.json (eixos,
+  botões, hat). Perfil pode definir "turn_180" com índice pygame distinto de "y"
+  (em muitos gamepads Android o índice 3 corresponde ao X físico, não ao Y).
+- --no-lidar: define ROBO_TELEOP_DISABLE_LIDAR=1; o RobotMotorController NÃO
+  inicia LidarC1Reader no teleop (evita bloqueio/USB e atraso no arranque).
+- --no-bno: desliga correção de reta e get_yaw para giros; giros D-pad/180° usam
+  malha aberta com --turn-open-loop-dps (graus/s estimados).
+- Correção BNO em reta: --kp, --max-corr, --invert-bno / --no-invert-bno.
+- Giro preciso (cmd_turn_bno): parada por ângulo com integração incremental do
+  yaw (evita wrap 360° e giros longos ~720°); timeout de giro 180° reduzido
+  (TURN_180_TIMEOUT_S ≈ 8 s). cmd_turn escolhe BNO ou malha aberta.
+- ROBO_TELEOP_NO_MOTOR_TRIM por defeito no teleop; --use-motor-trim para fatores
+  L/R do autónomo.
+- Documentação de ajuda no banner: índice do botão 180°, modo Lidar, etc.
+
+Motores (src/core/robot_motor_controller.py):
+- Com ROBO_TELEOP_JOYSTICK=1: perfil PID "teleop" (config.py) — ganhos mais
+  suaves que "normal"; menos oscilação com setpoint a ~50 Hz.
+- ROBO_TELEOP_MAX_TPS_STEP (padrão 6 TPS): rampa do setpoint por chamada; reduz
+  solavancos (ajustável por env sem recompilar).
+- Parada por Lidar C1 só em avanço frontal (ambas as rodas com TPS > 0); ré não
+  é zerada pelo cone frontal do sensor (evita solavancos falsos em marcha atrás).
+- Fatores LEFT_MOTOR_CORRECTION_FACTOR / RIGHT_MOTOR_CORRECTION_FACTOR: calibração
+  de deriva média; não substituem PID/encoder para solavancos rápidos.
+
+Config (src/core/config.py):
+- PID_PROFILES inclui chave 'teleop' dedicada ao joystick.
+
+BNO (tools/bno08x_init.py):
+- Patches para relatório 0x7B e _process_report seguro; instância com _debug
+  desligado; redução de spam DBG no terminal (I/O que atrasava o loop).
+
+Lidar C1 (src/core/lidar_c1_reader.py):
+- Timeout no primeiro scan para não ficar indefinidamente sem dados; mensagens
+  tipo "Failed to grab scan data" indicam USB/SDK/hardware.
 
 --------------------------------------------------------------------------------
-SUGESTÃO DE LAUNCHER (main / UX) — alinhar implementação nesta branch
+COMPORTAMENTO OPERACIONAL CRÍTICO (Raspberry Pi)
+--------------------------------------------------------------------------------
+- Arranque SEM --no-lidar pode demorar muito (dezenas de segundos) se o C1/SDK
+  bloquear — o joystick não responde a tempo → risco de acidente. Para condução
+  imediata, usar explicitamente:
+    python joystick_controller_2026.py --preset shanwan --no-lidar
+  Melhoria futura desejada: inicialização do Lidar não bloqueante ou falha rápida,
+  mantendo o ganho do PID teleop + rampa.
+
+- Com --no-lidar não há parada automática por obstáculo frontal; operador
+  responsável pela segurança.
+
+--------------------------------------------------------------------------------
+VARIÁVEIS DE AMBIENTE RELEVANTES
+--------------------------------------------------------------------------------
+ROBO_TELEOP_JOYSTICK=1          — definido pelo joystick_controller (ativa PID teleop)
+ROBO_TELEOP_DISABLE_LIDAR=1     — com --no-lidar
+ROBO_TELEOP_NO_MOTOR_TRIM=1     — por defeito no teleop (sem --use-motor-trim)
+ROBO_TELEOP_MAX_TPS_STEP        — rampa TPS (ex.: export ROBO_TELEOP_MAX_TPS_STEP=4)
+ROBOT_MOTOR_QUIET=1             — reduz log dos motores
+
+--------------------------------------------------------------------------------
+VARIÁVEIS / CONFIG (config.py e joystick)
+--------------------------------------------------------------------------------
+BNO_STRAIGHT_KP, BNO_STRAIGHT_MAX_CORRECTION_TPS, BNO_STRAIGHT_INVERT_CORRECTION
+BNO_FIRST_READ_TIMEOUT, TURN_TPS_DEFAULT
+BNO08X_I2C_ADDRESS, BNO08X_GPIO_RST
+DEADZONE, Y_MOVE_MIN, Y_NEUTRAL_MAX, LOOP_HZ (50)
+DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG, DPAD_TURN_TIMEOUT_S, TURN_180_TIMEOUT_S
+OPEN_LOOP_TURN_DPS_DEFAULT / --turn-open-loop-dps
+PID_PROFILES incl. 'teleop', 'normal', 'slow', 'fast'
+LIDAR_C1_ENABLED, LIDAR_OBSTACLE_MIN_DISTANCE
+
+--------------------------------------------------------------------------------
+ARQUIVOS CENTRAIS PARA CONTINUIDADE
+--------------------------------------------------------------------------------
+joystick_controller_2026.py
+joystick_profile_shanwan_android.json
+tools/bno08x_init.py
+src/core/robot_motor_controller.py
+src/core/config.py
+src/core/lidar_c1_reader.py
+src/core/pid_controller.py
+docs/SINCRONIZACAO_DESKTOP_GIT_RASPBERRY.md (atualizar se fluxo mudar)
+
+Documentação útil (se existirem no repo):
+docs/REVISAO_BNO_LINHA_RETA.md, docs/NAVEGACAO_ODOMETRIA_VS_IMU_BNO.md
+
+--------------------------------------------------------------------------------
+O QUE AINDA PODE SER TRACK 1 (pendente ou melhorias)
+--------------------------------------------------------------------------------
+- Launcher unificado (src/main.py --mode joystick vs autônomo) — ver secção
+  original abaixo; ainda não obrigatório para teleop standalone.
+- Arranque com Lidar sem travar o processo principal (thread / timeout agressivo
+  / skip se USB falhar).
+- Refinos: filtro na velocidade medida (Hall), ou afinação fina só de teleop
+  sem regredir solavancos.
+- Força de giro (DPAD_TURN_TPS) pode subir só para giros, sem alterar rampa da
+  marcha — testar incrementalmente.
+
+--------------------------------------------------------------------------------
+SUGESTÃO DE LAUNCHER (main / UX) — referência de produto (inalterada em espírito)
 --------------------------------------------------------------------------------
 Objetivo: um único comando na Pi e no desktop, com escolha explícita de modo.
 
-Opção A (recomendada): argumentos de linha de comando + espelho na GUI
-  python src/main.py --mode autonomous   # comportamento atual (mapa/POIs)
-  python src/main.py --mode joystick     # UI ou painel mínimo + teleop BNO
-  Sem flag: exibir diálogo inicial (PyQt) “1) Autônomo  2) Joystick” e então
-  fluxo de mapa/arquivo se aplicável ao modo autônomo; joystick pode reutilizar
-  o mesmo PGM só para visualização ou tela reduzida.
+Opção A: argumentos de linha de comando + espelho na GUI
+  python src/main.py --mode autonomous
+  python src/main.py --mode joystick
 
-Opção B: dois executáveis finos que chamam módulos compartilhados (mais manutenção).
+Opção B: dois executáveis finos.
 
-Regra de produto: mesmo com autonomia madura, o robô DEVE continuar oferecendo
-modo semi-autônomo com joystick.
+Regra: mesmo com autonomia madura, modo semi-autônomo com joystick deve existir.
 
 --------------------------------------------------------------------------------
-VARIÁVEIS / CONFIG RELEVANTES (config.py e joystick_controller_2026.py)
---------------------------------------------------------------------------------
-- BNO_STRAIGHT_KP, BNO_STRAIGHT_MAX_CORRECTION_TPS, BNO_STRAIGHT_INVERT_CORRECTION
-- BNO_FIRST_READ_TIMEOUT, TURN_TPS_DEFAULT
-- BNO08X_I2C_ADDRESS, BNO08X_GPIO_RST, BNO08X_GPIO_INT
-- DEADZONE, STRAIGHT_THRESHOLD_X, TPS_DEFAULT/MIN/MAX, LOOP_HZ
-- DPAD_TURN_DEG, DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG, DPAD_TURN_TIMEOUT_S
-- MANUAL_CONTROL_MAX_TPS, SPEED_*_TPS, PID_PROFILES (se teleop usar PID)
-- LIDAR_C1_ENABLED, LIDAR_OBSTACLE_MIN_DISTANCE (decisão de política em teleop)
-
---------------------------------------------------------------------------------
-ARQUIVOS PARA TOCAR COM FREQUÊNCIA (TRACK 1)
---------------------------------------------------------------------------------
-joystick_controller_2026.py
-src/main.py
-src/interfaces/main_window.py (ou novo widget/painel joystick)
-src/core/robot_motor_controller.py
-src/core/config.py
-docs/SINCRONIZACAO_DESKTOP_GIT_RASPBERRY.md (atualizar se fluxo mudar)
-
---------------------------------------------------------------------------------
-O QUE NÃO É ESCOPO DESTE CHAT (delegar ao PROMPT_AUTONOMO-V2)
+O QUE NÃO É ESCOPO DESTE CHAT (delegar ao PROMPT_AUTONOMO / scan matching)
 --------------------------------------------------------------------------------
 Scan matching POI, LidarPoseCorrector thresholds, watchdog POI, fusão BNO na
-pose do RobotNavigator para garçom autônomo.
+pose global do RobotNavigator para garçom autônomo.
 
 ================================================================================
-Prompt criado em: 27/03/2026
+Prompt criado em: 27/03/2026  |  Documento de contexto atualizado: 27/03/2026
 ================================================================================
