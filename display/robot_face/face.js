@@ -189,4 +189,32 @@
     enterHappy();
     burstTalk();
   });
+
+  function startTeleopFooterPoll() {
+    const bar = document.getElementById("face-footer");
+    if (!bar) {
+      return;
+    }
+    async function poll() {
+      try {
+        const r = await fetch("/api/teleop_status", { cache: "no-store" });
+        const j = await r.json();
+        if (j.footer_active) {
+          bar.textContent = "Estado: \"[A] Motores ARMADOS\"";
+          bar.classList.add("visible");
+        } else {
+          bar.textContent = "";
+          bar.classList.remove("visible");
+        }
+      } catch (_e) {
+        /* file:// ou servidor inativo */
+      }
+    }
+    poll();
+    setInterval(poll, 200);
+  }
+
+  if (new URLSearchParams(location.search).get("teleop") === "1") {
+    startTeleopFooterPoll();
+  }
 })();

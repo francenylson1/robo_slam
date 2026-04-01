@@ -1,7 +1,6 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QMessageBox
-from PyQt5.QtCore import QCoreApplication
+from PyQt5.QtWidgets import QApplication, QDialog
 
 # Adiciona o diretório raiz ao PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -36,12 +35,19 @@ if __name__ == '__main__':
     # Inicializa o Qt
     app = init_qt()
     
-    # Importa a janela principal após inicializar o Qt
+    from src.interfaces.mode_selection_dialog import AppMode, ModeSelectionDialog
     from src.interfaces.main_window import MainWindow
-    
-    # Cria e mostra a janela principal
+    from src.core.semi_teleop_runner import run_semi_teleop_session
+
+    dlg = ModeSelectionDialog()
+    if dlg.exec_() != QDialog.Accepted:
+        sys.exit(0)
+    mode = dlg.selected_mode()
+    if mode is None:
+        sys.exit(0)
+    if mode == AppMode.SEMI_TELEOP:
+        sys.exit(run_semi_teleop_session())
+
     window = MainWindow()
     window.show()
-    
-    # Executa o loop principal
     sys.exit(app.exec_())

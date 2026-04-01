@@ -406,6 +406,40 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         print("  Estado: MOTORES DESARMADOS — pressione SELECT para armar (segurança)")
     print("=" * 60)
 
+    status_file = (os.environ.get("ROBO_TELEOP_FACE_STATUS_FILE") or "").strip()
+    footer_deadline = 0.0
+    prev_armed_footer = motors_armed
+    prev_kbd_a = False
+
+    def _emit_face_status(prev_a_snap: bool) -> None:
+        """Atualiza JSON para o rosto HTML (rodapé 3 s após armar ou tecla/botão A)."""
+        nonlocal prev_armed_footer, prev_kbd_a, footer_deadline
+        if not status_file:
+            return
+        import pygame
+
+        now_m = time.monotonic()
+        armed_edge = motors_armed and not prev_armed_footer
+        a_edge = arm_with_a and (btn_a and not prev_a_snap)
+        try:
+            kbd_a = bool(pygame.key.get_pressed()[pygame.K_a])
+        except Exception:
+            kbd_a = False
+        kbd_edge = kbd_a and not prev_kbd_a
+        if armed_edge or a_edge or kbd_edge:
+            footer_deadline = now_m + 3.0
+        footer_active = now_m < footer_deadline
+        prev_armed_footer = motors_armed
+        prev_kbd_a = kbd_a
+        try:
+            with open(status_file, "w", encoding="utf-8") as sf:
+                json.dump(
+                    {"footer_active": footer_active, "motors_armed": motors_armed},
+                    sf,
+                )
+        except OSError:
+            pass
+
     while running:
         t0 = time.time()
 
@@ -433,6 +467,7 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         btn_select = joystick.get_button(bmap["select"])
         btn_start  = joystick.get_button(bmap["start"])
         now_mono  = time.monotonic()
+        prev_a_snapshot = prev_a
 
         def _toggle_arm(source: str) -> None:
             nonlocal motors_armed, last_select_toggle_t, yaw_ref
@@ -448,174 +483,177 @@ def run_control_loop(joystick, motors, get_bno_yaw, use_bno: bool,
         if btn_select and not prev_select:
             _toggle_arm("SELECT")
         prev_select = btn_select
-        if arm_with_a and (btn_a and not prev_a):
+        if arm_with_a and (btn_a and not prev_a_snapshot):
             _toggle_arm("A")
         prev_a = btn_a
 
-        if debug_axes and (now_mono - last_debug_axes_t) >= 1.0:
-            last_debug_axes_t = now_mono
-            nax = joystick.get_numaxes()
-            parts = [f"a{i}={joystick.get_axis(i):+.2f}" for i in range(nax)]
-            print("  [debug] " + " ".join(parts))
-            print(
-                f"  [debug] stick usa índices ({stick_x_idx},{stick_y_idx}) "
-                f"raw=({raw_x:+.2f},{raw_y:+.2f}) dz=({axis_x:+.2f},{axis_y:+.2f}) "
-                f"|y|={abs(axis_y):.2f} "
-                f"zona={'mov' if abs(axis_y) >= y_move_min else ('neut' if abs(axis_y) <= y_neutral_max else 'morta')} "
-                f"armed={motors_armed}"
-            )
-
-        # ── Sair (sempre) ─────────────────────────────────────────────────
-        if btn_start:
-            print("  Start pressionado → saindo.")
-            running = False
-            break
-
-        # ── Parar emergência (sempre) ─────────────────────────────────────
-        if btn_b:
-            motors.stop_motors()
-            yaw_ref = None
-            if prev_mode != "stop":
-                print("  [B] PARADO")
-                prev_mode = "stop"
-            time.sleep(loop_dt)
-            continue
-
-        # ── L1/R1: TPS mesmo desarmado (ajuste antes de armar) ────────────
-        if (btn_l1 and not prev_l1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
-            speed_tps = max(TPS_MIN, speed_tps - TPS_STEP)
-            last_l1r1_t = now_mono
-            print(f"  Velocidade base: {speed_tps:.0f} TPS (L1 -)")
-        if (btn_r1 and not prev_r1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
-            speed_tps = min(TPS_MAX, speed_tps + TPS_STEP)
-            last_l1r1_t = now_mono
-            print(f"  Velocidade base: {speed_tps:.0f} TPS (R1 +)")
-        prev_l1 = btn_l1
-        prev_r1 = btn_r1
-
-        # Sem armar: não aceita D-pad, Y nem analógico (só drift/ruído)
-        if not motors_armed:
-            motors.stop_motors()
-            yaw_ref = None
-            if prev_mode != "stop":
-                prev_mode = "stop"
-            elapsed = time.time() - t0
-            time.sleep(max(0.0, loop_dt - elapsed))
-            continue
-
-        # ── D-pad: giro fixo por clique (BNO) ─────────────────────────────
         try:
-            hat = joystick.get_hat(hat_id)
-        except Exception:
-            hat = (0, 0)
+            if debug_axes and (now_mono - last_debug_axes_t) >= 1.0:
+                last_debug_axes_t = now_mono
+                nax = joystick.get_numaxes()
+                parts = [f"a{i}={joystick.get_axis(i):+.2f}" for i in range(nax)]
+                print("  [debug] " + " ".join(parts))
+                print(
+                    f"  [debug] stick usa índices ({stick_x_idx},{stick_y_idx}) "
+                    f"raw=({raw_x:+.2f},{raw_y:+.2f}) dz=({axis_x:+.2f},{axis_y:+.2f}) "
+                    f"|y|={abs(axis_y):.2f} "
+                    f"zona={'mov' if abs(axis_y) >= y_move_min else ('neut' if abs(axis_y) <= y_neutral_max else 'morta')} "
+                    f"armed={motors_armed}"
+                )
 
-        if hat != prev_hat:
-            dpad_x = hat[0]
-            if dpad_x == -1 and prev_hat[0] != -1:
+            # ── Sair (sempre) ─────────────────────────────────────────────────
+            if btn_start:
+                print("  Start pressionado → saindo.")
+                running = False
+                break
+
+            # ── Parar emergência (sempre) ─────────────────────────────────────
+            if btn_b:
                 motors.stop_motors()
                 yaw_ref = None
+                if prev_mode != "stop":
+                    print("  [B] PARADO")
+                    prev_mode = "stop"
+                time.sleep(loop_dt)
+                continue
+
+            # ── L1/R1: TPS mesmo desarmado (ajuste antes de armar) ────────────
+            if (btn_l1 and not prev_l1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
+                speed_tps = max(TPS_MIN, speed_tps - TPS_STEP)
+                last_l1r1_t = now_mono
+                print(f"  Velocidade base: {speed_tps:.0f} TPS (L1 -)")
+            if (btn_r1 and not prev_r1 and (now_mono - last_l1r1_t) >= L1_R1_DEBOUNCE_S):
+                speed_tps = min(TPS_MAX, speed_tps + TPS_STEP)
+                last_l1r1_t = now_mono
+                print(f"  Velocidade base: {speed_tps:.0f} TPS (R1 +)")
+            prev_l1 = btn_l1
+            prev_r1 = btn_r1
+
+            # Sem armar: não aceita D-pad, Y nem analógico (só drift/ruído)
+            if not motors_armed:
+                motors.stop_motors()
+                yaw_ref = None
+                if prev_mode != "stop":
+                    prev_mode = "stop"
+                elapsed = time.time() - t0
+                time.sleep(max(0.0, loop_dt - elapsed))
+                continue
+
+            # ── D-pad: giro fixo por clique (BNO) ─────────────────────────────
+            try:
+                hat = joystick.get_hat(hat_id)
+            except Exception:
+                hat = (0, 0)
+
+            if hat != prev_hat:
+                dpad_x = hat[0]
+                if dpad_x == -1 and prev_hat[0] != -1:
+                    motors.stop_motors()
+                    yaw_ref = None
+                    cmd_turn(
+                        motors, -dpad_step_deg,
+                        get_bno_yaw if use_bno else None,
+                        open_loop_dps,
+                        DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
+                        DPAD_TURN_TIMEOUT_S, qt_app,
+                    )
+                elif dpad_x == 1 and prev_hat[0] != 1:
+                    motors.stop_motors()
+                    yaw_ref = None
+                    cmd_turn(
+                        motors, +dpad_step_deg,
+                        get_bno_yaw if use_bno else None,
+                        open_loop_dps,
+                        DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
+                        DPAD_TURN_TIMEOUT_S, qt_app,
+                    )
+                prev_hat = hat
+
+            # ── Botão turn_180 (perfil; por defeito = Y): 180° (borda de subida + debounce) ──
+            if btn_turn_180 and not prev_turn_180 and (now_mono - last_y_t) >= BTN_Y_DEBOUNCE_S:
+                motors.stop_motors()
+                yaw_ref = None
+                last_y_t = now_mono
+                print("  [Giro 180°] botão índice {}".format(bmap.get("turn_180", bmap["y"])))
                 cmd_turn(
-                    motors, -dpad_step_deg,
+                    motors, 180.0,
                     get_bno_yaw if use_bno else None,
                     open_loop_dps,
                     DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
-                    DPAD_TURN_TIMEOUT_S, qt_app,
+                    TURN_180_TIMEOUT_S, qt_app,
                 )
-            elif dpad_x == 1 and prev_hat[0] != 1:
-                motors.stop_motors()
-                yaw_ref = None
-                cmd_turn(
-                    motors, +dpad_step_deg,
-                    get_bno_yaw if use_bno else None,
-                    open_loop_dps,
-                    DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
-                    DPAD_TURN_TIMEOUT_S, qt_app,
-                )
-            prev_hat = hat
+            prev_turn_180 = btn_turn_180
 
-        # ── Botão turn_180 (perfil; por defeito = Y): 180° (borda de subida + debounce) ──
-        if btn_turn_180 and not prev_turn_180 and (now_mono - last_y_t) >= BTN_Y_DEBOUNCE_S:
-            motors.stop_motors()
-            yaw_ref = None
-            last_y_t = now_mono
-            print("  [Giro 180°] botão índice {}".format(bmap.get("turn_180", bmap["y"])))
-            cmd_turn(
-                motors, 180.0,
-                get_bno_yaw if use_bno else None,
-                open_loop_dps,
-                DPAD_TURN_TPS, DPAD_TURN_THRESHOLD_DEG,
-                TURN_180_TIMEOUT_S, qt_app,
-            )
-        prev_turn_180 = btn_turn_180
+            # ── Analógico: histerese em Y (evita “frente” só com drift do stick)
+            abs_y = abs(axis_y)
+            abs_x = abs(axis_x)
+            if abs_y <= y_neutral_max:
+                y_zone = "neutral"
+            elif abs_y >= y_move_min:
+                y_zone = "move"
+            else:
+                y_zone = "dead"
+            y_command = y_zone == "move"
+            y_neutral = y_zone == "neutral"
+            x_spin    = y_neutral and (abs_x >= SPIN_MIN_ABS_X)
 
-        # ── Analógico: histerese em Y (evita “frente” só com drift do stick)
-        abs_y = abs(axis_y)
-        abs_x = abs(axis_x)
-        if abs_y <= y_neutral_max:
-            y_zone = "neutral"
-        elif abs_y >= y_move_min:
-            y_zone = "move"
-        else:
-            y_zone = "dead"
-        y_command = y_zone == "move"
-        y_neutral = y_zone == "neutral"
-        x_spin    = y_neutral and (abs_x >= SPIN_MIN_ABS_X)
+            if y_command:
+                # Frente ou ré: sempre reta; eixo X não altera L/R (só BNO)
+                base_tps = -axis_y * speed_tps
+                if use_bno and get_bno_yaw:
+                    yaw_now = get_bno_yaw()
+                    if yaw_now is not None:
+                        if yaw_ref is None:
+                            yaw_ref = yaw_now
+                            tag = "FRENTE" if base_tps > 0 else "RÉ"
+                            print(f"  BNO ref={yaw_ref:.1f}° ({tag}, X ignorado)")
 
-        if y_command:
-            # Frente ou ré: sempre reta; eixo X não altera L/R (só BNO)
-            base_tps = -axis_y * speed_tps
-            if use_bno and get_bno_yaw:
-                yaw_now = get_bno_yaw()
-                if yaw_now is not None:
-                    if yaw_ref is None:
-                        yaw_ref = yaw_now
-                        tag = "FRENTE" if base_tps > 0 else "RÉ"
-                        print(f"  BNO ref={yaw_ref:.1f}° ({tag}, X ignorado)")
-
-                    err = normalize_angle_deg(yaw_now - yaw_ref)
-                    if invert_bno:
-                        err = -err
-                    corr = max(-max_corr, min(max_corr, kp * err))
-                    left_tps  = base_tps - corr
-                    right_tps = base_tps + corr
+                        err = normalize_angle_deg(yaw_now - yaw_ref)
+                        if invert_bno:
+                            err = -err
+                        corr = max(-max_corr, min(max_corr, kp * err))
+                        left_tps  = base_tps - corr
+                        right_tps = base_tps + corr
+                    else:
+                        left_tps = right_tps = base_tps
                 else:
                     left_tps = right_tps = base_tps
+
+                motors.clear_precise_rotation_direction()
+                motors.set_target_speed(left_tps, right_tps)
+                mode = "forward" if base_tps > 0 else "back"
+
+            elif x_spin:
+                # Giro no lugar proporcional ao X (BNO não corrige reta aqui)
+                yaw_ref = None
+                tps = speed_tps * min(1.0, abs_x)
+                if axis_x > 0:
+                    motors.set_precise_rotation_direction(1, -1)
+                    motors.set_target_speed(tps, -tps)
+                    mode = "turn_right"
+                else:
+                    motors.set_precise_rotation_direction(-1, 1)
+                    motors.set_target_speed(-tps, tps)
+                    mode = "turn_left"
+
             else:
-                left_tps = right_tps = base_tps
+                motors.stop_motors()
+                yaw_ref = None
+                mode = "stop"
 
-            motors.clear_precise_rotation_direction()
-            motors.set_target_speed(left_tps, right_tps)
-            mode = "forward" if base_tps > 0 else "back"
+            # ── Log de mudança de modo ─────────────────────────────────────────
+            if mode != prev_mode:
+                label = MODE_LABELS.get(mode, mode)
+                extra = f"  [TPS base={speed_tps:.0f}]" if mode not in ("stop",) else ""
+                print(f"  [{label}]{extra}")
+                prev_mode = mode
 
-        elif x_spin:
-            # Giro no lugar proporcional ao X (BNO não corrige reta aqui)
-            yaw_ref = None
-            tps = speed_tps * min(1.0, abs_x)
-            if axis_x > 0:
-                motors.set_precise_rotation_direction(1, -1)
-                motors.set_target_speed(tps, -tps)
-                mode = "turn_right"
-            else:
-                motors.set_precise_rotation_direction(-1, 1)
-                motors.set_target_speed(-tps, tps)
-                mode = "turn_left"
-
-        else:
-            motors.stop_motors()
-            yaw_ref = None
-            mode = "stop"
-
-        # ── Log de mudança de modo ─────────────────────────────────────────
-        if mode != prev_mode:
-            label = MODE_LABELS.get(mode, mode)
-            extra = f"  [TPS base={speed_tps:.0f}]" if mode not in ("stop",) else ""
-            print(f"  [{label}]{extra}")
-            prev_mode = mode
-
-        # ── Mantém frequência do loop ──────────────────────────────────────
-        elapsed = time.time() - t0
-        sleep_t = max(0.0, loop_dt - elapsed)
-        time.sleep(sleep_t)
+            # ── Mantém frequência do loop ──────────────────────────────────────
+            elapsed = time.time() - t0
+            sleep_t = max(0.0, loop_dt - elapsed)
+            time.sleep(sleep_t)
+        finally:
+            _emit_face_status(prev_a_snapshot)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
