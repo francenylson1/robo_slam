@@ -55,14 +55,25 @@ def test_forward_movement():
         print("PWM inicializado a 20Hz.")
 
         # PASSO 4: Execucao do Movimento
-        print("Liberando freios...")
-        GPIO.output(break_E, GPIO.LOW)
-        GPIO.output(break_D, GPIO.LOW)
-        time.sleep(0.5)
+        # Ordem replicada de test_right_wheel_isolated() (unico teste que
+        # confirmadamente girou a roda direita): freio ACIONADO -> define
+        # DIR -> so entao libera o freio. A versao anterior liberava os
+        # freios ANTES de definir o DIR (os pinos de freio nascem em LOW
+        # = liberado desde o GPIO.setup()), e nesse caso a roda direita
+        # nao se movia mesmo com a borda do DIR garantida - a controladora
+        # parece so aceitar a mudanca de direcao com o freio acionado.
+        print("Acionando freios antes de definir a direcao...")
+        GPIO.output(break_E, GPIO.HIGH)
+        GPIO.output(break_D, GPIO.HIGH)
 
         print(f"Definindo direcao para FRENTE (E:{DIR_E_FORWARD}, D:{DIR_D_FORWARD})...")
         GPIO.output(dir_E, DIR_E_FORWARD)
         GPIO.output(dir_D, DIR_D_FORWARD)
+        time.sleep(0.3)
+
+        print("Liberando freios...")
+        GPIO.output(break_E, GPIO.LOW)
+        GPIO.output(break_D, GPIO.LOW)
         time.sleep(0.5)
 
         print(f"Acionando motores a {TEST_SPEED}% por 2 segundos...")
