@@ -33,10 +33,18 @@ def test_forward_movement():
         print("Modo GPIO configurado para BCM.")
 
         # PASSO 2: Configuracao dos Pinos
-        control_pins = [dir_E, break_E, speed_E, dir_D, break_D, speed_D]
+        control_pins = [break_E, speed_E, break_D, speed_D]
         print(f"Configurando os pinos {control_pins} como saida...")
         for pin in control_pins:
             GPIO.setup(pin, GPIO.OUT)
+        # Pinos DIR nascem no nivel OPOSTO ao de "frente": sem isso, quando
+        # DIR_x_FORWARD coincide com o repouso padrao do GPIO.setup() (LOW),
+        # o comando de frente nao gera nenhuma transicao real no pino - so
+        # aplica um nivel que ja estava la. Isso reproduziu o sintoma da
+        # roda direita parada quando DIR_D_FORWARD virou LOW: a controladora
+        # parece exigir uma borda no DIR, nao so o nivel final.
+        GPIO.setup(dir_E, GPIO.OUT, initial=(GPIO.LOW if DIR_E_FORWARD == GPIO.HIGH else GPIO.HIGH))
+        GPIO.setup(dir_D, GPIO.OUT, initial=(GPIO.LOW if DIR_D_FORWARD == GPIO.HIGH else GPIO.HIGH))
         print("Pinos configurados com sucesso.")
 
         # PASSO 3: Inicializacao do PWM
