@@ -182,8 +182,72 @@ def test_right_wheel_isolated():
         print("Limpeza concluida.")
 
 
+def test_left_wheel_isolated():
+    """
+    Espelho de test_right_wheel_isolated(): testa SOMENTE a roda esquerda,
+    alternando DIR_E em HIGH e depois LOW, com a roda direita travada
+    (freio sempre em HIGH). Objetivo (2026-09-03): a saida de DIR da
+    esquerda nunca foi medida isolada - so vimos ela cair para perto de
+    0V no teste COMBINADO (com a direita tambem ativa), apos confirmar
+    que nao ha curto entre os dois fios de DIR. Este teste diz se a queda
+    e um problema proprio do canal esquerdo (aparece aqui tambem, sozinho)
+    ou so acontece por interacao quando os dois canais operam juntos.
+    """
+    print("--- TESTE ISOLADO: RODA ESQUERDA (DIR HIGH depois LOW) ---")
+    try:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.cleanup()
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+
+        control_pins = [dir_E, break_E, speed_E, dir_D, break_D, speed_D]
+        for pin in control_pins:
+            GPIO.setup(pin, GPIO.OUT)
+
+        pwm_E = GPIO.PWM(speed_E, 20)
+        pwm_E.start(0)
+
+        # Direita travada o tempo todo (freio em HIGH = acionado)
+        GPIO.output(break_D, GPIO.HIGH)
+        GPIO.output(dir_D, GPIO.LOW)
+
+        for label, level in (("HIGH", GPIO.HIGH), ("LOW", GPIO.LOW)):
+            print(f"\nFase DIR_E = {label}: observe/anote o sentido da roda esquerda.")
+            print("Se tiver multimetro no pino DIR da controladora esquerda, meça agora.")
+            GPIO.output(break_E, GPIO.HIGH)  # freio esquerdo acionado antes de trocar DIR
+            GPIO.output(dir_E, level)
+            time.sleep(0.3)
+            GPIO.output(break_E, GPIO.LOW)   # libera freio esquerdo
+            pwm_E.ChangeDutyCycle(TEST_SPEED)
+            time.sleep(HOLD_SECONDS)
+            pwm_E.ChangeDutyCycle(0)
+            GPIO.output(break_E, GPIO.HIGH)
+            time.sleep(1)
+
+        print("\n--- TESTE ISOLADO CONCLUIDO ---")
+        print("DIR_E_FORWARD = HIGH, entao a fase HIGH deveria medir ~5V (frente).")
+        print("Se mesmo aqui, com a direita travada, a fase HIGH nao chegar a ~5V,")
+        print("o defeito e do proprio canal esquerdo - nao de interacao com a direita.")
+
+    except Exception as e:
+        print(f"\nERRO CRITICO DURANTE O TESTE: {e}")
+    finally:
+        print("Executando limpeza final do GPIO...")
+        try:
+            pwm_E.stop()
+            del pwm_E
+        except NameError:
+            pass
+        GPIO.cleanup()
+        print("Limpeza concluida.")
+
+
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == "right":
         test_right_wheel_isolated()
+    elif len(sys.argv) > 1 and sys.argv[1] == "left":
+        test_left_wheel_isolated()
     else:
         test_forward_movement()
