@@ -244,10 +244,143 @@ def test_left_wheel_isolated():
         print("Limpeza concluida.")
 
 
+def test_combined_dir_no_pwm():
+    """
+    Testa o DIR das duas rodas juntas (freio -> DIR -> libera freio, igual
+    a test_forward_movement()) mas SEM NUNCA acionar o PWM/motores - so
+    segura o DIR nos dois canais por alguns segundos para medir com o
+    multimetro. Objetivo (2026-09-03): o circuito ja foi validado em 13
+    unidades na Raspberry Pi 4 e todos os testes eletricos aqui (GPIO da
+    Pi, alimentacao HVcc, continuidade entre os fios de DIR, DIR isolado
+    dos dois lados) deram corretos - a suspeita agora e uma diferenca de
+    comportamento GPIO especifica da Pi 5 (chip RP1 / camada rpi-lgpio),
+    nao o circuito em si. Este teste isola se as DUAS THREADS de PWM por
+    software rodando ao mesmo tempo (uma para cada roda) estao atrapalhando
+    o sinal de DIR quando ambas operam juntas - se o DIR ler certo aqui
+    (sem PWM), o problema esta relacionado ao PWM simultaneo, nao so ao
+    "combinar os dois canais" em si.
+    """
+    print("--- TESTE: DIR COMBINADO SEM PWM (so segura a direcao) ---")
+    try:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.cleanup()
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+
+        for pin in (break_E, speed_E, break_D, speed_D):
+            GPIO.setup(pin, GPIO.OUT)
+        GPIO.setup(dir_E, GPIO.OUT, initial=(GPIO.LOW if DIR_E_FORWARD == GPIO.HIGH else GPIO.HIGH))
+        GPIO.setup(dir_D, GPIO.OUT, initial=(GPIO.LOW if DIR_D_FORWARD == GPIO.HIGH else GPIO.HIGH))
+
+        print("Acionando freios antes de definir a direcao...")
+        GPIO.output(break_E, GPIO.HIGH)
+        GPIO.output(break_D, GPIO.HIGH)
+
+        print(f"Definindo direcao para FRENTE (E:{DIR_E_FORWARD}, D:{DIR_D_FORWARD})...")
+        GPIO.output(dir_E, DIR_E_FORWARD)
+        GPIO.output(dir_D, DIR_D_FORWARD)
+        time.sleep(0.3)
+
+        print("Liberando freios (PWM continua em 0 - motores nao vao girar)...")
+        GPIO.output(break_E, GPIO.LOW)
+        GPIO.output(break_D, GPIO.LOW)
+
+        print(f"\nMeça agora o DIR de cada lado por {HOLD_SECONDS * 2}s (sem PWM ativo)...")
+        time.sleep(HOLD_SECONDS * 2)
+
+        print("\n--- TESTE CONCLUIDO ---")
+
+    except Exception as e:
+        print(f"\nERRO CRITICO DURANTE O TESTE: {e}")
+    finally:
+        print("Executando limpeza final do GPIO...")
+        GPIO.cleanup()
+        print("Limpeza concluida.")
+
+
+def test_forward_movement_staggered(stagger_seconds=0.05):
+    """
+    Igual a test_forward_movement(), mas espaça deliberadamente as chamadas
+    de freio/DIR/PWM entre esquerda e direita (esquerda primeiro, pausa,
+    depois direita) em vez de chama-las uma logo apos a outra. Objetivo
+    (2026-09-03): testar se a latencia do barramento GPIO da Pi 5 (chip
+    RP1, mais lento que o acesso direto da Pi 4) faz com que chamadas
+    "quase simultaneas" no codigo cheguem atrasadas/fora de ordem no
+    hardware quando os dois canais sao configurados nesta sequencia.
+    """
+    print(f"--- TESTE DE MOVIMENTO PARA FRENTE COM ESPAÇAMENTO ({stagger_seconds}s) ---")
+    try:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.cleanup()
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+
+        for pin in (break_E, speed_E, break_D, speed_D):
+            GPIO.setup(pin, GPIO.OUT)
+        GPIO.setup(dir_E, GPIO.OUT, initial=(GPIO.LOW if DIR_E_FORWARD == GPIO.HIGH else GPIO.HIGH))
+        GPIO.setup(dir_D, GPIO.OUT, initial=(GPIO.LOW if DIR_D_FORWARD == GPIO.HIGH else GPIO.HIGH))
+
+        pwm_E = GPIO.PWM(speed_E, 20)
+        pwm_D = GPIO.PWM(speed_D, 20)
+        pwm_E.start(0)
+        pwm_D.start(0)
+
+        print("Freio esquerdo -> DIR esquerdo -> libera esquerdo...")
+        GPIO.output(break_E, GPIO.HIGH)
+        GPIO.output(dir_E, DIR_E_FORWARD)
+        time.sleep(stagger_seconds)
+        GPIO.output(break_E, GPIO.LOW)
+        pwm_E.ChangeDutyCycle(TEST_SPEED)
+
+        time.sleep(stagger_seconds)
+
+        print("Freio direito -> DIR direito -> libera direito...")
+        GPIO.output(break_D, GPIO.HIGH)
+        GPIO.output(dir_D, DIR_D_FORWARD)
+        time.sleep(stagger_seconds)
+        GPIO.output(break_D, GPIO.LOW)
+        pwm_D.ChangeDutyCycle(TEST_SPEED)
+
+        print(f"Acionando por {HOLD_SECONDS}s...")
+        time.sleep(HOLD_SECONDS)
+
+        print("Parando motores.")
+        pwm_E.ChangeDutyCycle(0)
+        pwm_D.ChangeDutyCycle(0)
+
+        print("\n--- TESTE CONCLUIDO ---")
+
+    except Exception as e:
+        print(f"\nERRO CRITICO DURANTE O TESTE: {e}")
+    finally:
+        print("Executando limpeza final do GPIO...")
+        try:
+            pwm_E.stop()
+            del pwm_E
+        except NameError:
+            pass
+        try:
+            pwm_D.stop()
+            del pwm_D
+        except NameError:
+            pass
+        GPIO.cleanup()
+        print("Limpeza concluida.")
+
+
 if __name__ == '__main__':
-    if len(sys.argv) > 1 and sys.argv[1] == "right":
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+    if arg == "right":
         test_right_wheel_isolated()
-    elif len(sys.argv) > 1 and sys.argv[1] == "left":
+    elif arg == "left":
         test_left_wheel_isolated()
+    elif arg == "nopwm":
+        test_combined_dir_no_pwm()
+    elif arg == "staggered":
+        test_forward_movement_staggered()
     else:
         test_forward_movement()
