@@ -6,9 +6,12 @@ dir_E, break_E, speed_E = 5, 6, 18
 dir_D, break_D, speed_D = 23, 24, 12
 
 # Logica de Movimento para FRENTE (a ser validada)
-# Esquerda = HIGH, Direita = LOW
+# Esquerda = HIGH (igual ao robo SLAM). Direita = HIGH (invertido em relacao
+# ao robo SLAM) - teste para o robo garcom: com DIR_D_FORWARD=LOW a roda
+# direita ficava igual ao estado de repouso do pino (GPIO.OUT sem initial=
+# comeca em LOW), entao "frente" nao mudava nada e ela girava pra tras.
 DIR_E_FORWARD = GPIO.HIGH
-DIR_D_FORWARD = GPIO.LOW
+DIR_D_FORWARD = GPIO.HIGH
 TEST_SPEED = 25
 
 def test_forward_movement():
