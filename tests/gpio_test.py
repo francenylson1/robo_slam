@@ -6,18 +6,15 @@ import time
 dir_E, break_E, speed_E = 5, 6, 18
 dir_D, break_D, speed_D = 23, 24, 12
 
-# Logica de Movimento para FRENTE (a ser validada)
+# Logica de Movimento para FRENTE
 # Esquerda = HIGH (igual ao robo SLAM, confirmado correto no robo garcom).
 #
-# Direita: testado HIGH e LOW (ver docs/resumo_diagnostico_rodas_hoverboard_2)
-# e a roda direita girou para tras nos dois casos -> o nivel do pino DIR nao
-# esta mudando o sentido de giro da roda direita. Isso descarta polaridade
-# de software como causa isolada; suspeita agora e fiacao de fase do motor
-# direito invertida (2 das 3 fases trocadas durante os testes cruzados) ou
-# fio de DIR direito nao chegando no canal certo da controladora. Usar
-# test_right_wheel_isolated() abaixo para confirmar.
+# Direita: test_right_wheel_isolated() confirmou que o DIR_D CONTROLA a
+# direcao (ao contrario do teste anterior, que tinha indicado "sem efeito"):
+# fase HIGH girou para tras, fase LOW girou para frente. Logo, ao contrario
+# da esquerda, a polaridade correta da direita e LOW = frente.
 DIR_E_FORWARD = GPIO.HIGH
-DIR_D_FORWARD = GPIO.HIGH
+DIR_D_FORWARD = GPIO.LOW
 TEST_SPEED = 25
 HOLD_SECONDS = 3
 
@@ -75,6 +72,21 @@ def test_forward_movement():
         print(f"\nERRO CRITICO DURANTE O TESTE: {e}")
     finally:
         print("Executando limpeza final do GPIO...")
+        # 'del' (nao so stop()) ANTES do GPIO.cleanup(): isso forca o
+        # __del__ do PWM a rodar agora, com o handle do lgpio ainda aberto.
+        # Se deixarmos o objeto morrer sozinho depois do cleanup(), o
+        # __del__ acha o handle ja fechado e o script termina com um
+        # TypeError inofensivo mas confuso.
+        try:
+            pwm_E.stop()
+            del pwm_E
+        except NameError:
+            pass
+        try:
+            pwm_D.stop()
+            del pwm_D
+        except NameError:
+            pass
         GPIO.cleanup()
         print("Limpeza concluida.")
 
@@ -92,6 +104,11 @@ def test_right_wheel_isolated():
     equipamento DESLIGADO, meça a tensao no pino DIR na entrada da
     controladora (lado direito) durante cada fase para confirmar se o sinal
     esta de fato mudando ali.
+
+    RESULTADO (2026-09-03): as fases giraram em sentidos DIFERENTES (HIGH =
+    para tras, LOW = para frente). Ou seja, o DIR direito controla sim a
+    direcao; a polaridade correta e o oposto da esquerda (LOW = frente,
+    ja aplicado em DIR_D_FORWARD acima).
     """
     print("--- TESTE ISOLADO: RODA DIREITA (DIR HIGH depois LOW) ---")
     try:
@@ -134,6 +151,11 @@ def test_right_wheel_isolated():
         print(f"\nERRO CRITICO DURANTE O TESTE: {e}")
     finally:
         print("Executando limpeza final do GPIO...")
+        try:
+            pwm_D.stop()
+            del pwm_D
+        except NameError:
+            pass
         GPIO.cleanup()
         print("Limpeza concluida.")
 
