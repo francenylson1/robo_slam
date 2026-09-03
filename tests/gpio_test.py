@@ -55,13 +55,17 @@ def test_forward_movement():
         print("PWM inicializado a 20Hz.")
 
         # PASSO 4: Execucao do Movimento
-        # Ordem replicada de test_right_wheel_isolated() (unico teste que
-        # confirmadamente girou a roda direita): freio ACIONADO -> define
-        # DIR -> so entao libera o freio. A versao anterior liberava os
-        # freios ANTES de definir o DIR (os pinos de freio nascem em LOW
-        # = liberado desde o GPIO.setup()), e nesse caso a roda direita
-        # nao se movia mesmo com a borda do DIR garantida - a controladora
-        # parece so aceitar a mudanca de direcao com o freio acionado.
+        # ATENCAO (2026-09-03): o fio de BRK esta FISICAMENTE DESCONECTADO
+        # na controladora (dos dois lados). Ou seja, os GPIO.output(break_*)
+        # abaixo NAO tem nenhum efeito real no motor - a hipotese anterior
+        # de que a ordem freio->DIR importava para a controladora estava
+        # errada (nao ha como ela reagir a um sinal que nao chega nela).
+        # Mantido so por consistencia com test_right_wheel_isolated() e para
+        # quando o BRK for reconectado. O comportamento erratico observado
+        # (ora so a direita gira, ora so a esquerda, ora nenhuma) e mais
+        # provavelmente um pino de BRK flutuando na entrada da controladora
+        # pegando ruido - ver docs/resumo_diagnostico_rodas_hoverboard_2,
+        # proximo passo e reconectar o BRK fisicamente, nao mexer aqui.
         print("Acionando freios antes de definir a direcao...")
         GPIO.output(break_E, GPIO.HIGH)
         GPIO.output(break_D, GPIO.HIGH)
