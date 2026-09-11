@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Alinhamento e nivelamento</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0d0618; color: #f0f4ff;
+               font-family: system-ui, sans-serif; }
+  #palco { position: relative; width: 100%; height: 100%; }
+
+  /* Moldura na borda absoluta da imagem: se algum lado sumir, o acabamento esta comendo pixels */
+  #moldura { position: absolute; inset: 0; border: 3px solid #ff6b9d; }
+  #moldura2 { position: absolute; border: 1px dashed rgba(78,205,196,.55); }
+
+  /* Grade de 1 cm (fina) e 5 cm (grossa) */
+  #grade { position: absolute; inset: 0; }
+  .lin { position: absolute; background: rgba(240,244,255,.16); }
+  .lin.forte { background: rgba(78,205,196,.55); }
+  .num { position: absolute; font-size: 11px; font-weight: 700; color: #4ecdc4;
+         font-variant-numeric: tabular-nums; }
+
+  /* Cruz central */
+  #cruzh, #cruzv { position: absolute; background: #ffd166; }
+  #cruzh { left: 0; right: 0; height: 2px; top: 50%; }
+  #cruzv { top: 0; bottom: 0; width: 2px; left: 50%; }
+
+  /* Quadrado e circulo de referencia */
+  #ref { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+         border: 3px solid #ff6b9d; display: flex; align-items: center; justify-content: center; }
+  #circ { border: 3px solid #4ecdc4; border-radius: 50%; }
+
+  .canto { position: absolute; font-size: 13px; font-weight: 800; letter-spacing: .06em;
+           color: #ff6b9d; background: rgba(13,6,24,.85); padding: 3px 6px; }
+  .c1 { top: 8px; left: 10px; } .c2 { top: 8px; right: 10px; }
+  .c3 { bottom: 8px; left: 10px; } .c4 { bottom: 8px; right: 10px; }
+
+  #info { position: absolute; left: 50%; transform: translateX(-50%); text-align: center;
+          background: rgba(13,6,24,.9); padding: 8px 14px; border: 1px solid rgba(78,205,196,.4);
+          line-height: 1.55; }
+  #info b { color: #4ecdc4; }
+  #info .t { font-size: 15px; font-weight: 800; }
+  #info .s { font-size: 12px; color: rgba(240,244,255,.75); }
+</style>
+</head>
+<body>
+<div id="palco">
+  <div id="grade"></div>
+  <div id="moldura"></div>
+  <div id="moldura2"></div>
+  <div id="cruzh"></div>
+  <div id="cruzv"></div>
+  <div id="ref"><div id="circ"></div></div>
+  <span class="canto c1">SUP-ESQ</span>
+  <span class="canto c2">SUP-DIR</span>
+  <span class="canto c3">INF-ESQ</span>
+  <span class="canto c4">INF-DIR</span>
+  <div id="info"></div>
+</div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var pxcm = parseFloat(q.get('pxcm') || '55.8');
+  var nome = q.get('nome') || 'TELA';
+  var refcm = parseFloat(q.get('ref') || '10');
+  var W = window.innerWidth, H = window.innerHeight;
+  var g = document.getElementById('grade');
+  var html = '';
+
+  function linha(vert, pos, forte) {
+    var s = forte ? ' forte' : '';
+    if (vert) html += '<span class="lin' + s + '" style="left:' + pos + 'px;top:0;bottom:0;width:' + (forte ? 2 : 1) + 'px"></span>';
+    else      html += '<span class="lin' + s + '" style="top:' + pos + 'px;left:0;right:0;height:' + (forte ? 2 : 1) + 'px"></span>';
+  }
+  // Grade ancorada no canto superior esquerdo, em centimetros reais
+  for (var i = 1; i * pxcm < W; i++) {
+    var forte = (i % 5 === 0); linha(true, i * pxcm, forte);
+    if (forte) html += '<span class="num" style="left:' + (i * pxcm + 3) + 'px;top:3px">' + i + '</span>';
+  }
+  for (var j = 1; j * pxcm < H; j++) {
+    var f2 = (j % 5 === 0); linha(false, j * pxcm, f2);
+    if (f2) html += '<span class="num" style="top:' + (j * pxcm + 3) + 'px;left:4px">' + j + '</span>';
+  }
+  g.innerHTML = html;
+
+  // Moldura interna a exatamente 1 cm da borda da imagem
+  var m2 = document.getElementById('moldura2');
+  m2.style.left = m2.style.top = m2.style.right = m2.style.bottom = pxcm + 'px';
+
+  // Quadrado + circulo de referencia com medida conhecida
+  var r = document.getElementById('ref');
+  r.style.width = r.style.height = (refcm * pxcm) + 'px';
+  var c = document.getElementById('circ');
+  c.style.width = c.style.height = ((refcm - 2) * pxcm) + 'px';
+
+  var larguraCm = (W / pxcm), alturaCm = (H / pxcm);
+  var info = document.getElementById('info');
+  info.innerHTML =
+    '<div class="t">' + nome + ' &nbsp;·&nbsp; ' + W + ' x ' + H + ' px</div>' +
+    '<div class="s">Quadrado rosa = <b>' + refcm.toFixed(1) + ' x ' + refcm.toFixed(1) + ' cm</b> &nbsp;|&nbsp; ' +
+    'circulo teal = <b>' + (refcm - 2).toFixed(1) + ' cm</b> de diametro</div>' +
+    '<div class="s">Grade = 1 cm &nbsp;|&nbsp; linha teal grossa a cada 5 cm &nbsp;|&nbsp; ' +
+    'tracejado a <b>1 cm</b> da borda</div>' +
+    '<div class="s">Imagem inteira = <b>' + larguraCm.toFixed(1) + ' x ' + alturaCm.toFixed(1) + ' cm</b></div>';
+
+  // Posiciona a legenda logo abaixo do quadrado; se nao couber, joga para cima dele
+  requestAnimationFrame(function () {
+    var alt = info.offsetHeight || 90;
+    var y = H * 0.5 + refcm * pxcm * 0.5 + 0.5 * pxcm;
+    if (y + alt > H - 0.3 * pxcm) y = H * 0.5 - refcm * pxcm * 0.5 - 0.5 * pxcm - alt;
+    if (y < 0.3 * pxcm) y = 0.3 * pxcm;
+    info.style.top = y + 'px';
+  });
+})();
+</script>
+</body>
+</html>

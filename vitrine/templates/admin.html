@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vitrine — painel</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+</head>
+<body>
+<div class="topo">
+  <h1>Vitrine do robô<small>{{ slides|selectattr('ativo')|list|length }} de {{ slides|length }} slides no ar</small></h1>
+  <div class="acoes">
+    <a class="btn linha" href="/signage" target="_blank">Ver carrossel</a>
+    <a class="btn linha" href="{{ url_for('config_view') }}">Configurações</a>
+    <a class="btn" href="{{ url_for('slide') }}">+ Novo slide</a>
+  </div>
+</div>
+
+{% with msgs = get_flashed_messages() %}{% if msgs %}<div class="aviso">{{ msgs[0] }}</div>{% endif %}{% endwith %}
+
+<div class="wrap">
+  {% for s in slides %}
+  <div class="item {% if not s.ativo %}off{% endif %}">
+    <div class="ordem">
+      <form method="post" action="{{ url_for('mover', sid=s.id) }}"><input type="hidden" name="dir" value="cima"><button title="Subir">▲</button></form>
+      <form method="post" action="{{ url_for('mover', sid=s.id) }}"><input type="hidden" name="dir" value="baixo"><button title="Descer">▼</button></form>
+    </div>
+    <div class="info">
+      <span class="tag">{{ tipos[s.tipo].nome if s.tipo in tipos else s.tipo }}</span>
+      <b>{{ s.titulo or '(sem título)' }}</b>
+      <span>{{ s.chapeu }}{% if s.subtitulo %} · {{ s.subtitulo }}{% endif %} · {{ s.segundos }}s</span>
+    </div>
+    <div class="acoes">
+      <form method="post" action="{{ url_for('alterna', sid=s.id) }}">
+        <button class="btn mini linha">{{ 'No ar' if s.ativo else 'Fora' }}</button>
+      </form>
+      <a class="btn mini linha" href="{{ url_for('slide', sid=s.id) }}">Editar</a>
+      <form method="post" action="{{ url_for('excluir', sid=s.id) }}" onsubmit="return confirm('Excluir este slide?')">
+        <button class="btn mini perigo">Excluir</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <p class="dica">Nenhum slide cadastrado ainda.</p>
+  {% endfor %}
+</div>
+</body>
+</html>

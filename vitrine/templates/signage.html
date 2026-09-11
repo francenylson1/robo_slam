@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Vitrine</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='vitrine.css') }}">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--fundo); }
+  #vazio {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 24px; text-align: center; padding: 0 80px;
+    font-family: 'Manrope', system-ui, sans-serif; color: rgba(240,244,255,.5);
+  }
+  #vazio b { font-size: 46px; color: var(--paper); }
+  #vazio span { font-size: 30px; }
+</style>
+</head>
+<body>
+<div class="palco" id="palco"></div>
+<script src="{{ url_for('static', filename='render.js') }}"></script>
+<script>
+  var palco = document.getElementById('palco');
+  var versao = null, timer = null;
+
+  function ajusta() {
+    var s = Math.min(innerWidth / 1080, innerHeight / 1920);
+    palco.style.transform = 'translate(' + ((innerWidth - 1080 * s) / 2) + 'px,' +
+      ((innerHeight - 1920 * s) / 2) + 'px) scale(' + s + ')';
+  }
+  addEventListener('resize', ajusta);
+
+  function monta(dados) {
+    var slides = dados.slides || [], cfg = dados.config || {};
+    Vitrine.aplicaConfig(document.documentElement, cfg);
+    if (!slides.length) {
+      palco.innerHTML = '<div id="vazio"><b>Nenhum slide ativo</b>' +
+        '<span>Cadastre em ' + location.host + '/admin</span></div>';
+      ajusta();
+      return;
+    }
+    palco.innerHTML = slides.map(function (s, i) {
+      return Vitrine.slideHTML(s, cfg, i, slides.length);
+    }).join('');
+    ajusta();
+    var els = Array.prototype.slice.call(palco.querySelectorAll('.slide'));
+    clearTimeout(timer);
+    (function mostra(n) {
+      els.forEach(function (el, k) { el.classList.toggle('ativo', k === n); });
+      timer = setTimeout(function () { mostra((n + 1) % els.length); },
+                         (Number(slides[n].segundos) || 10) * 1000);
+    })(0);
+  }
+
+  function carrega() {
+    fetch('/api/slides', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(monta);
+  }
+
+  // O painel muda os slides pela rede: a tela se atualiza sozinha sem precisar reiniciar.
+  function vigia() {
+    fetch('/api/versao', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (versao === null) { versao = d.versao; return; }
+        if (d.versao !== versao) { versao = d.versao; carrega(); }
+      })
+      .catch(function () {});
+  }
+
+  carrega();
+  vigia();
+  setInterval(vigia, 5000);
+</script>
+</body>
+</html>

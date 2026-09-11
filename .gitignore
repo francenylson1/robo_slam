@@ -61,3 +61,9 @@ logs/
 config.local.py prompt_*.md
 !data/robot.db
 \n# Log files\npid_logs.txt
+
+# Vitrine: o banco e as imagens sao de cada robo, nao do repositorio.
+# Cada Pi semeia o proprio vitrine.db no primeiro start do app.
+vitrine/vitrine.db
+vitrine/static/uploads/*
+!vitrine/static/uploads/.gitkeep

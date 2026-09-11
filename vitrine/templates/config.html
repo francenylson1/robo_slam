@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vitrine — configurações</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+</head>
+<body>
+<div class="topo">
+  <h1>Configurações<small>valem para todos os slides</small></h1>
+  <a class="btn linha" href="{{ url_for('admin') }}">Voltar</a>
+</div>
+
+<div class="wrap">
+<form method="post">
+  <div class="campo">
+    <span class="rot">Nome do robô</span>
+    <input type="text" name="nome_robo" value="{{ cfg.nome_robo }}">
+  </div>
+
+  <p class="dica" style="margin:22px 0 10px">
+    <b>Área segura</b> — quanto o acabamento frontal cobre de cada borda da imagem, em milímetros.
+    Medido na tela real: 20 mm na direita. Aumente se alguma palavra estiver sendo cortada.
+  </p>
+  <div class="linha-campos">
+    <div class="campo"><span class="rot">Topo (mm)</span><input type="number" step="0.5" name="mt" value="{{ cfg.mt }}"></div>
+    <div class="campo"><span class="rot">Direita (mm)</span><input type="number" step="0.5" name="mr" value="{{ cfg.mr }}"></div>
+    <div class="campo"><span class="rot">Base (mm)</span><input type="number" step="0.5" name="mb" value="{{ cfg.mb }}"></div>
+    <div class="campo"><span class="rot">Esquerda (mm)</span><input type="number" step="0.5" name="ml" value="{{ cfg.ml }}"></div>
+  </div>
+
+  <div class="campo">
+    <span class="rot">Escala da tela (px por mm)</span>
+    <input type="text" name="pxmm" value="{{ cfg.pxmm }}">
+    <p class="dica">5,58 px/mm = 55,8 px/cm, medido na tela de 15" em retrato (1080 px em 19,35 cm).</p>
+  </div>
+
+  <button class="btn" type="submit">Salvar configurações</button>
+</form>
+</div>
+</body>
+</html>

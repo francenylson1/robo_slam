@@ -1,0 +1,118 @@
+/* Design system da vitrine — herdado do rosto de 7" (display/robot_face/face.css).
+   Tudo é desenhado num palco fixo de 1080x1920 e escalado para a tela real. */
+:root {
+  --accent: #4ecdc4;
+  --rosa:   #ff6b9d;
+  --paper:  #f0f4ff;
+  --fundo:  #0d0418;
+  /* Área segura: o acabamento frontal do robô cobre parte da imagem.
+     Medido na tela real em 2026-09-11: 20 mm na borda direita. */
+  --safe-t: 0px; --safe-r: 0px; --safe-b: 0px; --safe-l: 0px;
+}
+.palco { position: absolute; top: 0; left: 0; width: 1080px; height: 1920px; transform-origin: top left; }
+
+.slide {
+  position: absolute; inset: 0; width: 1080px; height: 1920px; overflow: hidden;
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  font-family: 'Manrope', system-ui, sans-serif;
+  background: linear-gradient(145deg, #1a0a2e 0%, #2d1b4e 45%, #16213e 100%);
+  opacity: 0; transition: opacity .7s ease;
+  display: flex; flex-direction: column;
+}
+.slide.ativo { opacity: 1; }
+.glow { position: absolute; border-radius: 50%; pointer-events: none; }
+
+.brand { position: relative; display: flex; align-items: center; gap: 25px; padding: 80px 80px 0; }
+.brand span {
+  font-family: 'Space Grotesk', 'Trebuchet MS', sans-serif;
+  font-size: 30px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase;
+  color: rgba(240,244,255,.5);
+}
+.corpo { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 64px; padding: 0 80px; }
+.corpo.centro { align-items: center; text-align: center; gap: 70px; }
+
+.foot { position: relative; display: flex; align-items: center; justify-content: space-between; padding: 0 80px 80px; }
+.dots { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; max-width: 780px; }
+.dots i { width: 26px; height: 8px; border-radius: 4px; background: rgba(240,244,255,.22); }
+.dots i.on { width: 74px; background: var(--accent); }
+.barra { position: relative; width: 420px; height: 8px; border-radius: 4px; background: rgba(240,244,255,.18); }
+.barra b { position: absolute; left: 0; top: 0; bottom: 0; min-width: 8px; border-radius: 4px; background: var(--accent); transition: width .4s ease; }
+.pos { font-size: 27px; font-weight: 700; letter-spacing: .06em; color: rgba(240,244,255,.45); }
+.secs { font-size: 27px; font-weight: 700; letter-spacing: .1em; color: rgba(240,244,255,.36); }
+
+/* chapéu (a linha pequena em teal acima do título) */
+.chapeu { display: flex; align-items: center; gap: 22px; }
+.corpo.centro .chapeu { justify-content: center; }
+.chapeu b { width: 68px; height: 7px; border-radius: 4px; background: var(--accent); flex-shrink: 0; }
+.chapeu span {
+  font-family: 'Space Grotesk', 'Trebuchet MS', sans-serif;
+  font-size: 27px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--accent);
+}
+
+.titulo {
+  font-family: 'Space Grotesk', 'Trebuchet MS', sans-serif;
+  font-size: 96px; line-height: 1.14; font-weight: 700; letter-spacing: -.02em;
+  color: var(--paper); text-wrap: pretty;
+}
+.titulo.medio { font-size: 82px; line-height: 1.1; }
+.sub { font-size: 40px; line-height: 1.4; font-weight: 500; color: rgba(240,244,255,.6); }
+.sub.forte { font-size: 38px; font-weight: 600; color: rgba(240,244,255,.58); }
+
+/* moldura de imagem / logo */
+.moldura {
+  width: 920px; height: 460px; border-radius: 40px; overflow: hidden;
+  border: 3px dashed rgba(240,244,255,.24); background: rgba(240,244,255,.05);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
+}
+.moldura.cheia { border-style: solid; border-color: rgba(240,244,255,.12); }
+.moldura img { width: 100%; height: 100%; object-fit: contain; }
+.moldura span { font-size: 31px; font-weight: 700; letter-spacing: .1em; color: rgba(240,244,255,.45); }
+
+/* retrato redondo para aluno / equipe */
+.retrato {
+  width: 420px; height: 420px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  border: 6px solid rgba(78,205,196,.55); background: rgba(240,244,255,.06);
+  display: flex; align-items: center; justify-content: center;
+}
+.retrato img { width: 100%; height: 100%; object-fit: cover; }
+.retrato span {
+  font-family: 'Space Grotesk', 'Trebuchet MS', sans-serif;
+  font-size: 180px; font-weight: 700; color: rgba(240,244,255,.5);
+}
+.escola {
+  display: inline-flex; align-items: center; gap: 16px;
+  padding: 16px 34px; border-radius: 999px;
+  background: rgba(78,205,196,.14); border: 2px solid rgba(78,205,196,.4);
+  font-size: 34px; font-weight: 700; letter-spacing: .06em; color: var(--accent);
+}
+
+/* promoção */
+.foto {
+  position: relative; height: 900px; flex-shrink: 0; overflow: hidden;
+  background-color: rgba(240,244,255,.07);
+  background-image: repeating-linear-gradient(135deg, rgba(240,244,255,.05) 0, rgba(240,244,255,.05) 3px, transparent 3px, transparent 22px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
+}
+.foto > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.foto > span { font-size: 31px; font-weight: 700; letter-spacing: .1em; color: rgba(240,244,255,.45); }
+.selo {
+  position: absolute; left: 80px; bottom: -38px; display: flex; align-items: center; gap: 17px;
+  padding: 20px 40px; border-radius: 999px; background: var(--accent); box-shadow: 0 18px 48px rgba(0,0,0,.45);
+  font-family: 'Space Grotesk', 'Trebuchet MS', sans-serif;
+  font-size: 30px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #14071f;
+}
+.preco {
+  font-family: 'Space Grotesk', 'Trebuchet MS', sans-serif;
+  font-size: 146px; line-height: 1; font-weight: 700; letter-spacing: -.04em; color: var(--accent);
+}
+.preco-de { font-size: 42px; font-weight: 600; color: rgba(240,244,255,.42); text-decoration: line-through; }
+
+/* imagem cheia */
+.slide.cheia { padding: 0; }
+.slide.cheia .fundo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.veu-topo   { position: absolute; top: 0; left: 0; right: 0; height: 270px; background: linear-gradient(to bottom, rgba(20,7,31,.78), rgba(20,7,31,0)); }
+.veu-base   { position: absolute; bottom: 0; left: 0; right: 0; height: 560px; background: linear-gradient(to top, rgba(20,7,31,.9), rgba(20,7,31,0)); }
+.legenda {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: calc(80px + var(--safe-b)) calc(80px + var(--safe-r)) calc(80px + var(--safe-b)) calc(80px + var(--safe-l));
+}

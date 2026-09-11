@@ -1,0 +1,81 @@
+/* Painel de cadastro — abre no celular ou no notebook pela rede local. */
+:root {
+  --accent: #4ecdc4; --rosa: #ff6b9d; --paper: #f0f4ff;
+  --fundo: #14071f; --carta: #1e1030; --linha: rgba(240,244,255,.12);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--fundo); color: var(--paper); min-height: 100vh;
+  font-family: 'Manrope', system-ui, sans-serif; font-size: 16px; line-height: 1.5;
+  padding: 0 16px 64px;
+}
+.topo {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  max-width: 940px; margin: 0 auto; padding-block: 28px 20px;
+}
+.topo h1 {
+  font-family: 'Space Grotesk', 'Trebuchet MS', sans-serif;
+  font-size: 26px; font-weight: 700; letter-spacing: -.01em;
+}
+.topo h1 small { display: block; font-size: 14px; font-weight: 500; color: rgba(240,244,255,.5); letter-spacing: 0; }
+.wrap { max-width: 940px; margin: 0 auto; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; border: 0; cursor: pointer;
+  padding: 11px 18px; border-radius: 10px; font: inherit; font-weight: 700; font-size: 15px;
+  background: var(--accent); color: #14071f; text-decoration: none;
+}
+.btn.linha { background: transparent; color: var(--paper); border: 1px solid var(--linha); font-weight: 600; }
+.btn.perigo { background: transparent; color: var(--rosa); border: 1px solid rgba(255,107,157,.45); }
+.btn.mini { padding: 7px 12px; font-size: 13px; border-radius: 8px; }
+
+.aviso {
+  max-width: 940px; margin: 0 auto 18px; padding: 12px 16px; border-radius: 10px;
+  background: rgba(78,205,196,.12); border: 1px solid rgba(78,205,196,.35); color: var(--accent); font-weight: 600;
+}
+
+.item {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--carta); border: 1px solid var(--linha); border-radius: 14px;
+  padding: 14px 16px; margin-bottom: 10px;
+}
+.item.off { opacity: .48; }
+.item .ordem { display: flex; flex-direction: column; gap: 4px; }
+.item .ordem button {
+  width: 30px; height: 24px; border-radius: 6px; cursor: pointer;
+  background: rgba(240,244,255,.07); border: 1px solid var(--linha); color: var(--paper); font-size: 12px;
+}
+.item .info { flex: 1 1 240px; min-width: 0; }
+.item .info b { display: block; font-size: 17px; font-weight: 700; }
+.item .info span { font-size: 14px; color: rgba(240,244,255,.55); }
+.tag {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; background: rgba(78,205,196,.16); color: var(--accent);
+  border: 1px solid rgba(78,205,196,.3); margin-bottom: 6px;
+}
+.acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+form.campo { display: block; margin-bottom: 16px; }
+form.campo > label, .rot { display: block; font-size: 13px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: rgba(240,244,255,.55); margin-bottom: 7px; }
+input[type=text], input[type=number], select, textarea {
+  width: 100%; padding: 12px 14px; border-radius: 10px; font: inherit;
+  background: rgba(240,244,255,.06); border: 1px solid var(--linha); color: var(--paper);
+}
+textarea { min-height: 96px; resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: 2px solid rgba(78,205,196,.5); outline-offset: 1px; }
+.linha-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+.check { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.check input { width: 20px; height: 20px; accent-color: var(--accent); }
+
+.grade-form { display: grid; grid-template-columns: 1fr; gap: 26px; }
+@media (min-width: 860px) { .grade-form { grid-template-columns: 1fr 320px; align-items: start; } }
+
+.previa { position: sticky; top: 20px; }
+.previa .tela {
+  width: 100%; max-width: 300px; aspect-ratio: 1080 / 1920; position: relative; overflow: hidden;
+  border-radius: 14px; border: 1px solid var(--linha); background: #0d0418;
+}
+.previa .tela .palco { transform-origin: top left; }
+.previa .tela .slide { opacity: 1; transition: none; }
+.dica { font-size: 13px; color: rgba(240,244,255,.45); margin-top: 10px; }

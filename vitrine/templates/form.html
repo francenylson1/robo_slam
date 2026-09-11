@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ 'Editar slide' if s else 'Novo slide' }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='vitrine.css') }}">
+</head>
+<body>
+<div class="topo">
+  <h1>{{ 'Editar slide' if s else 'Novo slide' }}<small>a prévia mostra exatamente o que vai para a tela de 15"</small></h1>
+  <a class="btn linha" href="{{ url_for('admin') }}">Voltar</a>
+</div>
+
+<div class="wrap">
+<form method="post" enctype="multipart/form-data" id="f">
+  <div class="grade-form">
+    <div>
+      <div class="campo">
+        <span class="rot">Tipo de slide</span>
+        <select name="tipo" id="tipo">
+          {% for chave, t in tipos.items() %}
+          <option value="{{ chave }}" {% if s and s.tipo == chave %}selected{% endif %}>{{ t.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="campo" data-campo="chapeu">
+        <span class="rot">Chapéu <small style="text-transform:none;letter-spacing:0">(a linha pequena em teal)</small></span>
+        <input type="text" name="chapeu" value="{{ s.chapeu if s else '' }}" placeholder="Alunos do projeto">
+      </div>
+
+      <div class="campo" data-campo="titulo">
+        <span class="rot">Título</span>
+        <textarea name="titulo" placeholder="Texto principal do slide">{{ s.titulo if s else '' }}</textarea>
+      </div>
+
+      <div class="campo" data-campo="subtitulo">
+        <span class="rot">Subtítulo <small style="text-transform:none;letter-spacing:0">(escola, slogan ou autor)</small></span>
+        <input type="text" name="subtitulo" value="{{ s.subtitulo if s else '' }}" placeholder="CEF 206">
+      </div>
+
+      <div class="linha-campos">
+        <div class="campo" data-campo="preco">
+          <span class="rot">Preço</span>
+          <input type="text" name="preco" value="{{ s.preco if s else '' }}" placeholder="R$ 19,90">
+        </div>
+        <div class="campo" data-campo="preco_de">
+          <span class="rot">Preço antigo</span>
+          <input type="text" name="preco_de" value="{{ s.preco_de if s else '' }}" placeholder="R$ 24,90">
+        </div>
+      </div>
+
+      <div class="campo" data-campo="rodape">
+        <span class="rot">Rodapé</span>
+        <input type="text" name="rodape" value="{{ s.rodape if s else '' }}" placeholder="Válido até 30/09">
+      </div>
+
+      <div class="campo" data-campo="imagem">
+        <span class="rot">Imagem</span>
+        <input type="file" name="arquivo" id="arquivo" accept="image/*">
+        {% if s and s.imagem %}
+        <label class="check" style="margin-top:10px"><input type="checkbox" name="remover_imagem" value="1"> remover a imagem atual</label>
+        {% endif %}
+      </div>
+
+      <div class="linha-campos">
+        <div class="campo">
+          <span class="rot">Tempo na tela (segundos)</span>
+          <input type="number" name="segundos" min="3" max="120" value="{{ s.segundos if s else 10 }}">
+        </div>
+        <div class="campo" style="align-self:end">
+          <label class="check"><input type="checkbox" name="ativo" value="1" {% if not s or s.ativo %}checked{% endif %}> no ar</label>
+        </div>
+      </div>
+
+      <button class="btn" type="submit">Salvar slide</button>
+    </div>
+
+    <div class="previa">
+      <span class="rot">Prévia</span>
+      <div class="tela" id="tela"><div class="palco" id="palco"></div></div>
+      <p class="dica">Escala real 1080 × 1920, já com a área segura de {{ cfg.mr }} mm na direita.</p>
+    </div>
+  </div>
+</form>
+</div>
+
+<script src="{{ url_for('static', filename='render.js') }}"></script>
+<script>
+  var CAMPOS = {{ campos | tojson }};
+  var CFG = {{ cfg | tojson }};
+  var f = document.getElementById('f'), palco = document.getElementById('palco'), tela = document.getElementById('tela');
+  var imagemAtual = {{ (s.imagem if s and s.imagem else '') | tojson }};
+  var blob = null;
+
+  function visiveis() {
+    var tipo = f.tipo.value, usa = CAMPOS[tipo] || [];
+    Array.prototype.forEach.call(document.querySelectorAll('[data-campo]'), function (el) {
+      el.style.display = usa.indexOf(el.dataset.campo) >= 0 ? '' : 'none';
+    });
+  }
+
+  function desenha() {
+    var s = {
+      tipo: f.tipo.value, chapeu: f.chapeu.value, titulo: f.titulo.value,
+      subtitulo: f.subtitulo.value, rodape: f.rodape.value,
+      preco: f.preco.value, preco_de: f.preco_de.value,
+      imagem: blob || (f.remover_imagem && f.remover_imagem.checked ? '' : imagemAtual),
+      segundos: Number(f.segundos.value) || 10
+    };
+    Vitrine.aplicaConfig(document.documentElement, CFG);
+    palco.innerHTML = Vitrine.slideHTML(s, CFG, 0, 4);
+    var el = palco.querySelector('.slide');
+    if (el) el.classList.add('ativo');
+    var escala = tela.clientWidth / 1080;
+    palco.style.transform = 'scale(' + escala + ')';
+    palco.style.width = '1080px';
+    palco.style.height = '1920px';
+  }
+
+  f.addEventListener('input', function () { visiveis(); desenha(); });
+  f.addEventListener('change', function () { visiveis(); desenha(); });
+  document.getElementById('arquivo').addEventListener('change', function (e) {
+    var arq = e.target.files && e.target.files[0];
+    blob = arq ? URL.createObjectURL(arq) : null;
+    desenha();
+  });
+  addEventListener('resize', desenha);
+  visiveis(); desenha();
+</script>
+</body>
+</html>
