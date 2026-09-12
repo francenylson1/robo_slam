@@ -53,3 +53,47 @@ area segura do painel em `/admin/config`, e reservar o MAC no roteador.
   adaptador HDMI que não entregava EDID. Onde o EDID é lido, **não aplicar**.
 - `vitrine/vitrine.db` e `vitrine/static/uploads/` — no `.gitignore`; cada Pi semeia o seu.
 - Área segura (`mr/mt/mb/ml`) e `pxmm` — medir no painel daquela tela, em `/admin/config`.
+
+## Teleop no boot (opt-in por maquina)
+
+Nem toda Pi da frota tem joystick e motores, entao subir o teleop no boot e opcional:
+
+```bash
+mkdir -p ~/.config/robo && touch ~/.config/robo/teleop-no-boot
+```
+
+Com o marcador presente, a sessao grafica sobe `robo-teleop.service` antes das telas,
+espera o rosto responder na porta 8765 e so entao abre as janelas — assim a janela do
+7" aponta para o rosto **do teleop** (que reage ao joystick) em vez do arquivo
+estatico. Sem o marcador, nada muda.
+
+**Os motores nascem desarmados ate o SELECT** no joystick (`--arm-start` e opt-in),
+por isso subir no boot nao faz o robo se mover.
+
+### O que isso exige do rc.xml daquela maquina
+
+A janela do rosto passa a vir de `http://127.0.0.1:8765/index.html`, e o instance que
+o Chromium deriva dessa URL e `127.0.0.1__index.html` — que **nao** casa
+`*robot_face*`. Sem uma regra para ele, a janela abre com decoracao e fora de lugar
+(medido: 1023x599 em 0,62 em vez de 1024x600 em 0,0). Acrescente ao `rc.xml`:
+
+```xml
+<windowRule identifier="*__index.html*" serverDecoration="no">
+  <action name="MoveToOutput" output="HDMI-A-1"/>
+  <action name="ToggleFullscreen"/>
+</windowRule>
+```
+
+Ajuste o `output` para a saida onde esta o 7" **naquela** maquina.
+
+**Cuidado ao editar o rc.xml:** `--` nao e permitido dentro de comentario XML. Um
+arquivo invalido e rejeitado em silencio e as janelas caem na tela errada. Validar com
+`python3 -c 'import xml.dom.minidom; xml.dom.minidom.parse("/home/amd/.config/labwc/rc.xml")'`
+antes do `kill -HUP $(pidof labwc)`.
+
+### Como o main.py continua funcionando
+
+`python3 src/main.py` **sem argumentos abre o dialogo de escolha de modo como sempre**.
+O `--mode semi-teleop` existe so para o autostart, que nao tem quem clique. E o
+`ROBO_TELEOP_NO_CHROMIUM=1`, definido apenas pela unit, evita o segundo Chromium em
+`--kiosk` que brigaria pela tela primaria. Nada disso muda o uso manual.

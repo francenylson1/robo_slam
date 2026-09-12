@@ -35,7 +35,20 @@ fi
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PORTA="${ROBO_VITRINE_PORT:-8080}"
 
-URL7="${1:-file://${RAIZ}/display/robot_face/index.html}"
+PORTA_ROSTO="${ROBO_FACE_HTTP_PORT:-8765}"
+
+# Rosto: se o teleop estiver servindo (porta 8765), a janela do 7" aponta para ele,
+# assim o rosto reage ao joystick. Se nao estiver, cai no arquivo estatico -- a tela
+# nunca fica vazia por causa de um servico que nao subiu.
+if [ -n "${1:-}" ]; then
+  URL7="$1"
+elif curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:${PORTA_ROSTO}/index.html"; then
+  URL7="http://127.0.0.1:${PORTA_ROSTO}/index.html?teleop=1"
+  echo "rosto: servidor do teleop (porta ${PORTA_ROSTO})"
+else
+  URL7="file://${RAIZ}/display/robot_face/index.html"
+  echo "rosto: arquivo estatico (teleop nao esta servindo)"
+fi
 URL15="${2:-http://127.0.0.1:${PORTA}/signage}"
 
 # IMPORTANTE: o padrao e montado por concatenacao para o pkill -f nao casar a

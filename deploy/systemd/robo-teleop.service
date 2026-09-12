@@ -1,0 +1,25 @@
+[Unit]
+Description=Robo - modo semi-autonomo (rosto HTTP + joystick)
+Documentation=file:///home/amd/robo_slam/deploy/README.md
+# Precisa da sessao grafica: o main.py cria um QApplication.
+After=vitrine-app.service
+Wants=vitrine-app.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/robo_slam
+# --mode pula o dialogo de escolha, que num autostart nao tem quem clique.
+# Rodar main.py a mao, sem argumento, continua abrindo o dialogo como sempre.
+ExecStart=/usr/bin/python3 %h/robo_slam/src/main.py --mode semi-teleop
+# Nao abrir Chromium proprio: a janela do 7" e do lancar_telas.sh, que o labwc
+# posiciona. O --kiosk do teleop ignoraria a posicao e iria para a tela primaria.
+Environment=ROBO_TELEOP_NO_CHROMIUM=1
+Environment=DISPLAY=:0
+Environment=QT_QPA_PLATFORM=xcb
+Restart=on-failure
+RestartSec=5
+SyslogIdentifier=robo-teleop
+
+# Sem [Install]: disparada pelo XDG autostart junto das telas, ja dentro da sessao
+# grafica. Os motores nascem DESARMADOS ate o SELECT no joystick, entao subir no
+# boot nao faz o robo se mover.

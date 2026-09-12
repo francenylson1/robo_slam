@@ -39,10 +39,34 @@ if __name__ == '__main__':
     from src.interfaces.main_window import MainWindow
     from src.core.semi_teleop_runner import run_semi_teleop_session
 
-    dlg = ModeSelectionDialog()
-    if dlg.exec_() != QDialog.Accepted:
-        sys.exit(0)
-    mode = dlg.selected_mode()
+    # --mode existe só para o autostart, que não tem ninguém para clicar no diálogo.
+    # SEM argumento o fluxo é exatamente o de sempre: o diálogo de escolha aparece.
+    modo_arg = None
+    args = sys.argv[1:]
+    for i, a in enumerate(args):
+        if a.startswith('--mode='):
+            modo_arg = a.split('=', 1)[1]
+        elif a == '--mode':
+            if i + 1 >= len(args):
+                print("ERRO: --mode exige um valor (semi-teleop ou autonomous)",
+                      file=sys.stderr)
+                sys.exit(2)
+            modo_arg = args[i + 1]
+
+    if modo_arg is None:
+        dlg = ModeSelectionDialog()
+        if dlg.exec_() != QDialog.Accepted:
+            sys.exit(0)
+        mode = dlg.selected_mode()
+    else:
+        escolhas = {'semi-teleop': AppMode.SEMI_TELEOP, 'autonomous': AppMode.AUTONOMOUS}
+        mode = escolhas.get(modo_arg.strip().lower())
+        if mode is None:
+            print(f"ERRO: --mode inválido: {modo_arg!r}. Use: {', '.join(escolhas)}",
+                  file=sys.stderr)
+            sys.exit(2)
+        print(f"Modo vindo da linha de comando: {modo_arg} (diálogo pulado)")
+
     if mode is None:
         sys.exit(0)
     if mode == AppMode.SEMI_TELEOP:

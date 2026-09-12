@@ -104,7 +104,15 @@ def run_semi_teleop_session(
 
     chromium = _find_chromium()
     chrome_proc: subprocess.Popen | None = None
-    if chromium:
+    # ROBO_TELEOP_NO_CHROMIUM=1: não abre janela própria, só serve o rosto em HTTP.
+    # Quem chama assume a janela — é o caso do autostart, onde o lancar_telas.sh já
+    # mantém a janela do 7" posicionada pelo labwc. Sem isso o teleop abriria um
+    # segundo Chromium em --kiosk, que ignora --window-position e vai sempre para a
+    # tela primária, brigando com a janela que já existe.
+    # Sem a variável definida o comportamento é o de sempre: abre o próprio kiosk.
+    if os.environ.get("ROBO_TELEOP_NO_CHROMIUM", "").lower() in ("1", "true", "yes", "on"):
+        print(f"Rosto do teleop servido em {url} (janela por conta de quem chamou).")
+    elif chromium:
         chrome_proc = subprocess.Popen(
             [
                 chromium,
