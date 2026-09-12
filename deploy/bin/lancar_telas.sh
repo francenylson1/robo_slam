@@ -17,6 +17,21 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 # cookie o Chromium morre com "Authorization required" e nenhuma janela abre.
 export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 
+# O cookie do X fica amarrado ao hostname que a maquina tinha quando a sessao
+# grafica subiu. Renomear a Pi deixa o cookie orfao: o cliente procura uma entrada
+# para o hostname novo, nao acha, e nem tenta se autorizar -- o sintoma e cruel,
+# porque as units ficam "active" e as telas ficam vazias, sem erro no systemd.
+# Garante uma entrada para o hostname atual reaproveitando o mesmo cookie.
+if command -v xauth >/dev/null 2>&1 && [ -f "$XAUTHORITY" ]; then
+  if ! xauth -f "$XAUTHORITY" list 2>/dev/null | grep -q "^$(hostname)/unix:0"; then
+    COOKIE=$(xauth -f "$XAUTHORITY" list 2>/dev/null | awk '$2=="MIT-MAGIC-COOKIE-1"{print $3; exit}')
+    if [ -n "$COOKIE" ]; then
+      xauth -f "$XAUTHORITY" add "$(hostname)/unix:0" MIT-MAGIC-COOKIE-1 "$COOKIE" 2>/dev/null \
+        && echo "xauth: entrada criada para $(hostname)/unix:0"
+    fi
+  fi
+fi
+
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PORTA="${ROBO_VITRINE_PORT:-8080}"
 
@@ -37,7 +52,7 @@ lancar() { # $1=perfil  $2=classe  $3=posicao  $4=tamanho  $5=url
     --app="$5" >"/tmp/cr_$1.log" 2>&1 &
 }
 
-# So abre o rosto se a saida do 7" tiver tela conectada.
+# ROBO_SEM_ROSTO=1 deixa o 7" para quem for dono dele (por exemplo o teleop).
 if [ -z "$ROBO_SEM_ROSTO" ]; then
   lancar face robot_face 0,0 1024,600 "$URL7"
   sleep 5
