@@ -1,0 +1,16 @@
+[Unit]
+Description=Vitrine - abre as janelas Chromium (rosto 7" + vitrine 15")
+# Disparada pelo XDG autostart da sessao labwc, NAO por graphical-session.target:
+# nesse compositor o target fica inactive e a unit nunca subiria no boot.
+After=vitrine-app.service
+Wants=vitrine-app.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=%h/robo_slam/deploy/bin/aguardar_vitrine.sh
+ExecStart=%h/robo_slam/deploy/bin/lancar_telas.sh
+SyslogIdentifier=vitrine-telas
+
+# Sem [Install] de proposito: quem dispara e o ~/.config/autostart/vitrine-telas.desktop,
+# ja dentro da sessao grafica. Habilitar num target faria a unit subir antes de haver tela.

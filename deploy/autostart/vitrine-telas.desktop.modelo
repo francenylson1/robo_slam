@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Vitrine - janelas das duas telas
+Comment=Sobe rosto (7") e carrossel (15") via systemd --user
+Exec=__HOME__/robo_slam/deploy/bin/iniciar_telas_sessao.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true

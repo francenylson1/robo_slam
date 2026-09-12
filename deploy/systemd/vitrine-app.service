@@ -1,0 +1,19 @@
+[Unit]
+Description=Vitrine - servidor Flask dos slides (porta 8080)
+Documentation=file:///home/amd/robo_slam/vitrine/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# %h = home do usuario: a unit funciona em qualquer Pi da frota sem editar caminho.
+WorkingDirectory=%h/robo_slam/vitrine
+ExecStart=/usr/bin/python3 %h/robo_slam/vitrine/app.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vitrine-app
+
+[Install]
+WantedBy=default.target
