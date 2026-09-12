@@ -27,6 +27,25 @@ else
   echo "hostname agora: $(hostname)"
 fi
 
+# Fixa o nome no avahi. SEM isto o avahi, ao ver o registro antigo ainda vivo na
+# rede (o cache dura ~2 min apos um reboot), considera o nome ocupado e se renomeia
+# sozinho INCREMENTANDO o numero: raspberry-179 vira raspberry-180.local. O nome que
+# voce anotou para alcancar o robo fechado deixa de existir em silencio -- e pode
+# colidir com a Pi que de fato tiver aquele IP. Aconteceu na .179 em 2026-09-12.
+CONF=/etc/avahi/avahi-daemon.conf
+if [ -f "$CONF" ]; then
+  [ -f "$CONF.antes-hostname-fixo" ] || sudo cp "$CONF" "$CONF.antes-hostname-fixo"
+  if grep -qE "^host-name=" "$CONF"; then
+    sudo sed -i "s/^host-name=.*/host-name=$(hostname)/" "$CONF"
+  else
+    sudo sed -i "s/^\[server\]/[server]\nhost-name=$(hostname)/" "$CONF"
+  fi
+  sudo systemctl restart avahi-daemon
+  sleep 3
+  PUBLICADO=$(journalctl -u avahi-daemon -b --no-pager 2>/dev/null | grep -i "Host name is" | tail -1 | grep -oE "[^ ]+\.local")
+  echo "avahi publica: ${PUBLICADO:-?}  (esperado: $(hostname).local)"
+fi
+
 # Reaproveita o cookie do X para o nome atual, se a sessao grafica estiver no ar.
 X="${XAUTHORITY:-$HOME/.Xauthority}"
 if command -v xauth >/dev/null 2>&1 && [ -f "$X" ]; then
