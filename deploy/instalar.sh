@@ -12,7 +12,7 @@ command -v chromium >/dev/null || echo "  AVISO: chromium nao esta no PATH"
 
 echo; echo "== 2. Units systemd (symlink: git pull ja atualiza) =="
 mkdir -p ~/.config/systemd/user
-for u in vitrine-app vitrine-telas; do
+for u in vitrine-app vitrine-telas robo-teleop; do
   ln -sfn "$RAIZ/deploy/systemd/$u.service" ~/.config/systemd/user/$u.service
   echo "  $u.service -> repo"
 done
@@ -38,6 +38,23 @@ cat <<'AVISO'
    - vitrine/vitrine.db         banco de slides: cada Pi semeia o seu (esta no .gitignore)
    - area segura (mr/mt/mb/ml) e pxmm: medir no painel DESTA tela, em /admin/config
 AVISO
+
+# A unit do teleop foi registrada, mas so sobe no boot se esta maquina pedir.
+if [ -f "$HOME/.config/robo/teleop-no-boot" ]; then
+  echo "  teleop no boot: LIGADO nesta maquina"
+  # Sem esta regra o rosto vindo da porta 8765 abre com decoracao e fora de posicao:
+  # o instance da URL e 127.0.0.1__index.html, que nao casa *robot_face*.
+  if ! grep -q "__index.html" "$HOME/.config/labwc/rc.xml" 2>/dev/null; then
+    echo "  !! FALTA no rc.xml a regra do rosto do teleop. Acrescente em <windowRules>:"
+    echo '     <windowRule identifier="*__index.html*" serverDecoration="no">'
+    echo '       <action name="MoveToOutput" output="HDMI-A-1"/>'
+    echo '       <action name="ToggleFullscreen"/>'
+    echo '     </windowRule>'
+    echo "     (ajuste o output para a saida do 7\" NESTA maquina)"
+  fi
+else
+  echo "  teleop no boot: desligado (para ligar: mkdir -p ~/.config/robo && touch ~/.config/robo/teleop-no-boot)"
+fi
 
 echo; echo "== Pronto. Verificar com: =="
 echo "  systemctl --user status vitrine-app"
