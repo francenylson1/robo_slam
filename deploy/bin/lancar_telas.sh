@@ -13,6 +13,9 @@
 #     em ~/.config/labwc/rc.xml.
 export DISPLAY="${DISPLAY:-:0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# XAUTHORITY e obrigatorio onde o XWayland sobe com -auth (caso da .199): sem o
+# cookie o Chromium morre com "Authorization required" e nenhuma janela abre.
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PORTA="${ROBO_VITRINE_PORT:-8080}"
