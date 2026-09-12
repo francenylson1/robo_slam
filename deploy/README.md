@@ -1,5 +1,8 @@
 # deploy/ — levar o robô para outra Raspberry
 
+> **Para operar os robôs no dia do evento** — endereços, acessos, o que fazer quando algo
+> não sobe e o que não fazer com um robô fechado — veja [OPERACAO.md](OPERACAO.md).
+
 Tudo aqui é **igual em todas as máquinas**. O que é específico de cada Pi ficou
 deliberadamente fora: `rc.xml`, `kanshi/config`, `cmdline.txt`, `vitrine.db`,
 uploads e a área segura da tela.
