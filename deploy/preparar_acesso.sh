@@ -49,6 +49,45 @@ else
   echo "  ja era persistente ($(journalctl --list-boots 2>/dev/null | wc -l) boots gravados)"
 fi
 
+echo; echo "== 5b. Nome mDNS estavel apos o boot =="
+# No boot o registro mDNS do boot anterior ainda vive ~2 min no cache da rede. O
+# avahi ve o proprio nome como ocupado e se renomeia INCREMENTANDO o numero:
+# raspberry-179 passa a anunciar raspberry-180.local. A falha e silenciosa, o
+# "hostname" continua certo, e o acesso por nome que existe para alcancar o robo
+# fechado simplesmente deixa de funcionar. Fixar host-name no conf NAO resolve.
+# Passado o TTL, reiniciar o avahi faz ele reassumir o nome. Este timer faz isso.
+if [ ! -f /etc/systemd/system/avahi-nome-correto.timer ]; then
+  sudo tee /etc/systemd/system/avahi-nome-correto.service >/dev/null <<'UNIT'
+[Unit]
+Description=Reafirma o nome mDNS depois que o cache do boot anterior expira
+After=avahi-daemon.service
+Wants=avahi-daemon.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl restart avahi-daemon
+UNIT
+  sudo tee /etc/systemd/system/avahi-nome-correto.timer >/dev/null <<'UNIT'
+[Unit]
+Description=Reafirma o nome mDNS 3 min depois do boot
+
+[Timer]
+OnBootSec=180
+AccuracySec=5s
+Unit=avahi-nome-correto.service
+
+[Install]
+WantedBy=timers.target
+UNIT
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now avahi-nome-correto.timer >/dev/null 2>&1
+  echo "  timer criado: o nome correto e reassumido 3 min depois de cada boot"
+else
+  echo "  ja configurado"
+fi
+echo "  ATENCAO: nos primeiros ~3 min depois de ligar, o nome pode estar incrementado."
+echo "  Confira sempre com: journalctl -u avahi-daemon -b | grep 'Host name is'"
+
 echo; echo "== 6. Dados para a reserva de DHCP no roteador =="
 ip -o link show | awk '/link\/ether/ {print "  "$2" "$17}' | sed 's/://1'
 echo "  IP atual: $(hostname -I)"
