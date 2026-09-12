@@ -6,13 +6,31 @@ uploads e a área segura da tela.
 
 ## Ordem de execução numa Pi nova
 
+Antes de tudo, **da maquina de desenvolvimento**, autorize a chave (pede a senha
+da Pi uma unica vez):
+
+```bash
+ssh-copy-id amd@<ip-da-pi>
+```
+
+Depois, **na Pi**:
+
 ```bash
 cd ~/robo_slam && git pull
 ./deploy/inventario_pi.sh > /tmp/inv.txt   # 1. o que esta maquina tem
-./deploy/instalar.sh                       # 2. units, autostart, linger
-./deploy/preparar_acesso.sh                # 3. SSH, mDNS, watchdog, journal
-sudo reboot                                # 4. o unico teste que vale
+./deploy/nomear_maquina.sh                 # 2. hostname raspberry-<octeto> + xauth
+./deploy/instalar.sh                       # 3. units, autostart, linger
+./deploy/preparar_acesso.sh                # 4. SSH, mDNS, watchdog, journal
+sudo reboot                                # 5. o unico teste que vale
 ```
+
+Depois do reboot, confirme **da outra maquina**: `ssh amd@raspberry-<octeto>.local`
+entra sem senha, e `systemctl --user is-active vitrine-app vitrine-telas` devolve
+`active` nas duas.
+
+O que ainda e manual em cada Pi, porque depende do hardware dela: escrever o
+`kanshi/config` e o `rc.xml` conforme **qual tela esta em qual saida HDMI**, medir a
+area segura do painel em `/admin/config`, e reservar o MAC no roteador.
 
 ## Por que cada peça existe
 
@@ -24,6 +42,7 @@ sudo reboot                                # 4. o unico teste que vale
 | `bin/iniciar_telas_sessao.sh` | no labwc `graphical-session.target` fica **inactive**, então a unit precisa ser disparada pelo XDG autostart |
 | `autostart/*.desktop.modelo` | `~/.config/labwc/autostart` **substituiria** o global e derrubaria `wf-panel-pi`, `pcmanfm` e o `kanshi` |
 | `preparar_acesso.sh` | com o robô fechado, perder o SSH custa desmontar; watchdog + mDNS + chave são o seguro |
+| `nomear_maquina.sh` | padroniza `raspberry-<octeto>` para o mDNS, e recria a entrada `xauth` que a renomeação deixa órfã |
 
 ## O que NÃO copiar entre máquinas
 
